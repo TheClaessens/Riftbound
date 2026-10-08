@@ -1,0 +1,14 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #07080d; color: #e8e6f0; font-family: 'Inter', system-ui, sans-serif; user-select: none; }
+#game, #game canvas { position: fixed; inset: 0; display: block; }
+#game canvas { cursor: crosshair; }
+#fx-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+#ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+#ui .interactive, #ui button { pointer-events: auto; }
+
+/* floating combat text */
+.ftext { position: absolute; left: 0; top: 0; font-weight: 800; font-size: 15px; white-space: nowrap; will-change: transform, opacity;
+  text-shadow: 0 0 2px #000, 0 1px 3px #000, 0 0 8px rgba(0,0,0,.6); }
+.ftext.crit { font-size: 21px; }
+.ftext.label { font-family: 'Cinzel', serif; font-size: 18px; letter-spacing: 1px; text-shadow: 0 0 10px currentColor, 0 1px 3px #000; }
+.ftext.label.big { font-size: 30px; }

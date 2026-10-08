@@ -1,0 +1,218 @@
+# Riftbound — Architecture & Module Contracts (v1.0)
+
+Read `DESIGN.md` for the game design (numbers are there). This file is the **contract** every module must respect.
+
+## Ground rules
+* Plain ES modules, **no build step**, no npm. Import Three.js as `import * as THREE from 'three';` and addons as `'three/addons/...'` (import map in `index.html`, three r170).
+* Relative imports **must include `.js`**.
+* The world is the XZ plane and **Y is up**. Ground is y = 0. Entities use `pos: THREE.Vector3` with `pos.y = 0`.
+* Units: 1 unit ≈ 1 m. Player ~1.8 tall, radius 0.5. Arena ±60.
+* Bloom is on. To make something glow, use `glowMaterial(color, intensity, opts)` from `src/core/utils.js` (MeshBasicMaterial, colour × intensity > 1). Matte things use `MeshStandardMaterial`.
+* **Never add/remove `THREE.Light`s at runtime** (shader recompiles). Use `game.fx.light(pos, color, intensity, life)`.
+* Reuse geometries from `GEO` (utils.js) or module-level constants. **Never create geometry per frame.** `dispose()` per-instance materials/geometries.
+* Performance budget: ~320 enemies. **≤ 3 meshes per enemy**, `castShadow = false` on enemies.
+* Readability palette:
+  * Player spells use element colours (`ELEMENT_COLOR`).
+  * **Enemy projectiles are hot magenta `0xff2a6d` with a white core.**
+  * **Enemy telegraphs are red-orange `0xff3344`/`0xff5a2a`.**
+* `window.__game` exposes the game for debugging. A simulation harness drives `player.botMove = {x,z}` and `player.botDash = true`.
+
+## File map & ownership
+```
+index.html, css/style.css
+src/main.js                       loop
+src/core/engine.js                renderer, iso camera, bloom, atmosphere + GRADE PASS        (graphics)
+src/core/input.js, events.js, utils.js
+src/game/game.js                  state machine, acts, chain, hit-stop, level-up/chest flow   (core)
+src/game/player.js                class, dash, perfect dodge, traits, buffs, relics           (core)
+src/game/models.js                buildPlayerModel(classId)                                  (graphics)
+src/game/combat.js                damage, statuses, 6 reactions, ward/resist/barrier          (core)
+src/game/classes.js, acts.js, meta.js, relics.js, progression.js                              (core)
+src/game/fx.js                    particles, rings, lightning, telegraphs, corpse, texts      (core; graphics may extend)
+src/game/pickups.js               xp, health, magnet, chest                                   (core)
+src/game/enemies.js               archetypes × factions, EnemyBullet                          (enemies)
+src/game/bosses.js                createBoss(game, id, pos, opts): 3 bosses                   (bosses)
+src/game/spawner.js               act-aware spawning, beats, boss spawn                       (bosses)
+src/game/world.js                 biomes, props, geodes, shrines, hazards                     (world)
+src/game/audio.js                 procedural SFX + music                                      (audio)
+src/game/skills/*.js              skills; registry.js (core)
+src/ui/ui.js + css/ui.css         HUD, level-up, relic pick, pause/codex, banners             (ui-hud)
+src/ui/menus.js + css/menus.css   title, class select, sanctum, game over / victory          (ui-menus)
+```
+
+## The `game` object
+| Member | Meaning |
+|---|---|
+| `scene`, `camera`, `engine`, `input`, `events` | as named |
+| `state` | `'title' \| 'playing' \| 'levelup' \| 'relic' \| 'paused' \| 'shift' \| 'dead' \| 'victory'` |
+| `phase` | `'horde' \| 'boss' \| 'shift'` |
+| `time` | total run seconds |
+| `act` (0..2), `actTime`, `actDef` | current act index, seconds into the act, and `ACTS[act]` (acts.js) |
+| `tier` | Rift Tier 0..5 |
+| `player`, `enemies`, `boss`, `fx`, `world`, `pickups`, `spawner`, `ui`, `audio` | |
+| `chain` | current reaction Chain (0 = none) |
+| `stats` | `{ kills, damageDealt, reactions:{type:n}, fusions:[names], level, time, maxChain, bossesKilled, act, classId, tier, … }`. At run end it also has `shardsEarned, unlocks:[classIds], tierUnlocked, totalShards, victory, relics:[names]` |
+| `meta` | persistent save (meta.js): `{ shards, attune:{id:rank}, unlocked:{classId:true}, codex:{reactions,fusions,relics}, stats, maxTier, lastClass, lastTier }` |
+| `codex` | `meta.codex` |
+| `run` | `{ rerolls, banishes, banished:Set }` |
+| `autoCast` | boolean (T) |
+| `start({ classId, tier })` | start a run |
+| `quitToTitle()` | abandon the run and show the title |
+| `togglePause()`, `slowmo(dur, scale)`, `hitStop(sec)` | |
+| `addActor(a)`, `addEnemy(e)`, `liveEnemyCount()` | |
+| `queryEnemies(pos, r, out?)` | **Returns a reused array; `.slice()` it before dealing damage while iterating.** Includes inert geodes. |
+| `nearestEnemy(pos, maxRange, excludeSet?)` | skips dead and **inert** |
+| `queueChest()` | (pickups) a Relic Chest was collected |
+
+### Events (`game.events.on(name, fn)` → unsubscribe fn)
+| Event | Payload |
+|---|---|
+| `runStart` | `{ classId, tier }` |
+| `actStart` | `{ act, def }`. Also fires at run start for act 0. UI shows the act title card; spawner/world react. |
+| `riftShift` | `{ from, to }`. Boss died; 2.5 s transition. `world.setBiome(nextId)` is called by game at 40%. |
+| `runEnd` | `{ victory, stats }` |
+| `tick` | `{ dt }`, every gameplay frame |
+| `levelUp` | `{ level }` |
+| `enemyKilled` | `{ enemy }` (not emitted for inert objects) |
+| `enemyFrozen` | `{ enemy }` |
+| `reaction` | `{ type: 'steam'\|'overload'\|'superconduct'\|'shatter'\|'combust'\|'arcflash', pos, enemy }` |
+| `chainMilestone` | `{ chain: 10\|25\|50 }` |
+| `chainEnd` | `{ chain }` |
+| `wardBroken` | `{ enemy, element }` |
+| `discovered` | `{ kind: 'reactions'\|'fusions'\|'relics', id }`, the first time ever |
+| `fusion` | `{ def, recipe }` |
+| `skillLearned` / `skillRankUp` | `{ def, rank? }` |
+| `cast` | `{ def, rank, slot, echo }` |
+| `dash` | `{ kind: 'blink'\|'flame'\|'frost'\|'storm' }` |
+| `perfectDodge` | `{ source }` |
+| `buff` | `{ id, duration, def }` (shrines, adrenaline) |
+| `relicGained` | `{ def }` |
+| `chestOpened` | `{ relics }` |
+| `playerHit` | `{ amount, source }` |
+| `playerDied` | `{}` |
+| `bossSpawned` | `{ enemy, final }`: emitted by spawner. Set `game.boss = enemy` first. |
+| `bossPhase` | `{ enemy, phase: 2 }`: emitted by the boss at 50% HP |
+| `bossKilled` | `{ enemy, final }`: emitted by spawner when the boss dies |
+| `announce` | `{ text, sub?, color? }`: big centre-screen announcement |
+| `shrineSpawned` / `shrineClaimed` | `{ type, pos }` |
+| `geodeBroken` | `{ element, pos }` |
+| `hazard` | `{ kind: 'lava'\|'lightning', pos }` (on impact) |
+| `autoCastChanged` | `{ on }` |
+| `xpCollected` / `itemCollected` | `{ value }` / `{ type: 'health'\|'magnet'\|'chest' }` |
+
+### Actors
+Anything with `update(dt, game) → boolean` (return `false` when finished) and optional `dispose(game)`. **Hostile actors (enemy bullets, boss hazards) must set `this.hostile = true`**, so the Rift Shift can clear them.
+
+## Player (`src/game/player.js`)
+* `pos, vel, facing, moveDir, radius, level, xp, xpToNext, hp, stats, invuln, dead`
+* `cls` (CLASSES entry), `classId`, `traitId`, `skills`, `slots[0..4]` (slot 0 = starter), `passives`, `relics:[defs]`, `buffs: Map(id → {t, dur, name, icon, color, apply})`
+* `shield`, `frostArmor` (0..3), `charge` (Momentum 0..100), `traitDamage`, `traitCdr`
+* `dash = { def:{name,kind,cd,dist,dur,charges}, max, charges, recharge, t, window }`
+* Methods:
+  * `takeDamage(amount, source)`: handles perfect dodge, i-frames, armor, shield.
+  * `heal(n)`, `gainXP(n)`
+  * `addBuff(id, dur, {name, icon, color, apply(stats)})`, `addShield(n)`, `hasBuff(id)`
+  * `addRelic(def)`
+
+### Stats (`player.stats`)
+```
+damage, cdr (0..0.6), moveSpeed, maxHp, regen, pickupRadius, area, projectiles, reaction, crit, armor, xpMult,
+burnDur, burnDmg, freezeAt, shockDur, shockAmp, overloadRadius, overloadStun,
+dashCdr, echo, reactionEcho, chestChoices, reactionXp, dmgTaken
+```
+
+## Skill definition contract (`src/game/skills/*.js`)
+```js
+export const mySkill = {
+  id: 'mySkill', name: 'My Skill', icon: '🔥',      // icon: ONE emoji or unicode glyph
+  element: 'fire' | 'frost' | 'storm' | 'arcane',
+  maxRank: 5,                    // fusions: 3
+  range: 14,                     // auto-cast targeting range
+  noAuto: false,
+  hint: 'One-line combo tip shown on cards.',
+  desc: (rank) => 'What this rank gives.',   // rank 1 = base description
+  cooldown: (rank) => seconds,
+
+  // ACTIVE skills (occupy a slot) implement cast():
+  cast(game, ctx) {},   // ctx = { rank, origin: Vector3 (y=0), dir: Vector3 XZ unit, target: Vector3 ground point, player, state }
+
+  // AUTO behaviour (skills WITHOUT cast() take no slot; max 2):
+  init(game, state, rank) {}, update(game, dt, state, rank) {}, onRankUp(game, state, rank) {}, dispose(game, state) {},
+};
+```
+* Damage **must** go through `damageEnemy(game, enemy, amount, { element, knockback, dir, statusPower, noReaction, noStatus, raw, noCrit, silent })` from `combat.js`. This triggers statuses and reactions, so always pass the right `element`.
+* Helpers in `skills/common.js`: `Projectile` (opts: `pos, dir, speed, range, radius, damage, element, pierce, knockback, statusPower, color, size, height, mesh, trail, homing, homingRange, onHit, onExpire, hitCooldown, spin`), `timed(game, dur, fn(dt,t,k), onEnd)`, `damageArea(game, pos, r, dmg, opts)` → enemies hit, `fanDirections(dir, n, spread)`.
+* Scale areas by `game.player.stats.area`. Add `game.player.stats.projectiles` to projectile counts.
+* Target-at-cursor skills: clamp the target to the skill's range from `ctx.origin`.
+* Reference skills: `arcaneBolt.js` (projectile), `fireball.js`, `frostNova.js`, `chainLightning.js`, `spiritOrbs.js` (auto), `fusions.js`.
+
+## FX (`src/game/fx.js`)
+| Method | Notes |
+|---|---|
+| `burst(pos, { color, count, speed, life, size, gravity, up, drag, spread, hdr })` | |
+| `spark(pos, vel, { color, size, life })` | |
+| `ring(pos, { color, radius, from, life, width, hdr, y })` | |
+| `flashDisc(pos, { color, radius, life, hdr })` | |
+| `lightning(from, to, { color, life, jag, strands, segments })` | `from`/`to` may carry `.y` |
+| `telegraph(pos, radius, duration, { color, onDone })` | → `{ cancel() }` |
+| `lineTelegraph(from, dir, length, width, duration, { color, onDone })` | → `{ cancel() }` |
+| `corpse(mesh, life, { onEnd })` | takes ownership of a mesh for a death squash; does NOT dispose materials |
+| `light(pos, color, intensity, life, distance)` | |
+| `shake(amount)` | |
+| `number(pos, value, { color, crit })` | |
+| `text(pos, str, color, big)` | |
+
+## Enemy contract (`src/game/enemies.js`)
+```js
+export const ENEMY_TYPES = { husk: {...}, ... }   // see DESIGN §9
+export function createEnemy(game, typeId, pos, opts = {}) // opts: { elite, hpMult, damageScale, xpMult, ward, resist, noSpawnAnim }
+export class EnemyBullet  // new EnemyBullet(game, pos, dir, damage, opts?) — actor, hostile = true
+```
+The enemy object has:
+```
+type, archetype, faction, pos, radius, hp, maxHp, xp, damage, speed, status (makeStatus()), knock (Vector3), kbResist,
+dead, elite, boss, final, inert (false), resist ({fire:.5} | null), ward (element | null), barrier (0),
+deathColor, mesh, update(dt, game), flash(), dispose(game), onDeath?(game)
+```
+* `update`: call `updateStatuses(game, this, dt)` first. It returns a movement multiplier; **0 = frozen/stunned: no movement and no attacks**.
+* Never remove itself from `game.enemies`. Game removes dead enemies and calls `dispose`.
+
+## Boss contract (`src/game/bosses.js`)
+`createBoss(game, id: 'hollowWarden'|'vashkar'|'riftHeart', pos, opts: { hpMult, damageScale, final })`. It returns an enemy-contract object with `boss: true, name, phase (1|2)` and emits `bossPhase` at 50%.
+
+## World contract (`src/game/world.js`)
+```js
+class World {
+  constructor(game)
+  bounds, obstacles: [{x, z, r}]
+  setBiome(id: 'verge'|'cinder'|'crown', instant: boolean)  // rebuild props/ground, call game.engine.setAtmosphere(...)
+  reset()                         // new run: clear geodes/shrines/hazards
+  collide(pos, radius)            // push out of obstacles, clamp to bounds (mutates)
+  randomSpawnPoint(center, minDist, maxDist) → Vector3
+  update(dt, time)                // ambient + geodes/shrines/hazards (only act on gameplay when game.state === 'playing')
+  shrine                          // null | { type, pos, progress 0..1, timeLeft } — HUD reads it
+}
+```
+
+## Engine (`src/core/engine.js`)
+`setAtmosphere({ background, hemiSky, hemiGround, hemiIntensity, moon, moonIntensity, grade }, seconds)`, `setGrade({ tint:[r,g,b], saturation, contrast, vignette }, seconds)`, `pulse('hit'|'perfect'|'shift')`, `update(dt, game)`, `shake(a)`, `follow(...)`, `render()`.
+
+## UI contract (`src/ui/ui.js`, which owns a `Menus` from `src/ui/menus.js`)
+```js
+class UI {
+  constructor(game)
+  update(dt)
+  showTitle()                                  // → menus.showTitle()
+  showLevelUp(cards, onPick, ctl)              // ctl: { rerolls, banishes, reroll() → cards|null, banish(card) → cards|null }
+  hideLevelUp()
+  showRelicPick(relics, onPick)                // relic defs (relics.js); call onPick(def) once
+  hideRelicPick()
+  showPause(), hidePause()                     // pause + codex (+ "Quit to Sanctum" → game.quitToTitle())
+  showGameOver(stats), showVictory(stats)      // → menus
+}
+class Menus {   // src/ui/menus.js
+  constructor(game, root)
+  showTitle(), hideTitle()                     // title + class select + sanctum + tier select; START → game.start({classId, tier})
+  showGameOver(stats), showVictory(stats), hideEnd()
+}
+```
