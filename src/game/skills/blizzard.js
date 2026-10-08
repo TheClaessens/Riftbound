@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GEO, glowMaterial, randRange } from '../../core/utils.js';
+import { GEO, randRange } from '../../core/utils.js';
+import { blendAddMaterial } from '../fx.js';
 import { damageArea } from './common.js';
 
 // BLIZZARD (frost, active). A frost zone at the cursor: frost ticks every 0.33 s,
@@ -48,8 +49,8 @@ class FrostZone {
     this.tickAcc = 0;
     this.snowAcc = 0;
 
-    this.discMat = new THREE.MeshBasicMaterial({ color: 0x6fb8e0, transparent: true, opacity: 0.18, depthWrite: false });
-    this.edgeMat = glowMaterial(0x9fe9ff, 1.2, { transparent: true, opacity: 0.45, depthWrite: false, additive: true });
+    this.discMat = new THREE.MeshBasicMaterial({ color: 0x3f8fc8, transparent: true, opacity: 0.22, depthWrite: false });
+    this.edgeMat = blendAddMaterial(0x9fe9ff, { hdr: 1.3, opacity: 0.6, occ: 0.45, side: THREE.DoubleSide, depthTest: false });
 
     const disc = new THREE.Mesh(GEO.disc, this.discMat);
     disc.rotation.x = -Math.PI / 2;
@@ -72,8 +73,8 @@ class FrostZone {
   update(dt, game) {
     this.t += dt;
     const fade = Math.min(1, this.t / 0.3, (this.life - this.t) / 0.5);
-    this.discMat.opacity = 0.18 * fade;
-    this.edgeMat.opacity = (0.35 + 0.15 * Math.sin(this.t * 5)) * fade;
+    this.discMat.opacity = 0.22 * fade;
+    this.edgeMat.opacity = (0.55 + 0.2 * Math.sin(this.t * 5)) * fade;
 
     // Falling snow: sparks drifting down through the zone.
     this.snowAcc += dt * 28 * fade;

@@ -82,6 +82,7 @@ function pickCard(game, cards) {
 export function jumpToAct(act, { boss = false, god = true } = {}) {
   const game = window.__game;
   if (!game.player) game.start({ classId: 'arcanist' });
+  game.tutorial?.cancel();
   for (const e of game.enemies) if (!e.inert) e.dead = true;
   game.act = act; game.actTime = boss ? 179.5 : 5; game.phase = 'horde'; game.state = 'playing';
   game.world.setBiome(['verge', 'cinder', 'crown'][act], true);
@@ -92,7 +93,7 @@ export function jumpToAct(act, { boss = false, god = true } = {}) {
   game.events.emit('actStart', { act, def: game.actDef });
 }
 
-export async function runSim({ classId = 'arcanist', seconds = 700, tier = 0, log = true } = {}) {
+export async function runSim({ classId = 'arcanist', seconds = 700, tier = 0, log = true, tutorial = false } = {}) {
   const game = window.__game;
   const ui = game.ui;
   const saved = { showLevelUp: ui.showLevelUp, showRelicPick: ui.showRelicPick, hideRelicPick: ui.hideRelicPick, hideLevelUp: ui.hideLevelUp, showGameOver: ui.showGameOver, showVictory: ui.showVictory };
@@ -102,6 +103,7 @@ export async function runSim({ classId = 'arcanist', seconds = 700, tier = 0, lo
   ui.showGameOver = ui.showVictory = () => {};
 
   const metaBackup = JSON.stringify(game.meta);
+  game.meta.tutorialDone = !tutorial;   // balance sims skip the Rift Primer unless asked
   game.start({ classId, tier });
   game.autoCast = true;
   const tl = { levels: {}, acts: [], bosses: [], errors: [], fps: [] };
@@ -143,4 +145,27 @@ export async function runSim({ classId = 'arcanist', seconds = 700, tier = 0, lo
   };
   if (log) console.log('[sim]', JSON.stringify(res));
   return res;
+}
+
+// Visual check helper: start (or continue) a god-mode run in `act`, simulate `seconds`, hide the
+// HUD and render one frame. Level-ups auto-pick. Usage:
+//   const { snap } = await import('/src/dev/sim.js?v=' + Date.now()); await snap({ act: 1, seconds: 20 });
+export async function snap({ act = 0, seconds = 15, classId = 'pyromancer', boss = false, fresh = true, hud = false, zoom } = {}) {
+  const game = window.__game;
+  const ui = game.ui;
+  ui.showLevelUp = (cards, onPick) => onPick(cards[0]);
+  ui.showRelicPick = (relics, onPick) => onPick(relics[0]);
+  if (fresh || !game.player) { game.start({ classId }); jumpToAct(act, { boss }); }
+  ui.hideLevelUp?.(); ui.hideRelicPick?.();
+  if (game.state !== 'playing') game.state = 'playing';
+  game.pendingLevelUps = 0;
+  document.getElementById('ui').style.display = hud ? '' : 'none';
+  if (zoom) { game.engine.targetZoom = game.engine.zoom = zoom; }
+  const steps = Math.round(seconds * 30);
+  for (let i = 0; i < steps; i++) {
+    game.update(1 / 30);
+    if (game.state === 'levelup' || game.state === 'relic') game.state = 'playing';
+  }
+  game.engine.render();
+  return { enemies: game.enemies.length, state: game.state, act: game.act, hp: Math.round(game.player.hp) };
 }

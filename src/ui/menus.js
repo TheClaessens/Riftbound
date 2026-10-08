@@ -5,7 +5,7 @@
 //  All DOM is appended to root (#ui); root itself is never cleared.
 // =====================================================================================
 import { CLASSES, CLASS_ORDER } from '../game/classes.js';
-import { ATTUNEMENTS, attuneCost, buyAttunement } from '../game/meta.js';
+import { ATTUNEMENTS, attuneCost, buyAttunement, isUnlocked, maxTierOf, saveMeta, MAX_TIER } from '../game/meta.js';
 import { ACTS } from '../game/acts.js';
 import { REACTIONS } from '../game/combat.js';
 import { SKILLS, FUSIONS } from '../game/skills/registry.js';
@@ -13,7 +13,7 @@ import { RELICS, RELIC_IDS, RELIC_TAG_COLOR } from '../game/relics.js';
 
 const GLYPH = { arcanist: '✦', pyromancer: '🜂', cryomancer: '❅', stormcaller: 'ϟ' };
 const TIER_STEP = { hp: 30, dmg: 12, shards: 25 };   // per Rift Tier, in percent
-const MAX_TIER_UI = 5;
+const MAX_TIER_UI = MAX_TIER;
 const NONE_HTML = '<span class="menu-none">None</span>';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -43,7 +43,7 @@ export class Menus {
   constructor(game, root) {
     this.game = game;
     this.root = root ?? document.body;
-    this.selClass = 'arcanist';
+    this.selClass = 'pyromancer';
     this.selTier = 0;
     this.titleOpen = false;
     this.endOpen = false;
@@ -68,8 +68,10 @@ export class Menus {
     const meta = this.game.meta;
     const last = meta?.lastClass;
     this.selClass = this._unlocked(last) ? last : this._firstUnlocked();
-    this.selTier = Math.max(0, Math.min(meta?.lastTier ?? 0, meta?.maxTier ?? 0));
+    this.selTier = Math.max(0, Math.min(meta?.lastTier ?? 0, maxTierOf(meta)));
+    this._intro = true;
     this._renderTitle();
+    this._intro = false;
     this.titleEl.classList.add('menu-open');
     this.titleOpen = true;
   }
@@ -90,12 +92,14 @@ export class Menus {
 
   // ---------------------------------------------------------------- title skeleton
   _buildTitle() {
+    // "Aurelith, the Prism Dragon" -> "the Prism Dragon"
+    const finalFoe = (ACTS[ACTS.length - 1]?.bossName ?? '').split(', ')[1] ?? 'the final boss';
     this.titleEl.innerHTML = `
       <div class="menu-wrap">
         <header class="menu-head">
           <div class="menu-brand">
             <div class="menu-logo">RIFTBOUND</div>
-            <div class="menu-tagline">Descend. Weave the elements. Shatter the Heart.</div>
+            <div class="menu-tagline">Cross the Rifts. Weave the elements. Slay ${finalFoe}.</div>
           </div>
           <div class="menu-shards" data-ref="shards"></div>
         </header>
@@ -117,11 +121,27 @@ export class Menus {
             <kbd>SPACE</kbd> dash &middot; <kbd>T</kbd> auto-cast &middot; <kbd>Esc</kbd> pause
           </div>
           <div class="menu-actions">
+            <label class="menu-check" title="Play any class at any Rift Tier. Your earned unlocks are kept.">
+              <input type="checkbox" data-ref="unlockAll">
+              <span>Unlock all</span>
+            </label>
             <label class="menu-check">
               <input type="checkbox" data-ref="auto">
               <span>Auto-cast</span>
             </label>
-            <button type="button" class="menu-begin" data-act="begin">Begin Descent</button>
+            <label class="menu-check" title="Play the Rift Primer (a short guided start) in your next run.">
+              <input type="checkbox" data-ref="tutorial">
+              <span>Tutorial</span>
+            </label>
+            <label class="menu-check menu-select-row" title="Screen shake. Your own spells always shake less than enemy hits.">
+              <span>Shake</span>
+              <select data-ref="shake">
+                <option value="1">Full</option>
+                <option value="0.5">Reduced</option>
+                <option value="0">Off</option>
+              </select>
+            </label>
+            <button type="button" class="menu-begin" data-act="begin">Begin Quest</button>
           </div>
         </footer>
       </div>`;
@@ -135,6 +155,9 @@ export class Menus {
     this._renderAttunes();
     this._renderCodex();
     if (this.refs.auto) this.refs.auto.checked = !!this.game.autoCast;
+    if (this.refs.unlockAll) this.refs.unlockAll.checked = !!this.game.meta?.unlockAll;
+    if (this.refs.tutorial) this.refs.tutorial.checked = !this.game.meta?.tutorialDone;
+    if (this.refs.shake) this.refs.shake.value = String(this.game.meta?.shake ?? 1);
   }
 
   _renderShards() {
@@ -152,6 +175,7 @@ export class Menus {
     const selected = c.id === this.selClass;
     const starter = SKILLS[c.starter];
     const cls = ['menu-card'];
+    if (this._intro) cls.push('menu-card-in');   // entrance animation only when the screen opens, not on every pick
     if (selected) cls.push('is-selected');
     if (!unlocked) cls.push('is-locked');
     const style = `--cc:${c.color};--cca:${c.color}55`;
@@ -183,7 +207,7 @@ export class Menus {
 
   _renderTier() {
     const box = this.refs.tier;
-    const max = Math.min(MAX_TIER_UI, this.game.meta?.maxTier ?? 0);
+    const max = Math.min(MAX_TIER_UI, maxTierOf(this.game.meta));
     if (max <= 0) {
       box.hidden = true;
       box.innerHTML = '';
@@ -274,10 +298,34 @@ export class Menus {
   }
 
   _onTitleChange(e) {
+    if (this.refs.unlockAll && e.target === this.refs.unlockAll) { this._setUnlockAll(!!e.target.checked); return; }
+    const meta = this.game.meta;
+    if (meta && e.target === this.refs.tutorial) {
+      meta.tutorialDone = !e.target.checked;
+      if (e.target.checked) meta.tips = [];   // replaying the primer brings the one-time tips back too
+      saveMeta(meta);
+      return;
+    }
+    if (meta && e.target === this.refs.shake) {
+      meta.shake = Number(e.target.value);
+      this.game.engine.shakeScale = meta.shake;
+      saveMeta(meta);
+      return;
+    }
     if (!this.refs.auto || e.target !== this.refs.auto) return;
     const on = !!this.refs.auto.checked;
     this.game.autoCast = on;
     this.game.events?.emit('autoCastChanged', { on });
+  }
+
+  _setUnlockAll(on) {
+    const meta = this.game.meta;
+    if (!meta) return;
+    meta.unlockAll = on;
+    saveMeta(meta);
+    if (!this._unlocked(this.selClass)) this.selClass = this._firstUnlocked();
+    this._renderClasses();
+    this._renderTier();
   }
 
   _pick(id) {
@@ -287,7 +335,7 @@ export class Menus {
   }
 
   _setTier(t) {
-    const max = Math.min(MAX_TIER_UI, this.game.meta?.maxTier ?? 0);
+    const max = Math.min(MAX_TIER_UI, maxTierOf(this.game.meta));
     if (!Number.isFinite(t) || t < 0 || t > max) return;
     this.selTier = t;
     this._renderTier();
@@ -301,7 +349,7 @@ export class Menus {
 
   _begin() {
     if (!this.titleOpen || !this._unlocked(this.selClass)) return;
-    this.game.start({ classId: this.selClass, tier: this.selTier });
+    this.game.start({ classId: this.selClass, tier: this.selTier, player: true });
     this.hideTitle();
   }
 
@@ -346,6 +394,8 @@ export class Menus {
       return tagHTML(RELIC_TAG_COLOR[def?.tag] ?? '#c08cff', label);
     }).join('');
 
+    // "Aurelith, the Prism Dragon" -> "Aurelith"
+    const finalBoss = (ACTS[ACTS.length - 1]?.bossName ?? 'The final boss').split(',')[0];
     const row = (k, v) => `<div class="menu-stat"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`;
     const subParts = [cls?.name, tier > 0 ? `Rift Tier ${tier}` : null].filter(Boolean);
 
@@ -353,7 +403,7 @@ export class Menus {
       <div class="menu-end-wrap">
         <header class="menu-end-head menu-panel" style="--d:0s">
           <div class="menu-end-eyebrow">${victory ? 'Victory' : 'Fallen'}</div>
-          <h1 class="menu-end-title">${victory ? 'THE HEART IS SHATTERED' : 'THE RIFT CLAIMS YOU'}</h1>
+          <h1 class="menu-end-title">${esc(victory ? `${finalBoss} is slain` : 'The Rift claims you')}</h1>
           <div class="menu-end-sub">${esc(subParts.join(' · '))}</div>
         </header>
         ${callouts.length ? `<div class="menu-callouts">${callouts.join('')}</div>` : ''}
@@ -388,10 +438,10 @@ export class Menus {
           </section>
         </div>
         <div class="menu-end-actions">
-          <button type="button" class="menu-begin" data-act="again">Descend Again</button>
+          <button type="button" class="menu-begin" data-act="again">Quest Again</button>
           <button type="button" class="menu-ghost" data-act="sanctum">Return to Sanctum</button>
         </div>
-        <div class="menu-end-hint">Enter: descend again</div>
+        <div class="menu-end-hint">Enter: quest again</div>
       </div>`;
   }
 
@@ -406,7 +456,7 @@ export class Menus {
     const s = this.endStats;
     if (!s) return;
     this.hideEnd();
-    this.game.start({ classId: s.classId, tier: s.tier ?? 0 });
+    this.game.start({ classId: s.classId, tier: s.tier ?? 0, player: true });
   }
 
   _toSanctum() {
@@ -440,10 +490,10 @@ export class Menus {
 
   // ---------------------------------------------------------------- helpers
   _unlocked(id) {
-    return !!id && !!CLASSES[id] && !!this.game.meta?.unlocked?.[id];
+    return !!id && isUnlocked(this.game.meta, id);
   }
 
   _firstUnlocked() {
-    return CLASS_ORDER.find((id) => this._unlocked(id)) ?? 'arcanist';
+    return CLASS_ORDER.find((id) => this._unlocked(id)) ?? 'pyromancer';
   }
 }

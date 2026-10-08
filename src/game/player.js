@@ -247,7 +247,7 @@ export class Player {
     this.hp -= dmg;
     this.invuln = 0.45;
     game.fx.number(this.pos, dmg, { color: '#ff4d5e' });
-    game.fx.shake(0.25);
+    game.fx.shake(0.25, 'threat');
     game.engine.pulse?.('hit');
     game.events.emit('playerHit', { amount: dmg, source });
     if (this.hp <= 0) {
@@ -475,7 +475,7 @@ class FirePatch {
     this.life -= dt; this.tick -= dt; this.p -= dt;
     if (this.p <= 0) {
       this.p = 0.12;
-      game.fx.burst({ x: this.pos.x + (Math.random() - 0.5) * this.r, y: 0.2, z: this.pos.z + (Math.random() - 0.5) * this.r }, { color: 0xff6a1f, count: 1, speed: 0.5, life: 0.5, size: 0.45, up: 2, gravity: -2 });
+      game.fx.burst({ x: this.pos.x + (Math.random() - 0.5) * this.r, y: 0.2, z: this.pos.z + (Math.random() - 0.5) * this.r }, { color: 0xff6a1f, count: 1, speed: 0.5, life: 0.5, size: 0.55, up: 2, gravity: -2, occ: 0.45 });
     }
     if (this.tick <= 0) {
       this.tick = 0.4;

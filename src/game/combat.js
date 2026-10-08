@@ -184,9 +184,15 @@ export function killEnemy(game, enemy) {
   if (chest) game.pickups.spawn('chest', enemy.pos);
   if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.25 : 0.01)) game.pickups.spawn('health', { x: enemy.pos.x + 1, z: enemy.pos.z });
   if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.12 : 0.0025)) game.pickups.spawn('magnet', { x: enemy.pos.x - 1, z: enemy.pos.z });
-  game.fx.burst(enemy.pos, { color: enemy.deathColor ?? 0x9a7cff, count: enemy.boss ? 80 : 10, speed: enemy.boss ? 10 : 4, life: 0.6, size: 0.35, gravity: 6, up: 1.2 });
+  game.fx.burst(enemy.pos, { color: enemy.deathColor ?? 0x9a7cff, count: enemy.boss ? 80 : 10, speed: enemy.boss ? 10 : 4, life: 0.6, size: enemy.boss ? 0.5 : 0.38, gravity: 6, up: 1.2, occ: 0.75, hdr: 1 });
   enemy.onDeath?.(game);
   game.events.emit('enemyKilled', { enemy });
+}
+
+// The 45 ms freeze sells a reaction while they are rare. At Chain 4+ they come several times a
+// second and the freezes turn into a stutter, so it is skipped there.
+function reactionHitStop(game) {
+  if (game.chain <= 3) game.hitStop(0.045);
 }
 
 function triggerReaction(game, enemy, type, opts, isEcho = false) {
@@ -227,7 +233,7 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
         game.fx.burst(pos, { color: 0xffe14a, count: 12, speed: 12, life: 0.3, size: 0.25 });
         game.fx.light(pos, 0xff7a2a, 60, 0.35);
         game.fx.shake(0.3);
-        game.hitStop(0.045);
+        reactionHitStop(game);
         for (const e of game.queryEnemies(pos, r, _tmp).slice()) {
           if (st.overloadStun > 0) stunEnemy(e, st.overloadStun);
           damageEnemy(game, e, base * 1.3, { element: 'physical', raw: true, noReaction: true, noCrit: true, knockback: 14, dir: dirXZ(pos, e.pos, new THREE.Vector3()) });
@@ -256,7 +262,7 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
         game.fx.burst(pos, { color: 0xc08cff, count: 10, speed: 4, life: 0.4, size: 0.5 });
         game.fx.ring(pos, { color: 0xd8b8ff, radius: 1.8, life: 0.25 });
         game.fx.shake(0.1);
-        game.hitStop(0.045);
+        reactionHitStop(game);
         for (const e of game.queryEnemies(pos, 2.2 * area, _tmp).slice()) {
           if (e !== enemy) damageEnemy(game, e, base * 0.4, { element: 'frost', raw: true, noReaction: true, noCrit: true });
         }
@@ -273,7 +279,7 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
         game.fx.burst(pos, { color: 0xff5aa0, count: 10, speed: 5, life: 0.4, size: 0.4 });
         game.fx.light(pos, 0xff5aa0, 45, 0.3);
         game.fx.shake(0.2);
-        game.hitStop(0.045);
+        reactionHitStop(game);
         damageEnemy(game, enemy, dmg, { element: 'physical', raw: true, noReaction: true, noCrit: true });
         const near = game.queryEnemies(pos, Math.max(r, 4), _tmp).filter((e) => e !== enemy && !e.inert).slice();
         near.sort((a, b) => a.pos.distanceToSquared(pos) - b.pos.distanceToSquared(pos));

@@ -6,7 +6,7 @@ import { GEO, glowMaterial } from '../../core/utils.js';
 
 // ONE shared material and two shared templates (module scope). Shots pass cloned Meshes,
 // which share this geometry and material; Projectile does not dispose custom-mesh materials.
-const SHARD_MAT = glowMaterial(0xbff4ff, 2);
+const SHARD_MAT = glowMaterial(0x6fd8ff, 1.7);
 const shardTemplate = new THREE.Mesh(GEO.octa, SHARD_MAT);
 shardTemplate.scale.set(0.12, 0.12, 0.55); // long axis = local Z, tips at +-0.55
 const miniTemplate = new THREE.Mesh(GEO.octa, SHARD_MAT);

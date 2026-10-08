@@ -31,7 +31,7 @@ const TEMPLATE = `
   <div class="hud-vig" data-ref="vig"></div>
   <div class="hud-vig-hit" data-ref="vigHit"></div>
 
-  <div class="hud-top">
+  <div class="hud-top" data-ref="top">
     <div class="hud-act hud-panel">
       <div class="hud-act-head">
         <span class="hud-act-name" data-ref="actName"></span>
@@ -178,7 +178,7 @@ export class HUD {
     root.querySelectorAll('[data-trait]').forEach((el) => { traits[el.dataset.trait] = el; });
 
     this.el = {
-      vig: $('vig'), vigHit: $('vigHit'),
+      vig: $('vig'), vigHit: $('vigHit'), top: $('top'),
       actName: $('actName'), actTime: $('actTime'), actSub: $('actSub'),
       segs: [...root.querySelectorAll('.hud-seg')],
       boss: $('boss'), bossName: $('bossName'), bossWard: $('bossWard'),
@@ -258,10 +258,11 @@ export class HUD {
     if (def) {
       setText(E.actName, `ACT ${def.numeral} · ${def.name.toUpperCase()}`);
       setCss(E.actName, 'color', def.color);
+      setVar(E.top, '--act', def.color);   // act accent: progress bar fill
     }
 
     let timeText;
-    if (g.phase === 'boss') timeText = (g.boss?.name ?? def?.bossName ?? 'BOSS').toUpperCase();
+    if (g.phase === 'boss') timeText = 'BOSS FIGHT';   // the boss bar below carries the name
     else if (g.phase === 'shift') timeText = 'RIFT SHIFT';
     else timeText = fmtTime(Math.min(g.actTime ?? 0, ACT_LENGTH));
     setText(E.actTime, timeText);
@@ -415,7 +416,7 @@ export class HUD {
           box.innerHTML = `${label}<div class="hud-slot-empty">—</div>`;
           box.classList.remove('fusion');
           box.classList.add('empty');
-          setVar(box, '--el', '#8a6cff');
+          setVar(box, '--el', '#c4923a');
           this._slotParts[i] = null;
         }
       }

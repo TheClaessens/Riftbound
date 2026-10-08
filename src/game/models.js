@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, glowMaterial, ELEMENT_COLOR } from '../core/utils.js';
 
 // =====================================================================================
@@ -62,6 +63,7 @@ export function buildPlayerModel(classId) {
   body.add(pose);
 
   const parts = BUILDERS[id](pose); // { orb, orbMat, update?(dt, ctx) }
+  addOutlines(pose);
   const ring = groundRing(RING_COLOR[id]);
   root.add(body, ring);
 
@@ -92,18 +94,69 @@ function add(parent, geo, material, opts = {}) {
 
 function groundRing(color) {
   // Always drawn on top (no depth test) so the player stays findable inside dense combat.
-  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
-  mat.color.multiplyScalar(1.4);
+  // Saturated normal-blended band over a dark outline ring: value contrast on green, orange and blue ground.
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false });
+  mat.color.multiplyScalar(1.15);
   const ring = new THREE.Mesh(G.ring, mat);
   ring.rotation.x = -HALF_PI; ring.position.y = 0.04;
   ring.scale.setScalar(1.15);
   ring.renderOrder = 20;
-  // inner soft disc for contrast against bright spell effects
-  const discMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false });
+  const outlineMat = new THREE.MeshBasicMaterial({ color: 0x0a0812, transparent: true, opacity: 0.55, depthWrite: false, depthTest: false });
+  const outline = new THREE.Mesh(groundRing._outlineGeo ??= new THREE.RingGeometry(0.55, 0.8, 32), outlineMat);
+  outline.renderOrder = 19;
+  outline.position.z = -0.005;
+  ring.add(outline);
+  // inner soft disc (contact shadow) for contrast against bright spell effects
+  const discMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false });
   const disc = new THREE.Mesh(GEO.disc, discMat);
   disc.scale.setScalar(0.62 / 1.15); disc.position.z = -0.01;
   ring.add(disc);
   return ring;
+}
+
+// ------------------------------------------------------------------ outline
+// Dark inverted hull matching the creature rig's outline (rig.js: 1.6 px, colour #15121a): a BackSide
+// child per solid body mesh, pushed out along welded smooth normals by a constant view-space width.
+// Only shadow-casting body parts get one (glow parts — eyes, orbs, runes, flames, crown — and the
+// thin gold trims stay clean). Hull geometries are welded once per source geometry and shared.
+const OUTLINE_PX = 1.6;
+const outlineWidth = { value: 0.035 };
+const outlineMat = new THREE.MeshBasicMaterial({ color: 0x15121a, side: THREE.BackSide });
+outlineMat.onBeforeCompile = (sh) => {
+  sh.uniforms.uOutline = outlineWidth;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nuniform float uOutline;')
+    .replace('#include <project_vertex>', /* glsl */`vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+      mvPosition.xyz += normalize(normalMatrix * normal) * uOutline;
+      gl_Position = projectionMatrix * mvPosition;`);
+};
+outlineMat.customProgramCacheKey = () => 'player-hull-v1';
+const hullGeos = new WeakMap();
+
+function hullGeometry(src) {
+  let g = hullGeos.get(src);
+  if (g) return g;
+  g = new THREE.BufferGeometry();
+  g.setAttribute('position', src.attributes.position);
+  if (src.index) g.setIndex(src.index);
+  g = mergeVertices(g, 1e-4); // weld seams so the pushed-out hull has no cracks
+  g.computeVertexNormals();
+  hullGeos.set(src, g);
+  return g;
+}
+
+function updateOutlineWidth(renderer, scene, camera) {
+  if (camera.isOrthographicCamera) outlineWidth.value = OUTLINE_PX * (camera.top - camera.bottom) / (camera.zoom * Math.max(1, innerHeight));
+}
+
+function addOutlines(root) {
+  const solids = [];
+  root.traverse((o) => { if (o.isMesh && o.castShadow) solids.push(o); });
+  for (const m of solids) {
+    const hull = new THREE.Mesh(hullGeometry(m.geometry), outlineMat);
+    hull.onBeforeRender = updateOutlineWidth;
+    m.add(hull);
+  }
 }
 
 // Staff group on the right-hand side (+X) of the body.

@@ -43,6 +43,7 @@ export class HUDFx {
     this._queue = [];
     this._busy = false;
     this._bannerTimer = 0;
+    this._tcUntil = 0;
     this.feed = new Map();   // reaction type -> { n, t, R }
 
     root.insertAdjacentHTML('beforeend', FX_HTML);
@@ -79,6 +80,7 @@ export class HUDFx {
     this.feed.clear();
     this._renderFeed();
     this._queue.length = 0;
+    this._tcUntil = 0;
     this._busy = false;
     clearTimeout(this._bannerTimer);
     for (const el of [this.banner, this.announce, this.titlecard, this.milestone]) el?.classList.remove('on');
@@ -138,6 +140,13 @@ export class HUDFx {
   }
 
   _nextBanner() {
+    // never draw a banner over the act title card; wait until it has faded
+    if (this._queue.length && performance.now() < this._tcUntil) {
+      this._busy = true;
+      clearTimeout(this._bannerTimer);
+      this._bannerTimer = setTimeout(() => this._nextBanner(), 500);
+      return;
+    }
     const it = this._queue.shift();
     if (!it) { this._busy = false; return; }
     this._busy = true;
@@ -158,6 +167,7 @@ export class HUDFx {
     this.tcName.textContent = def.name;
     this.tcFlav.textContent = def.flavour || '';
     this.titlecard.style.setProperty('--c', def.color);
+    this._tcUntil = performance.now() + 3200;   // banners wait for the card (CSS animation is 3.2s)
     restartAnim(this.titlecard, 'on');
   }
 

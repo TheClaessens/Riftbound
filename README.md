@@ -1,18 +1,17 @@
 # Riftbound
 
-An isometric horde-survival action RPG in three acts, built with **Three.js** (WebGL) and no build step.
+An isometric horde-survival action RPG in three acts, built with **Three.js** (WebGL) and no build step. Everything — the sunny stylized world, the goblins, orcs, trolls and dragons, every animation — is generated procedurally in code: no model or texture files.
 
-Pick one of four classes and descend through the Hollow Verge, the Cinder Wastes and the Shattered Crown. Weave the four elements into **six reactions**, fuse spells into **ten evolved forms**, bend your build with **relics**, and dash through telegraphs for **Perfect Dodges**. Shatter the Rift Heart to win.
+Pick one of four classes and fight through the goblin-haunted **Thornwood**, the orc-held **Sunscorch Barrens** and the dragon-nested **Stormwater Reach**. Weave the four elements into **six reactions**, fuse spells into **ten evolved forms**, bend your build with **relics**, and dash through telegraphs for **Perfect Dodges**. Slay Aurelith, the Prism Dragon, to win.
 
 ## Run
 
-ES modules need to be served over HTTP. A zero-dependency PowerShell server is included:
+ES modules need to be served over HTTP (opening `index.html` directly won't work). An internet connection is needed on first load (Three.js and fonts come from a CDN).
 
-```bash
-powershell -ExecutionPolicy Bypass -File serve.ps1
-```
+* **Any OS with Node.js 18+**: in this folder run `npm start` (no dependencies to install).
+* **Windows without Node**: double-click `start.bat`, or run `powershell -ExecutionPolicy Bypass -File serve.ps1`.
 
-Then open http://localhost:8080. Add `?unlockall` to the URL to unlock every class and Rift Tier.
+Then open http://localhost:8080. To play every class at any Rift Tier, tick **Unlock all** on the title screen (or add `?unlockall` / `#unlockall` to the URL). Switching it off restores your earned unlocks.
 
 ## Controls
 
@@ -40,3 +39,10 @@ From the browser console:
 const { runSim } = await import('/src/dev/sim.js');
 await runSim({ classId: 'cryomancer', seconds: 700 });
 ```
+
+## Visual tech (v2)
+* **Creatures**: procedurally modelled low-poly creatures on a GPU-instanced rig (one draw call per creature type, bone matrices in a float texture, procedural animation, inverted-hull outlines, blob shadows). See `design/ART.md`.
+* **World**: data-driven biomes in `src/game/env/` — terrain splat shader, camera-following wind-blown grass and flowers, swaying foliage, stylized water and waterfalls, cloud shadows and haze.
+* **Look**: Neutral tone mapping, peak-channel bloom (only real HDR glows), blend-add VFX tuned for bright ground.
+* Creature viewer: http://localhost:8080/dev/creatures.html?set=greenskins&zoom=2 (sets: greenskins, warband, wyrmkin, bossModels).
+* Research behind it: `design/research/01–04`. The v1.0 (dark) build is archived in `backup/riftbound-v1.0.zip`.

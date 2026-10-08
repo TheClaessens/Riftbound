@@ -8,13 +8,13 @@ export const SHIFT_DURATION = 2.5;   // Rift Shift transition
 
 export const ACTS = [
   {
-    index: 0, id: 'verge', numeral: 'I', name: 'The Hollow Verge', faction: 'hollow', factionName: 'The Hollow',
-    flavour: 'Where the first shard fell, the dead forgot how to rest.',
-    boss: 'hollowWarden', bossName: 'The Hollow Warden',
+    index: 0, id: 'verge', numeral: 'I', name: 'The Thornwood', faction: 'hollow', factionName: 'The Greenskins',
+    flavour: 'Where the first shard fell, the goblins came to dig.',
+    boss: 'hollowWarden', bossName: 'Gorrak, the Troll King',
     hp: 1, dmg: 1, xp: 1, rateBase: 2.4, rateRamp: 1.5,
     resist: null, wardChance: 0,
     hazard: null, geodes: ['arcane', 'frost'],
-    color: '#c08cff',
+    color: '#9be15d',
     roster: [
       { type: 'husk', w: 6, from: 0 },
       { type: 'imp', w: 3, from: 20 },
@@ -25,13 +25,13 @@ export const ACTS = [
     swarmer: 'imp',
   },
   {
-    index: 1, id: 'cinder', numeral: 'II', name: 'The Cinder Wastes', faction: 'ashborn', factionName: 'The Ashborn',
-    flavour: 'The second shard burned the sea to glass.',
-    boss: 'vashkar', bossName: 'Vashkar, the Cinder Colossus',
+    index: 1, id: 'cinder', numeral: 'II', name: 'The Sunscorch Barrens', faction: 'ashborn', factionName: 'The Warband',
+    flavour: 'The second shard set the plains alight. The orcs marched in behind the fire.',
+    boss: 'vashkar', bossName: 'Vashkar, the Ashen Warchief',
     hp: 2.6, dmg: 1.45, xp: 1.7, rateBase: 3.8, rateRamp: 1.9,
     resist: { fire: 0.5 }, wardChance: 0,
     hazard: 'lava', geodes: ['frost', 'storm'],
-    color: '#ff7a33',
+    color: '#ffa04a',
     roster: [
       { type: 'ashHusk', w: 5, from: 0 },
       { type: 'cinderling', w: 3, from: 0 },
@@ -43,13 +43,13 @@ export const ACTS = [
     swarmer: 'cinderling',
   },
   {
-    index: 2, id: 'crown', numeral: 'III', name: 'The Shattered Crown', faction: 'riftborn', factionName: 'The Riftborn',
-    flavour: 'Here the crown broke. Here it still screams.',
-    boss: 'riftHeart', bossName: 'The Rift Heart',
+    index: 2, id: 'crown', numeral: 'III', name: 'The Stormwater Reach', faction: 'riftborn', factionName: 'The Wyrmkin',
+    flavour: 'The crown came down in the river. The dragons came to drink its light.',
+    boss: 'riftHeart', bossName: 'Aurelith, the Prism Dragon',
     hp: 6.5, dmg: 2.0, xp: 2.6, rateBase: 5.0, rateRamp: 2.2,
     resist: null, wardChance: 0.12,
     hazard: 'lightning', geodes: ['arcane', 'fire', 'frost', 'storm'],
-    color: '#9ff3ff',
+    color: '#7fd4ff',
     roster: [
       { type: 'shardling', w: 4, from: 0 },
       { type: 'wraith', w: 2, from: 0 },

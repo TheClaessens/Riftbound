@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GEO, glowMaterial, dirXZ } from '../../core/utils.js';
 import { damageEnemy } from '../combat.js';
 import { damageArea } from './common.js';
+import { blendAddMaterial } from '../fx.js';
 
 // METEOR (fire, active). Orange telegraph at the cursor; a glowing rock falls for FALL_TIME,
 // then impact damage + knockback and a burning crater (an actor that ticks fire damage).
@@ -61,7 +62,7 @@ function launchMeteor(game, pos, rank) {
 
   game.addActor(new FallingRock(game, pos));
   game.fx.telegraph(pos, impactR, FALL_TIME, {
-    color: COLOR,
+    color: COLOR, friendly: true,
     onDone: () => impact(game, pos, impactR, impactDmg, craterR, craterDmg, craterLife),
   });
 }
@@ -73,7 +74,7 @@ function impact(game, pos, radius, dmg, craterR, craterDmg, craterLife) {
 
   game.fx.flashDisc(pos, { color: COLOR, radius: radius * 0.9, life: 0.3 });
   game.fx.ring(pos, { color: COLOR, radius, life: 0.45 });
-  game.fx.burst(pos, { color: 0xffa060, count: 26, speed: 8, life: 0.6, size: 0.4 });
+  game.fx.burst(pos, { color: 0xffa060, count: 26, speed: 8, life: 0.6, size: 0.4, backing: 0.45, backingColor: 0x2a0f06 });
   game.fx.burst(pos, { color: 0xffd700, count: 10, speed: 5, life: 0.35, size: 0.3 });
   game.fx.light(pos, COLOR, 60, 0.35);
   game.fx.shake(0.25);
@@ -89,8 +90,8 @@ class FallingRock {
     this.t = 0;
     this.trailAcc = 0;
 
-    this.rockMat = glowMaterial(COLOR, 3);
-    this.haloMat = glowMaterial(HALO_COLOR, 1.5, { transparent: true, opacity: 0.45, depthWrite: false, additive: true });
+    this.rockMat = glowMaterial(COLOR, 1.8);
+    this.haloMat = blendAddMaterial(HALO_COLOR, { hdr: 1.4, opacity: 0.45, occ: 0.3 });
     this.rock = new THREE.Mesh(GEO.icosa, this.rockMat);
     this.rock.scale.setScalar(0.9);
     const halo = new THREE.Mesh(GEO.sphere, this.haloMat);
@@ -145,7 +146,7 @@ class Crater {
     this.tickAcc = 0;
     this.sparkAcc = 0;
 
-    this.glowMat = glowMaterial(COLOR, 2, { transparent: true, opacity: 0.5, depthWrite: false, additive: true });
+    this.glowMat = blendAddMaterial(COLOR, { hdr: 1.5, opacity: 0.5, occ: 0.35, side: THREE.DoubleSide, depthTest: false });
     this.charMat = new THREE.MeshBasicMaterial({ color: 0x2a0f06, transparent: true, opacity: 0.6, depthWrite: false });
 
     const glow = new THREE.Mesh(GEO.disc, this.glowMat);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GEO, glowMaterial, randRange } from '../../core/utils.js';
+import { GEO, randRange } from '../../core/utils.js';
+import { blendAddMaterial } from '../fx.js';
 import { damageArea } from './common.js';
 
 // SINGULARITY (arcane, active). A dark-violet vortex at the cursor: pulls non-boss foes toward
@@ -55,8 +56,8 @@ class Vortex {
 
     // Per-instance materials (disposed in dispose()).
     this.floorMat = new THREE.MeshBasicMaterial({ color: 0x1a0633, transparent: true, opacity: 0.6, depthWrite: false });
-    this.ringMat = glowMaterial(0xb67cff, 2.2, { transparent: true, opacity: 0.85, depthWrite: false, additive: true });
-    this.tiltMat = glowMaterial(0x8a4dff, 1.8, { transparent: true, opacity: 0.7, depthWrite: false, additive: true });
+    this.ringMat = blendAddMaterial(0xb67cff, { hdr: 1.7, opacity: 0.85, occ: 0.5, depthTest: false });
+    this.tiltMat = blendAddMaterial(0x8a4dff, { hdr: 1.6, opacity: 0.7, occ: 0.5 });
     this.coreMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
 
     this.group = new THREE.Group();

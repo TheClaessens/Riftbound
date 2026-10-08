@@ -39,7 +39,7 @@ export class Projectile {
     this.color = color;
     if (opts.mesh) this.mesh = opts.mesh;
     else {
-      this.mesh = new THREE.Mesh(GEO.sphere, glowMaterial(color, 3));
+      this.mesh = new THREE.Mesh(GEO.sphere, glowMaterial(color, 1.8));
       this.mesh.scale.setScalar(opts.size ?? 0.25);
     }
     this.mesh.position.copy(this.pos);
@@ -76,7 +76,7 @@ export class Projectile {
       while (this.trailAcc >= 1) {
         this.trailAcc -= 1;
         game.fx.spark(this.pos, { x: (Math.random() - 0.5), y: Math.random() * 0.5, z: (Math.random() - 0.5) },
-          { color: o.trail.color ?? this.color, size: o.trail.size ?? 0.3, life: o.trail.life ?? 0.3 });
+          { color: o.trail.color ?? this.color, size: o.trail.size ?? 0.3, life: o.trail.life ?? 0.3, occ: 0.25 });
       }
     }
 

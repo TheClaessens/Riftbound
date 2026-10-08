@@ -58,7 +58,7 @@ function rebuildOrbs(game, state, rank) {
 
   for (let i = 0; i < orbCount; i++) {
     const angle = (i / orbCount) * Math.PI * 2;
-    const material = glowMaterial(ELEMENT_COLOR.arcane, 3.5);
+    const material = glowMaterial(ELEMENT_COLOR.arcane, 1.8);
     const mesh = new THREE.Mesh(GEO.sphere, material);
     mesh.scale.setScalar(0.22);
     game.scene.add(mesh);

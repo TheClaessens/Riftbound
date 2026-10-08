@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Projectile, fanDirections, timed } from './common.js';
 import { GEO, glowMaterial, ELEMENT_COLOR, dirXZ, rotateXZ, randRange, damp, pick } from '../../core/utils.js';
 import { damageEnemy, applyStatus } from '../combat.js';
+import { blendAddMaterial } from '../fx.js';
 
 // =====================================================================================
 // FUSION SKILLS (set 2): Absolute Zero, Cataclysm, Thunderhead, Starfall, Hailstorm, Tempest.
@@ -72,7 +73,7 @@ class Vortex {
     this.t = 0;
     this.rings = [];
     for (let i = 0; i < 3; i++) {
-      const mat = glowMaterial(o.color, 3, { transparent: true, opacity: 0, additive: true, depthWrite: false });
+      const mat = blendAddMaterial(o.color, { hdr: 1.7, occ: 0.45, opacity: 0 });
       const m = new THREE.Mesh(GEO.ring, mat);
       m.rotation.x = -Math.PI / 2;
       m.position.set(this.c.x, 0.12, this.c.z);
@@ -121,7 +122,7 @@ function freezeAll(game, c, R) {
 class IceCrystals {
   constructor(game, c, R, n = 10) {
     this.t = 0;
-    this.mat = glowMaterial(ICE, 3, { transparent: true, opacity: 1, depthWrite: false });
+    this.mat = glowMaterial(0x86e2ff, 1.6, { transparent: true, opacity: 1, depthWrite: false });
     this.meshes = [];
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + randRange(-0.25, 0.25);
@@ -153,9 +154,9 @@ class IceCrystals {
 
 // Arcane pulse: shatters every frozen foe in range (Arcane on Frozen = SHATTER).
 function arcanePulse(game, c, R, dmg) {
-  game.fx.ring(c, { color: ARCANE, radius: R * 1.1, life: 0.45, width: 0.22, hdr: 3 });
-  game.fx.flashDisc(c, { color: 0xe6d4ff, radius: R, life: 0.3, hdr: 2.6 });
-  game.fx.burst(c, { color: ARCANE, count: 28, speed: 10, life: 0.5, size: 0.4 });
+  game.fx.ring(c, { color: ARCANE, radius: R * 1.1, life: 0.45, width: 0.22, hdr: 1.9, occ: 0.5 });
+  game.fx.flashDisc(c, { color: 0xe6d4ff, radius: R, life: 0.3, hdr: 1.4 });
+  game.fx.burst(c, { color: ARCANE, count: 28, speed: 10, life: 0.5, size: 0.4, backing: 0.35, backingColor: 0x1f0f3a });
   game.fx.light(c, ARCANE, 90, 0.35, 14);
   game.fx.shake(0.3);
   blast(game, c, R, dmg, 'arcane', 3);
@@ -165,9 +166,9 @@ function arcanePulse(game, c, R, dmg) {
 
 // Full-size meteor impact: flash, ring, burst, light, shake, then blast damage.
 function meteorImpact(game, c, o) {
-  game.fx.flashDisc(c, { color: 0xffb070, radius: o.radius * 1.1, life: 0.3, hdr: 2.6 });
+  game.fx.flashDisc(c, { color: 0xffb070, radius: o.radius * 1.1, life: 0.3, hdr: 1.4 });
   game.fx.ring(c, { color: ORANGE, radius: o.radius * 1.3, life: 0.4, width: 0.25 });
-  game.fx.burst(c, { color: 0xff8a2a, count: 26, speed: 9, life: 0.6, size: 0.4, up: 1.4, gravity: 4 });
+  game.fx.burst(c, { color: 0xff8a2a, count: 26, speed: 9, life: 0.6, size: 0.4, up: 1.4, gravity: 4, backing: 0.45, backingColor: 0x2a0f06 });
   game.fx.burst(c, { color: 0xffe14a, count: 10, speed: 12, life: 0.3, size: 0.25 });
   game.fx.light(c, ORANGE, o.light ?? 70, 0.35, 12);
   game.fx.shake(o.shake ?? 0.25);
@@ -180,8 +181,8 @@ class MeteorFall {
     this.p = p;
     this.o = o;
     this.t = 0;
-    this.mat = glowMaterial(ORANGE, 4);
-    this.haloMat = glowMaterial(ORANGE, 1.6, { transparent: true, opacity: 0.4, additive: true, depthWrite: false });
+    this.mat = glowMaterial(ORANGE, 1.8);
+    this.haloMat = blendAddMaterial(ORANGE, { hdr: 1.5, opacity: 0.4, occ: 0.3 });
     this.mesh = new THREE.Mesh(GEO.sphere, this.mat);
     this.mesh.scale.setScalar(0.7 * o.scale);
     this.halo = new THREE.Mesh(GEO.sphere, this.haloMat);
@@ -220,7 +221,7 @@ class MeteorFall {
 // o: fall, radius, dmg, element, knockback, scale, shake, light, telegraph (false to skip), then(game, p)
 function callMeteor(game, pos, o) {
   const p = new THREE.Vector3(pos.x, 0, pos.z);
-  if (o.telegraph !== false) game.fx.telegraph(p, o.radius, o.fall, { color: ORANGE });
+  if (o.telegraph !== false) game.fx.telegraph(p, o.radius, o.fall, { color: ORANGE, friendly: true });
   game.addActor(new MeteorFall(game, p, o));
 }
 
@@ -232,8 +233,8 @@ class GroundZone {
     this.o = o;
     this.age = 0;
     this.tick = 0;
-    this.mat = new THREE.MeshBasicMaterial({ color: o.color, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending });
-    this.ringMat = glowMaterial(o.color, 1.8, { transparent: true, opacity: 0.6, additive: true, depthWrite: false });
+    this.mat = blendAddMaterial(o.color, { hdr: 1.3, opacity: 0.3, occ: 0.35, side: THREE.DoubleSide, depthTest: false });
+    this.ringMat = blendAddMaterial(o.color, { hdr: 1.6, opacity: 0.8, occ: 0.5, side: THREE.DoubleSide, depthTest: false });
     this.disc = new THREE.Mesh(GEO.disc, this.mat);
     this.disc.rotation.x = -Math.PI / 2;
     this.disc.position.set(this.pos.x, 0.05, this.pos.z);
@@ -252,8 +253,8 @@ class GroundZone {
     this.tick += dt;
     const k = this.age / o.life;
     const fade = k > 0.8 ? Math.max(0, (1 - k) / 0.2) : 1;
-    this.mat.opacity = (0.2 + 0.05 * Math.sin(this.age * 7)) * fade;
-    this.ringMat.opacity = 0.6 * fade;
+    this.mat.opacity = (0.3 + 0.07 * Math.sin(this.age * 7)) * fade;
+    this.ringMat.opacity = 0.8 * fade;
 
     if (this.tick >= o.tick) {
       this.tick -= o.tick;
@@ -287,7 +288,7 @@ class GroundZone {
 function skyStrike(game, e, dmg) {
   const p = new THREE.Vector3(e.pos.x, 0, e.pos.z);
   game.fx.telegraph(p, 1.1, 0.3, {
-    color: ORANGE,
+    color: ORANGE, friendly: true,
     onDone: () => {
       if (e.dead) return;
       game.fx.lightning({ x: p.x, y: 16, z: p.z }, { x: p.x, y: 0.9, z: p.z }, { color: STORM, life: 0.2, strands: 2, jag: 0.3 });
@@ -339,7 +340,7 @@ export const absoluteZero = {
     const R = 6 * area;
     const c = aimPoint(ctx, 12);
 
-    game.fx.telegraph(c, R, 1.2, { color: ICE_TELE });
+    game.fx.telegraph(c, R, 1.2, { color: ICE_TELE, friendly: true });
     game.addActor(new Vortex(game, c, R, {
       color: ICE,
       duration: 1.2,
@@ -347,8 +348,8 @@ export const absoluteZero = {
       onDone: (g) => {
         freezeAll(g, c, R);
         g.addActor(new IceCrystals(g, c, R));
-        g.fx.flashDisc(c, { color: 0xe8fbff, radius: R * 1.05, life: 0.4, hdr: 3 });
-        g.fx.ring(c, { color: ICE, radius: R, life: 0.35, width: 0.3, hdr: 3 });
+        g.fx.flashDisc(c, { color: 0xe8fbff, radius: R * 1.05, life: 0.4, hdr: 1.4 });
+        g.fx.ring(c, { color: 0x6fd0ff, radius: R, life: 0.35, width: 0.3, hdr: 1.9, occ: 0.5 });
         g.fx.burst(c, { color: 0xdff8ff, count: 36, speed: 8, life: 0.7, size: 0.35, up: 1.2 });
         g.fx.light(c, ICE_TELE, 120, 0.45, 16);
         g.fx.shake(0.35);
@@ -386,7 +387,7 @@ export const cataclysm = {
     const c = aimPoint(ctx, 12);
 
     // Orange wind-up on the impact footprint, shown for the whole pull.
-    game.fx.telegraph(c, 5 * area, 1.5, { color: ORANGE });
+    game.fx.telegraph(c, 5 * area, 1.5, { color: ORANGE, friendly: true });
     game.addActor(new Vortex(game, c, 6 * area, {
       color: ORANGE,
       duration: 1.5,
@@ -483,8 +484,8 @@ export const thunderhead = {
     state.group = new THREE.Group();
 
     const puffMat = new THREE.MeshBasicMaterial({ color: 0x3d4b63, transparent: true, opacity: 0.6, depthWrite: false });
-    const discMat = new THREE.MeshBasicMaterial({ color: 0x7aa6ff, transparent: true, opacity: 0.08, depthWrite: false });
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x9ec6ff, transparent: true, opacity: 0.35, depthWrite: false });
+    const discMat = new THREE.MeshBasicMaterial({ color: 0x4a6ad0, transparent: true, opacity: 0.12, depthWrite: false });
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x5f86e0, transparent: true, opacity: 0.6, depthWrite: false });
     state.mats = [puffMat, discMat, ringMat];
 
     state.puffs = [];

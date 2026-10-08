@@ -8,11 +8,11 @@ export const CLASSES = {
     id: 'arcanist', name: 'Arcanist', title: 'Weaver of the Rift', element: 'arcane', color: '#c08cff', hex: 0xb67cff,
     starter: 'arcaneBolt',
     dash: { name: 'Phase Step', kind: 'blink', cd: 2.4, dist: 5.5, dur: 0.06, charges: 1, desc: 'Blink forward. Arrival burst detonates statuses.' },
-    trait: { id: 'resonance', name: 'Resonance', desc: '+2% damage and +1% cooldown reduction per Chain (max 25).' },
+    trait: { id: 'resonance', name: 'Resonance', desc: '+2% damage and +1% cooldown reduction per Chain (max 25). Your Chain holds for 4s instead of 2.5s.' },
     playstyle: 'Weave elements. Keep the Chain alive.',
     tilt: 'Balanced',
     apply: () => {},
-    unlock: null,
+    unlock: { id: 'killWarden', text: 'Defeat Gorrak, the Troll King' },
   },
   pyromancer: {
     id: 'pyromancer', name: 'Pyromancer', title: 'Kindler of Ruin', element: 'fire', color: '#ff7a33', hex: 0xff6a1f,
@@ -22,7 +22,7 @@ export const CLASSES = {
     playstyle: 'Dive into the pack. Let it spread.',
     tilt: '+10% damage, −10 max HP',
     apply: (s) => { s.damage += 0.1; s.maxHp -= 10; },
-    unlock: { id: 'killWarden', text: 'Defeat the Hollow Warden' },
+    unlock: null,   // the starter: Wildfire carries a new player who has not learned reactions yet
   },
   cryomancer: {
     id: 'cryomancer', name: 'Cryomancer', title: 'Keeper of Stillness', element: 'frost', color: '#7fe0ff', hex: 0x66d9ff,
@@ -42,9 +42,9 @@ export const CLASSES = {
     playstyle: 'Never stop moving.',
     tilt: '+10% move speed, −10 max HP',
     apply: (s) => { s.moveSpeed *= 1.1; s.maxHp -= 10; },
-    unlock: { id: 'reachAct3', text: 'Reach the Shattered Crown (Act III)' },
+    unlock: { id: 'reachAct3', text: 'Reach the Stormwater Reach (Act III)' },
   },
 };
 
-export const CLASS_ORDER = ['arcanist', 'pyromancer', 'cryomancer', 'stormcaller'];
+export const CLASS_ORDER = ['pyromancer', 'arcanist', 'cryomancer', 'stormcaller'];
 export const STARTER_IDS = new Set(Object.values(CLASSES).map((c) => c.starter));

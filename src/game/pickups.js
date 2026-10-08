@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GEO, glowMaterial, randRange } from '../core/utils.js';
+import { blendAddMaterial } from './fx.js';
 
 const MAX_SHARDS = 1500;
 
@@ -10,7 +11,7 @@ export class Pickups {
     const geo = new THREE.OctahedronGeometry(1, 0);
     geo.scale(0.16, 0.26, 0.16);
     const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    mat.color.multiplyScalar(2.2);
+    mat.color.multiplyScalar(1.5);
     this.inst = new THREE.InstancedMesh(geo, mat, MAX_SHARDS);
     this.inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.inst.count = 0;
@@ -18,6 +19,18 @@ export class Pickups {
     // initialise the instanceColor buffer
     this.inst.setColorAt(0, new THREE.Color());
     game.scene.add(this.inst);
+    // Soft ground blobs under each gem: value contrast on bright ground (one extra instanced draw).
+    const blobGeo = GEO.disc.clone().rotateX(-Math.PI / 2);
+    this.blobs = new THREE.InstancedMesh(blobGeo,
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }), MAX_SHARDS);
+    this.blobs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.blobs.count = 0;
+    this.blobs.frustumCulled = false;
+    game.scene.add(this.blobs);
+    this._qId = new THREE.Quaternion();
+    this._bp = new THREE.Vector3();
+    this._bs = new THREE.Vector3();
+    this._shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
     this.shards = [];
     this.items = []; // { type, pos, mesh, t, attracted, vel }
     this._m = new THREE.Matrix4();
@@ -31,6 +44,7 @@ export class Pickups {
   reset() {
     this.shards.length = 0;
     this.inst.count = 0;
+    this.blobs.count = 0;
     for (const it of this.items) this.game.scene.remove(it.mesh);
     this.items.length = 0;
   }
@@ -55,34 +69,45 @@ export class Pickups {
     let mesh;
     if (type === 'health') {
       mesh = new THREE.Group();
-      const core = new THREE.Mesh(GEO.sphere, glowMaterial(0xff3355, 3));
+      const core = new THREE.Mesh(GEO.sphere, glowMaterial(0xff2e4d, 1.4));
       core.scale.setScalar(0.28);
-      const cross1 = new THREE.Mesh(GEO.box, glowMaterial(0xffffff, 2.5));
+      const cross1 = new THREE.Mesh(GEO.box, glowMaterial(0xffffff, 2));
       cross1.scale.set(0.34, 0.1, 0.1);
       const cross2 = cross1.clone(); cross2.scale.set(0.1, 0.34, 0.1);
       cross1.position.z = cross2.position.z = 0.25;
-      mesh.add(core, cross1, cross2);
+      mesh.add(core, cross1, cross2, this._shadow());
     } else if (type === 'chest') {
       // Relic Chest: dark casket with a glowing gold seam and a light beacon.
       mesh = new THREE.Group();
       const box = new THREE.Mesh(GEO.box, new THREE.MeshStandardMaterial({ color: 0x2a1f3a, roughness: 0.6, metalness: 0.4 }));
       box.scale.set(0.8, 0.5, 0.55);
-      const seam = new THREE.Mesh(GEO.box, glowMaterial(0xffc340, 3));
+      const seam = new THREE.Mesh(GEO.box, glowMaterial(0xffc340, 1.8));
       seam.scale.set(0.84, 0.07, 0.59); seam.position.y = 0.1;
-      const beacon = new THREE.Mesh(GEO.cylinder, glowMaterial(0xffc340, 1.2, { transparent: true, opacity: 0.25, additive: true, depthWrite: false }));
+      // light beacon: blend-add so it also reads on bright ground (gold glow with a faint dark core)
+      const beacon = new THREE.Mesh(GEO.cylinder, blendAddMaterial(0xffc340, { hdr: 1.3, opacity: 0.4, occ: 0.35 }));
       beacon.scale.set(0.35, 6, 0.35); beacon.position.y = 3;
-      mesh.add(box, seam, beacon);
+      beacon.renderOrder = 4;
+      mesh.add(box, seam, beacon, this._shadow(0.7));
     } else {
       mesh = new THREE.Group();
-      const ring = new THREE.Mesh(GEO.torus, glowMaterial(0xb67cff, 3.5));
+      const ring = new THREE.Mesh(GEO.torus, glowMaterial(0x9a5cff, 1.8));
       ring.scale.setScalar(0.32);
-      const core = new THREE.Mesh(GEO.octa, glowMaterial(0x6fd8ff, 3));
+      const core = new THREE.Mesh(GEO.octa, glowMaterial(0x2fc4ff, 1.6));
       core.scale.setScalar(0.18);
-      mesh.add(ring, core);
+      mesh.add(ring, core, this._shadow());
     }
     mesh.position.set(pos.x, 0.7, pos.z);
     this.game.scene.add(mesh);
     this.items.push({ type, pos: new THREE.Vector3(pos.x, 0, pos.z), mesh, t: 0, attracted: false, speed: 0 });
+  }
+
+  // Flat shadow blob on the ground under a floating item (items hover at y = 0.7).
+  _shadow(r = 0.45) {
+    const s = new THREE.Mesh(GEO.disc, this._shadowMat);
+    s.rotation.x = -Math.PI / 2;
+    s.position.y = -0.67;
+    s.scale.setScalar(r);
+    return s;
   }
 
   magnetAll() { for (const s of this.shards) s.attracted = true; }
@@ -128,9 +153,14 @@ export class Pickups {
       this._s.setScalar(sc);
       this._m.compose(this._p, this._q, this._s);
       this.inst.setMatrixAt(n, this._m);
-      this.inst.setColorAt(n, this._c.set(huge ? 0xff5ad1 : big ? 0x5dff9a : 0x4fb8ff));
+      // small blue, big gold, huge white-hot (HDR, blooms). Green/pink read as grass / hostile bullets.
+      this.inst.setColorAt(n, huge ? this._c.set(0xffffff).multiplyScalar(1.7) : this._c.set(big ? 0xffc83a : 0x4fb8ff));
+      this._m.compose(this._bp.set(s.pos.x, 0.03, s.pos.z), this._qId, this._bs.setScalar(0.2 * sc));
+      this.blobs.setMatrixAt(n, this._m);
       n++;
     }
+    this.blobs.count = n;
+    this.blobs.instanceMatrix.needsUpdate = true;
     this.inst.count = n;
     this.inst.instanceMatrix.needsUpdate = true;
     if (this.inst.instanceColor) this.inst.instanceColor.needsUpdate = true;

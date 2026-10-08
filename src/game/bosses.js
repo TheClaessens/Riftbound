@@ -3,6 +3,8 @@ import { GEO, glowMaterial, dirXZ, distXZ, ELEMENT_CSS } from '../core/utils.js'
 import { makeStatus, updateStatuses, statusTint } from './combat.js';
 import { createEnemy, EnemyBullet } from './enemies.js';
 import { ACTS, BOSS_HP, enemyHpMult, enemyDmgMult } from './acts.js';
+import { blendAddMaterial, HOSTILE_RED } from './fx.js';
+import { BOSS_REGISTER, GORRAK_PODS, VASHKAR_AXE_DRAG, AURELITH_MOUTH, AURELITH_TAIL } from './creatures/bossModels.js';
 
 // =====================================================================================
 //  Bosses: createBoss(game, id, pos, opts) for 'hollowWarden' | 'vashkar' | 'riftHeart'.
@@ -28,28 +30,30 @@ const LAVA_DROP = 0.25;
 const LAVA_R = 1.7;
 
 const DEFS = {
-  hollowWarden: { name: 'The Hollow Warden', radius: 1.8, speed: 2.4, stopGap: 1.4, resist: null, deathColor: 0x6a5aaa, cycle: 3.2, cycle2: 2.2 },
-  vashkar: { name: 'Vashkar, the Cinder Colossus', radius: 2.2, speed: 2.0, stopGap: 1.2, resist: { fire: 0.5 }, deathColor: 0xff6a1f, cycle: 3.0, cycle2: 2.2 },
-  riftHeart: { name: 'The Rift Heart', radius: 2.4, speed: 1.1, stopGap: 5, resist: null, deathColor: 0x9ff3ff, cycle: 3.2, cycle2: 2.4 },
+  hollowWarden: { name: 'Gorrak, the Troll King', radius: 1.8, speed: 2.4, stopGap: 1.4, resist: null, deathColor: 0x6a5aaa, cycle: 3.2, cycle2: 2.2 },
+  vashkar: { name: 'Vashkar, the Ashen Warchief', radius: 2.2, speed: 2.0, stopGap: 1.2, resist: { fire: 0.5 }, deathColor: 0xff6a1f, cycle: 3.0, cycle2: 2.2 },
+  riftHeart: { name: 'Aurelith, the Prism Dragon', radius: 2.4, speed: 1.1, stopGap: 5, resist: null, deathColor: 0x9ff3ff, cycle: 3.2, cycle2: 2.4 },
 };
+
+// Creature-rig presentation per boss (src/game/creatures/bossModels.js). scale = model scale,
+// glow = idle accent glow (phase 1 / phase 2). Every action passes its "tell" time to _play(): the
+// accent glow ramps up to that moment (when the telegraph resolves), then decays.
+const LOOK = {
+  hollowWarden: { scale: 1.05, glow: [0.22, 0.5] },
+  vashkar: { scale: 1.0, glow: [0.25, 0.55] },
+  riftHeart: { scale: 1.1, glow: [0.35, 0.6] },
+};
+const HIT_FLASH_GAP = 0.2;  // bosses take constant fire: limit the rig squash/recoil rate
+const BLEND = 0.2;          // s: cross-fade when an action interrupts or chains into another
 
 // Shared geometry: never disposed, and never handed to fx transients (fx would dispose it).
 const GEOM = {
-  stone: new THREE.DodecahedronGeometry(1, 0),
-  molten: new THREE.IcosahedronGeometry(1, 1),
-  shard: GEO.octa,
-  core: GEO.octa,
-  eye: GEO.sphereLow,
-  crack: GEO.box,
   ring: new THREE.RingGeometry(0.92, 1, 96),
 };
-
-// Base materials: each boss clones what it needs (per-instance flash/tint) and disposes it later.
-const BASE = {
-  stone: new THREE.MeshStandardMaterial({ color: 0x1c1a24, roughness: 0.92, metalness: 0.05 }),
-  molten: new THREE.MeshStandardMaterial({ color: 0x0c0907, roughness: 0.75, metalness: 0.15 }),
-  crystal: new THREE.MeshStandardMaterial({ color: 0xcfefff, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.5, depthWrite: false }),
-};
+const _w = new THREE.Vector3();
+const _v = new THREE.Vector3();
+const _col = new THREE.Color();
+const _m3 = [0, 0, 0];
 
 // Direction from an angle measured the same way as group.rotation.y (local +Z).
 function dirFromAngle(a) {
@@ -64,14 +68,6 @@ function segDist(px, pz, ax, az, bx, bz) {
   if (t < 0) t = 0; else if (t > 1) t = 1;
   const cx = ax + abx * t - px, cz = az + abz * t - pz;
   return Math.sqrt(cx * cx + cz * cz);
-}
-
-function piece(geo, mat, p = [0, 0, 0], s = [1, 1, 1], r = null) {
-  const m = new THREE.Mesh(geo, mat);
-  m.position.set(p[0], p[1], p[2]);
-  m.scale.set(s[0], s[1], s[2]);
-  if (r) m.rotation.set(r[0], r[1], r[2]);
-  return m;
 }
 
 function own(b, mat) {
@@ -95,10 +91,12 @@ class FlameRing {
     this.maxR = 18;
     this.damage = damage;
     this.hit = false;
-    this.mat = glowMaterial(0xff6a1f, 2.4, { transparent: true, opacity: 0.9, depthWrite: false, additive: true, side: THREE.DoubleSide });
+    // Hostile red (never the player's fire orange), blend-add so it darkens bright ground, over grass.
+    this.mat = blendAddMaterial(HOSTILE_RED, { hdr: 1.9, occ: 0.55, opacity: 0.95, side: THREE.DoubleSide, depthTest: false });
     this.mesh = new THREE.Mesh(GEOM.ring, this.mat);
     this.mesh.rotation.x = -Math.PI / 2;
     this.mesh.position.set(this.center.x, 0.12, this.center.z);
+    this.mesh.renderOrder = 8;
     this.mesh.scale.setScalar(this.r);
     game.scene.add(this.mesh);
   }
@@ -112,7 +110,7 @@ class FlameRing {
       if (Math.abs(distXZ(p.pos, this.center) - this.r) <= this.width * 0.5 + p.radius) {
         this.hit = true;
         p.takeDamage(this.damage, this);
-        game.fx.burst(p.pos, { color: 0xff6a1f, count: 12, speed: 5, life: 0.4, size: 0.35 });
+        game.fx.burst(p.pos, { color: HOSTILE_RED, count: 12, speed: 5, life: 0.4, size: 0.35, backing: true });
       }
     }
     return this.r < this.maxR;
@@ -134,7 +132,7 @@ class LavaTrail {
     this.points = [];
     this.dropT = 0;
     this.tickT = 0;
-    this.mat = glowMaterial(0xff5a2a, 1.8, { transparent: true, opacity: 0.7, depthWrite: false, additive: true });
+    this.mat = blendAddMaterial(0xff4a1a, { hdr: 1.5, occ: 0.6, opacity: 0.8, depthTest: false });
   }
 
   update(dt, game) {
@@ -171,6 +169,7 @@ class LavaTrail {
 
   _drop(game) {
     const m = new THREE.Mesh(GEO.disc, this.mat);
+    m.renderOrder = 7;
     m.rotation.x = -Math.PI / 2;
     m.position.set(this.boss.pos.x, 0.06, this.boss.pos.z);
     m.scale.setScalar(1.5);
@@ -289,8 +288,6 @@ class Boss {
     this.timers = [];
     this.handles = new Set();
     this.mats = [];
-    this.idleHex = 0;
-    this.idleI = 0;
     this.charging = false;
     this.chargesLeft = 0;
     this.chargeDir = new THREE.Vector3(0, 0, 1);
@@ -304,16 +301,63 @@ class Boss {
     this.shownWard = null;
     this._disposed = false;
 
-    if (id === 'hollowWarden') buildWarden(this);
-    else if (id === 'vashkar') buildVashkar(this);
-    else buildHeart(this);
+    // presentation: creature rig + animation state (see _play / _visuals)
+    this.game = game;
+    this.yaw = Math.atan2(game.player.pos.x - this.pos.x, game.player.pos.z - this.pos.z);
+    this.anim = null;          // { action, t, dur, tell, next }
+    this.prevAnim = null;      // interrupted action, cross-faded out over BLEND seconds
+    this.blendT = 0;
+    this.flapT = -1;           // Aurelith hover (phase-2 shard rain) timer
+    this.beamBase = 0;
+    this.flashGap = 0;
+    this.look = LOOK[id];
+    if (id === 'riftHeart') { this.wardIdx = 0; this.ward = WARDS[0]; }
 
+    this.mesh = new THREE.Group(); // anchor for extra attachments (positioned at the boss each frame)
     this.mesh.position.copy(this.pos);
     game.scene.add(this.mesh);
+    if (id === 'riftHeart') {
+      // soft ward-coloured glow pooled under the crystal heart
+      this.wardGlowMat = own(this, glowMaterial(0xffffff, 1, { transparent: true, opacity: 0.22, depthWrite: false, additive: true }));
+      const g = new THREE.Mesh(GEO.disc, this.wardGlowMat);
+      g.rotation.x = -Math.PI / 2;
+      g.position.set(0, 0.05, 1.6);
+      g.scale.setScalar(2.6);
+      this.wardGlow = g;
+      this.mesh.add(g);
+    }
+    this.rig = game.creatures.add(BOSS_REGISTER[id], { pos: this.pos, yaw: this.yaw, scale: this.look.scale, turnRate: 7 });
+    this.rig.rage = 0;
+    this.rig.flapK = -1;
+    this._applyWard();
   }
 
   flash() {
     this.flashT = 0.08;
+    if (this.flashGap <= 0 && this.rig) {
+      this.rig.flash();
+      this.flashGap = HIT_FLASH_GAP;
+    }
+  }
+
+  // ---------------------------------------------------------------- animation state
+  // Start a body action on the rig. dur = action length (s) → k = t / dur. tell = time (s) at which
+  // its telegraph resolves (the accent glow peaks there). next = [action, dur, tell] chained after.
+  _play(action, dur, tell = 0, next = null, peak = 1.1) {
+    const a = this.anim;
+    if (a && a.t < a.dur) {
+      this.prevAnim = { action: a.action, k: Math.min(1, a.t / a.dur), dur: a.dur };
+      this.blendT = BLEND;
+    } else this.prevAnim = null;
+    this.anim = { action, t: 0, dur, tell, next, peak };
+  }
+
+  // Model-space point (metres, boss facing +Z) → world position, using the rig's current yaw.
+  _world(p, out = new THREE.Vector3()) {
+    const s = this.rig.scale, yaw = this.rig._yaw;
+    const c = Math.cos(yaw), sn = Math.sin(yaw);
+    const x = p[0] * s, z = p[2] * s;
+    return out.set(this.pos.x + x * c + z * sn, p[1] * s, this.pos.z - x * sn + z * c);
   }
 
   // ---------------------------------------------------------------- frame
@@ -330,7 +374,7 @@ class Boss {
     game.world.collide(this.pos, this.radius);
 
     if (this.phase === 1 && this.hp < this.maxHp * 0.5) this._enterPhase2(game);
-    this._visuals(dt);
+    this._visuals(dt, mv);
   }
 
   _enterPhase2(game) {
@@ -339,7 +383,7 @@ class Boss {
     this.rainT = 1.5;
     this.hot = true;
     game.events.emit('bossPhase', { enemy: this, phase: 2 });
-    game.fx.shake(0.8);
+    game.fx.shake(0.8, 'threat');
     game.fx.ring(this.pos, { color: RED, radius: 9, life: 0.7, width: 0.12 });
     game.fx.flashDisc(this.pos, { color: RED, radius: 3, life: 0.3, hdr: 1.8 });
     game.fx.text({ x: this.pos.x, y: 2.6, z: this.pos.z }, 'PHASE II', '#ff5a2a', true);
@@ -364,7 +408,7 @@ class Boss {
     if (this.busyT > 0 || this.charging) return;
     const p = game.player.pos;
     const toP = dirXZ(this.pos, p, new THREE.Vector3());
-    this.mesh.rotation.y = Math.atan2(toP.x, toP.z);
+    this.yaw = Math.atan2(toP.x, toP.z);
     if (distXZ(this.pos, p) <= this.radius + this.stopGap) return;
     this.pos.addScaledVector(toP, this.speed * mv * dt);
   }
@@ -471,20 +515,24 @@ class Boss {
     const kind = this._pick(['slam', 'volley', 'summon']);
     if (kind === 'slam') {
       this.busyT = 1.4;
+      this._play('slam', 1.4, 1.0, null, 0.55); // grab, raise overhead, crash when the telegraph fills, hold
       const at = new THREE.Vector3(game.player.pos.x, 0, game.player.pos.z);
       this._circle(game, at, 5, 1.0, RED, () => {
         const p = game.player;
         if (distXZ(p.pos, at) < 5) p.takeDamage(this.damage * 1.6, this);
         game.fx.ring(at, { color: RED, radius: 5, life: 0.25, width: 0.2 });
         game.fx.burst(at, { color: RED, count: 20, speed: 6, life: 0.5, size: 0.4 });
-        game.fx.shake(0.5);
+        game.fx.shake(0.5, 'threat');
+        this._clubImpact(game);
       });
     } else if (kind === 'volley') {
       this.busyT = 0.9;
+      this._play('volley', 0.9, 0.6, null, 1.15); // hunch, pods swell and glow, pop
       this._circle(game, this.pos, 2.4, 0.6, ORANGE, () => this._radial(game));
     } else {
       this.busyT = 1.0;
-      this._circle(game, this.pos, 3.0, 0.7, ORANGE, () => this._summon(game, ['husk', 'husk', 'husk', 'husk', 'husk', 'husk'], 3.2));
+      this._play('summon', 1.0, 0.7, null, 0.9); // horn to the mouth, head back, blow
+      this._circle(game, this.pos, 3.0, 0.7, ORANGE, () => { this._hornBlast(game); this._summon(game, ['husk', 'husk', 'husk', 'husk', 'husk', 'husk'], 3.2); });
     }
   }
 
@@ -495,6 +543,7 @@ class Boss {
       const dir = dirFromAngle((Math.PI * 2 * i) / n);
       const start = this.pos.clone().addScaledVector(dir, this.radius + 0.5);
       game.addActor(new EnemyBullet(game, start, dir, this.damage * 0.6, { speed: 7.5, radius: 0.28, life: 4, color: BULLET_COLOR, size: 0.3 }));
+      this._podSpark(game, start, i, n);
     }
   }
 
@@ -507,6 +556,7 @@ class Boss {
       this._startCharge(game, 0.9);
     } else if (kind === 'meteor') {
       this.busyT = 1.3;
+      this._play('meteor', 1.3, 1.1); // axe raised to the sky, roar, thrust down as they land
       this._meteorRain(game);
     } else {
       this.busyT = this.phase === 2 ? 1.6 : 1.0;
@@ -518,7 +568,8 @@ class Boss {
     this.chargesLeft--;
     const dir = dirXZ(this.pos, game.player.pos, new THREE.Vector3());
     this.chargeDir.copy(dir);
-    this.mesh.rotation.y = Math.atan2(dir.x, dir.z);
+    this.yaw = Math.atan2(dir.x, dir.z);
+    this._play('rushWind', telegraphTime, telegraphTime); // helm lowered, axe swept back, foot scrapes
     this._line(game, this.pos, dir, CHARGE_LEN, 3.0, telegraphTime, RED, () => this._beginCharge(game));
   }
 
@@ -526,9 +577,10 @@ class Boss {
     this.charging = true;
     this.chargeT = CHARGE_LEN / CHARGE_SPEED;
     this.chargeHit = false;
+    this._play('rush', CHARGE_LEN / CHARGE_SPEED, 0);
     this.trail = new LavaTrail(game, this, this.damageScale);
     game.addActor(this.trail);
-    game.fx.shake(0.4);
+    game.fx.shake(0.4, 'threat');
   }
 
   _chargeStep(dt, game, mv) {
@@ -550,8 +602,9 @@ class Boss {
   _endCharge(game) {
     this.charging = false;
     if (this.trail) this.trail.emitting = false;
-    game.fx.shake(0.3);
+    game.fx.shake(0.3, 'threat');
     game.fx.burst(this.pos, { color: ORANGE, count: 10, speed: 5, life: 0.4, size: 0.4 });
+    this._play('skid', 0.45, 0);
     if (this.chargesLeft > 0) this._startCharge(game, 0.5);
   }
 
@@ -566,7 +619,7 @@ class Boss {
         if (distXZ(game.player.pos, at) < 2.5) game.player.takeDamage(this.damage, this);
         game.fx.flashDisc(at, { color: ORANGE, radius: 2.5, life: 0.25, hdr: 1.8 });
         game.fx.burst(at, { color: ORANGE, count: 14, speed: 5, life: 0.5, size: 0.4, up: 1.5 });
-        game.fx.shake(0.15);
+        game.fx.shake(0.15, 'threat');
       });
     }
   }
@@ -574,9 +627,14 @@ class Boss {
   _flameRings(game, count) {
     const origin = new THREE.Vector3(this.pos.x, 0, this.pos.z);
     for (let k = 0; k < count; k++) {
-      const fire = () => this._circle(game, origin, 2.6, 0.5, ORANGE, () => {
-        game.addActor(new FlameRing(game, origin, this.damage));
-      });
+      // each ring: a two-handed overhead slam that buries the axe as the telegraph resolves
+      const fire = () => {
+        this._play('slam', 1.0, 0.5, null, 0.9);
+        return this._circle(game, origin, 2.6, 0.5, ORANGE, () => {
+          game.addActor(new FlameRing(game, origin, this.damage));
+          this._axeImpact(game);
+        });
+      };
       if (k === 0) fire();
       else this._after(0.6 * k, fire);
     }
@@ -589,7 +647,11 @@ class Boss {
     else if (kind === 'volley') this._prismVolley(game);
     else {
       this.busyT = 1.0;
-      this._circle(game, this.pos, 3.2, 0.8, ORANGE, () => this._summon(game, ['shardling', 'shardling', 'shardling', 'shardling', 'wraith'], 3.4));
+      this._play('roar', 1.0, 0.8); // rears up, wings spread, roars; shards break off the back
+      this._circle(game, this.pos, 3.2, 0.8, ORANGE, () => {
+        this._shardBurst(game);
+        this._summon(game, ['shardling', 'shardling', 'shardling', 'shardling', 'wraith'], 3.4);
+      });
     }
   }
 
@@ -600,13 +662,21 @@ class Boss {
     const d = dirXZ(this.pos, game.player.pos, new THREE.Vector3());
     const base = Math.atan2(d.x, d.z);
     this.busyT = 1.0 + sweep + 0.3;
+    this.yaw = base;
+    this.beamBase = base;
+    this.beamN = n;
+    // rear back + charge the breath for the 1 s telegraph, then breathe: the body turns with beam 0
+    this._play('breathe', 1.0, 1.0);
     const origin = new THREE.Vector3(this.pos.x, 0, this.pos.z);
     let done = 0;
     for (let i = 0; i < n; i++) {
       const dir = dirFromAngle(base + (Math.PI * 2 * i) / n);
       this._line(game, origin, dir, BEAM_LEN, BEAM_W, 1.0, RED, () => {
         done++;
-        if (done === n) game.addActor(new BeamSweep(game, this, base, n, sweep, this.damage * 0.8));
+        if (done === n) {
+          game.addActor(new BeamSweep(game, this, base, n, sweep, this.damage * 0.8));
+          this._play('beam', sweep, 0, ['beamEnd', 0.3, 0]);
+        }
       });
     }
   }
@@ -614,6 +684,7 @@ class Boss {
   // Prism Volley: 5 fans of 5 shots, each fan aimed at the player at its firing time.
   _prismVolley(game) {
     this.busyT = 0.6 + 1.5 + 0.3;
+    this._play('volley', 2.4, 0.6); // wings snap open, then one head jab per fan
     this._circle(game, this.pos, 2.8, 0.6, ORANGE, () => {
       for (let k = 0; k < 5; k++) this._after(k * 0.3, () => this._fan(game));
     });
@@ -621,15 +692,21 @@ class Boss {
 
   _fan(game) {
     const aim = Math.atan2(game.player.pos.x - this.pos.x, game.player.pos.z - this.pos.z);
+    this.yaw = aim;
+    // fans leave the mouth (projected to the ground plane, at least the old ring distance out)
+    const fwd = Math.max(this.radius + 0.5, AURELITH_MOUTH[2] * this.look.scale);
+    const mouth = new THREE.Vector3(this.pos.x + Math.sin(aim) * fwd, 0, this.pos.z + Math.cos(aim) * fwd);
     for (let j = -2; j <= 2; j++) {
       const dir = dirFromAngle(aim + j * 0.16);
-      const start = this.pos.clone().addScaledVector(dir, this.radius + 0.5);
-      game.addActor(new EnemyBullet(game, start, dir, this.damage * 0.6, { speed: 8, radius: 0.28, life: 4, color: BULLET_COLOR, size: 0.3 }));
+      game.addActor(new EnemyBullet(game, mouth, dir, this.damage * 0.6, { speed: 8, radius: 0.28, life: 4, color: BULLET_COLOR, size: 0.3, y: 1.3 }));
     }
+    const m = this._world(AURELITH_MOUTH, _w);
+    game.fx.burst(m, { color: BULLET_COLOR, count: 8, speed: 4, life: 0.25, size: 0.35, up: -0.3, hdr: 2.6 });
   }
 
   // Phase 2: 8 random circles within 12 u of the player, every 4 s.
   _shardRain(game) {
+    this.flapT = 0; // lifts into a low hover with heavy wing beats while the shards fall
     const c = game.player.pos;
     for (let i = 0; i < 8; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -651,70 +728,200 @@ class Boss {
     game.fx.text({ x: this.pos.x, y: 2.2, z: this.pos.z }, `PRISM WARD: ${this.ward.toUpperCase()}`, ELEMENT_CSS[this.ward], true);
   }
 
+  // Ward → the rig's accent channel (heart, spine / horn / wing crystals, eyes) + a ward-tinted rim
+  // and ground glow. A cleared ward (reaction) snaps the crystals back to prism white.
   _applyWard() {
     this.shownWard = this.ward;
-    const hex = this.ward ? WARD_HEX[this.ward] : 0xdfe6ff;
-    this.idleHex = hex;
-    this.idleI = this.ward ? 1.1 : 0.3;
-    this.glowMat.color.setHex(hex).multiplyScalar(this.ward ? 2.6 : 1.1);
+    if (!this.rig || this.id !== 'riftHeart') return;
+    if (this.ward) {
+      const c = _col.setHex(WARD_HEX[this.ward]); // linear
+      this.rig.accent = [c.r, c.g, c.b, 0.85];
+      this.rig.rim = [c.r, c.g, c.b, 0.55];
+      this.wardGlowMat.color.copy(c).multiplyScalar(1.3);
+    } else {
+      this.rig.accent = null;
+      this.rig.rim = null;
+      this.wardGlowMat.color.setHex(0xdfe6ff).multiplyScalar(0.45);
+    }
   }
 
   // ---------------------------------------------------------------- visuals
-  _visuals(dt) {
-    const m = this.bodyMat;
-    if (this.flashT > 0) {
-      this.flashT -= dt;
-      m.emissive.setHex(0xffffff);
-      m.emissiveIntensity = 0.8 * Math.max(0, this.flashT / 0.08);
-    } else {
-      const tint = statusTint(this);
-      if (tint !== null) {
-        m.emissive.setHex(tint);
-        m.emissiveIntensity = 0.45;
-      } else {
-        m.emissive.setHex(this.idleHex);
-        m.emissiveIntensity = this.idleI;
+  _visuals(dt, mv) {
+    const h = this.rig;
+    const adt = mv > 0 ? dt : 0; // frozen / stunned: the body holds its pose (timers pause too)
+    if (this.flashT > 0) this.flashT -= dt;
+    if (this.flashGap > 0) this.flashGap -= dt;
+
+    // action clock (+ chained follow-up actions)
+    let a = this.anim;
+    if (a) {
+      a.t += adt;
+      if (a.t >= a.dur) {
+        const next = a.next;
+        this.anim = null;
+        if (next) this._play(next[0], next[1], next[2]);
+        a = this.anim;
       }
     }
+    if (this.blendT > 0) {
+      this.blendT -= adt;
+      if (this.blendT <= 0) this.prevAnim = null;
+    }
+
+    // facing overrides while busy: the dragon turns with its breath sweep and tracks the player
+    // through the prism volley
+    if (a && this.id === 'riftHeart') {
+      if (a.action === 'beam') this.yaw = this.beamBase + Math.PI * Math.min(1, a.t / a.dur);
+      else if (a.action === 'volley') {
+        const p = this.game.player.pos;
+        this.yaw = Math.atan2(p.x - this.pos.x, p.z - this.pos.z);
+      }
+    }
+    h.turnRate = a && a.action === 'beam' ? 30 : 7;
+    h.yaw = this.yaw;
+
+    // rig channels
+    const p = this.prevAnim;
+    h.action = a ? a.action : null;
+    h.k = a ? Math.min(1, a.t / a.dur) : 0;
+    h.dur = a ? a.dur : 0;
+    h.prevAction = p ? p.action : null;
+    h.prevK = p ? p.k : 0;
+    h.prevDur = p ? p.dur : 0;
+    h.blend = p ? Math.max(0, this.blendT / BLEND) : 0;
+    h.rage = this.phase === 2 ? 1 : 0;
+    h.frozen = this.status.frozen > 0;
+    h.tint = statusTint(this);
+    if (this.flapT >= 0) {
+      this.flapT += adt;
+      if (this.flapT >= 1.25 && !this.landed) { this.landed = true; this._landDust(); }
+      if (this.flapT >= 1.4) this.flapT = -1;
+    } else this.landed = false;
+    h.flapK = this.flapT >= 0 ? this.flapT / 1.4 : -1;
+
+    // accent glow: idle level, ramps up to each telegraph's resolve moment, peaks while charging
+    let glow = this.look.glow[this.phase === 2 ? 1 : 0];
+    if (a) glow = Math.max(glow, this._tellGlow(a));
+    if (this.id === 'riftHeart') glow += 0.15 * Math.sin(this.time * Math.PI * 1.6); // heart beat, 0.8 Hz
+    h.glow = glow;
+
+    if (this.id === 'riftHeart' && this.ward !== this.shownWard) this._applyWard();
     this.mesh.position.copy(this.pos);
-    this._animate(dt);
+    this.mesh.rotation.y = h._yaw;
+    if (this.wardGlow) this.wardGlowMat.opacity = 0.16 + 0.1 * Math.min(1.2, glow);
+
+    // continuous fx: fire trail from the dragged axe, breath sparks at the beam emitters
+    if (this.charging && adt > 0) this._fireTrail();
+    if (a && a.action === 'beam' && adt > 0) this._breathFx();
   }
 
-  _animate(dt) {
-    const t = this.time;
-    switch (this.id) {
-      case 'hollowWarden': {
-        this.crownMat.color.setHex(this.phase === 2 ? 0xff6080 : 0xb580ff).multiplyScalar(2.0 + 0.5 * Math.sin(t * 3));
-        break;
-      }
-      case 'vashkar': {
-        const hot = this.hot ? 1.4 : 0;
-        this.crackMat.color.setHex(this.charging ? 0xffb040 : 0xff7a2a).multiplyScalar(2.2 + 0.7 * Math.sin(t * 5) + hot);
-        this.eyeMat.color.setHex(0xffc060).multiplyScalar(this.charging ? 4 : 2.6 + hot);
-        break;
-      }
-      case 'riftHeart': {
-        if (this.ward !== this.shownWard) this._applyWard();
-        const y = 2.6 + Math.sin(t * 1.6) * 0.22;
-        this.core.position.y = y;
-        this.core.rotation.y += dt * 0.5;
-        this.glowCore.position.y = y;
-        this.glowCore.rotation.y -= dt * 0.9;
-        this.ring1.position.y = y;
-        this.ring1.rotation.z += dt * 1.2;
-        this.ring2.position.y = y;
-        this.ring2.rotation.z -= dt * 1.8;
-        const n = this.sats.length;
-        for (let i = 0; i < n; i++) {
-          const a = t * 0.9 + (Math.PI * 2 * i) / n;
-          this.sats[i].position.set(Math.cos(a) * 2.8, y + Math.sin(a * 2) * 0.4, Math.sin(a) * 2.8);
-        }
-        break;
-      }
+  _tellGlow(a) {
+    if (a.action === 'rush' || a.action === 'beam') return 1.15;
+    if (a.action === 'beamEnd') return 1.15 * (1 - a.t / a.dur);
+    if (this.id === 'riftHeart' && a.action === 'volley' && a.t > 0.6) {
+      // a flare on each fan
+      const ph = ((a.t - 0.6) % 0.3) / 0.3;
+      return a.t < 1.85 ? 0.75 + 0.45 * (1 - ph) : Math.max(0, 0.75 - (a.t - 1.85) * 2);
     }
+    const tl = a.tell;
+    if (!tl) return 0;
+    const pk = a.peak / 1.1;
+    if (a.t < tl) return pk * (0.15 + 0.95 * Math.pow(a.t / tl, 1.5));
+    return pk * Math.max(0, 1.1 - (a.t - tl) / 0.35);
+  }
+
+  // ---------------------------------------------------------------- body-anchored fx
+  // Gorrak's root-ball crashing down in front of him.
+  _clubImpact(game) {
+    const p = this._world([-0.9, 0, 4.3], _w);
+    game.fx.ring(p, { color: 0xc8a878, radius: 3.2, life: 0.45, width: 0.3, hdr: 0.9 });
+    game.fx.burst(p, { color: 0x8a6a4a, count: 16, speed: 5, life: 0.6, size: 0.45, up: 1.2, gravity: 8, hdr: 0.9 });
+  }
+
+  // Spore pods (back) → each radial shot: a lime streak from the nearest pod, and a pop per pod.
+  _podSpark(game, start, i, n) {
+    const k = Math.floor((i * GORRAK_PODS.length) / n);
+    const pod = this._podWorld(k, _w);
+    if (i % (n / GORRAK_PODS.length) === 0) {
+      game.fx.burst(pod, { color: 0xb8ff3c, count: 6, speed: 3, life: 0.35, size: 0.4, up: 1.4, hdr: 2.4 });
+    }
+    _v.set((start.x - pod.x) / 0.22, (0.8 - pod.y) / 0.22, (start.z - pod.z) / 0.22);
+    game.fx.spark(pod, _v, { color: 0xd0ff6a, size: 0.4, life: 0.22, drag: 0, hdr: 2.6 });
+  }
+
+  // Pod position at the moment of release: the back is pitched forward by the volley hunch.
+  _podWorld(i, out) {
+    const c = GORRAK_PODS[i].cap, th = 0.45, py = 1.95, pz = -0.1;
+    const y = c[1] - py, z = c[2] - pz;
+    _m3[0] = c[0]; _m3[1] = py - 0.05 + y * Math.cos(th) - z * Math.sin(th); _m3[2] = pz + y * Math.sin(th) + z * Math.cos(th);
+    return this._world(_m3, out);
+  }
+
+  // War horn: three expanding sound rings from the horn bell.
+  _hornBlast(game) {
+    const p = this._world([0.7, 4.4, 1.3], _w);
+    game.fx.burst(p, { color: 0xb8ff3c, count: 10, speed: 4, life: 0.4, size: 0.35, up: 1, hdr: 2.4 });
+    const at = this.pos.clone();
+    for (let i = 0; i < 3; i++) {
+      const fire = () => game.fx.ring(at, { color: 0xb8ff3c, radius: 7 + i * 1.5, life: 0.6, width: 0.06, hdr: 1.6 });
+      if (i === 0) fire(); else this._after(i * 0.14, fire);
+    }
+  }
+
+  // Vashkar's buried axe head: cracked-earth flash where the flame ring is born.
+  _axeImpact(game) {
+    const p = this._world([-1.0, 0, 4.0], _w);
+    game.fx.flashDisc(p, { color: ORANGE, radius: 1.6, life: 0.25, hdr: 1.8 });
+    game.fx.burst(p, { color: 0xffb040, count: 14, speed: 6, life: 0.45, size: 0.4, up: 1.4, gravity: 6 });
+    game.fx.shake(0.25, 'threat');
+  }
+
+  // Sparks off the axe blade dragging behind him during the bull-rush.
+  _fireTrail() {
+    const fx = this.game.fx;
+    const p = this._world(VASHKAR_AXE_DRAG, _w);
+    for (let i = 0; i < 2; i++) {
+      _v.set((Math.random() - 0.5) * 3, 1.5 + Math.random() * 2.5, (Math.random() - 0.5) * 3);
+      fx.spark(p, _v, { color: i ? 0xffb040 : 0xff6a1f, size: 0.35, life: 0.35, gravity: 6, hdr: 2.4 });
+    }
+  }
+
+  // Breath sparks: the mouth (beam 0), the tail club (opposite beam) and, with 4 beams, the wings.
+  _breathFx() {
+    const fx = this.game.fx;
+    const col = this.ward ? WARD_HEX[this.ward] : 0xe6f4ff;
+    const emit = (pt) => {
+      const p = this._world(pt, _w);
+      _v.set((Math.random() - 0.5) * 2, 0.5 + Math.random(), (Math.random() - 0.5) * 2);
+      fx.spark(p, _v, { color: col, size: 0.4, life: 0.25, hdr: 2.4 });
+    };
+    emit(AURELITH_MOUTH);
+    if (this.beamN >= 2) emit(AURELITH_TAIL);
+    if (this.beamN >= 4) { emit([4.2, 3.0, 0.2]); emit([-4.2, 3.0, 0.2]); }
+  }
+
+  // Summon roar: crystal shards burst off the spine.
+  _shardBurst(game) {
+    const col = this.ward ? WARD_HEX[this.ward] : 0xe6f4ff;
+    for (const pt of [[0, 4.0, 0.9], [0, 3.8, -0.3], [0, 3.4, -1.4]]) {
+      game.fx.burst(this._world(pt, _w), { color: col, count: 7, speed: 5, life: 0.6, size: 0.35, up: 1.6, gravity: 5, hdr: 2.2 });
+    }
+  }
+
+  _landDust() {
+    this.game.fx.ring(this.pos, { color: 0xd8d0b8, radius: 5, life: 0.5, width: 0.25, hdr: 0.8 });
+    this.game.fx.shake(0.2, 'threat');
   }
 
   // ---------------------------------------------------------------- lifecycle
+  // Killed: start the death topple right away (dispose may come a frame later, or not at all
+  // before the victory screen).
+  onDeath(game) {
+    if (!this.rig) return;
+    this.rig.frozen = false;
+    game.creatures.remove(this.rig, { corpse: true });
+  }
+
   dispose(game) {
     if (this._disposed) return;
     this._disposed = true;
@@ -724,76 +931,20 @@ class Boss {
     this.timers.length = 0;
     this.charging = false;
     if (this.trail) this.trail.emitting = false;
-    if (this.mesh) {
-      // Death squash; the materials are released when the squash ends.
-      game.fx.corpse(this.mesh, 0.5, { onEnd: () => this._freeMats() });
+    if (this.rig) {
+      // death topple (spec.deathTime 1.6 s) with the boss's own flourish; game resets clear it at once
+      this.rig.frozen = false;
+      this.rig.action = 'die';
+      game.creatures.remove(this.rig, { corpse: true });
     }
+    if (this.mesh) game.scene.remove(this.mesh);
+    this._freeMats();
   }
 
   _freeMats() {
     for (const m of this.mats) m.dispose();
     this.mats.length = 0;
   }
-}
-
-// -------------------------------------------------------------------------------------
-//  Mesh builders (<= 12 meshes per boss, shared geometry)
-// -------------------------------------------------------------------------------------
-
-function buildWarden(b) {
-  const g = new THREE.Group();
-  b.bodyMat = own(b, BASE.stone.clone());
-  g.add(piece(GEOM.stone, b.bodyMat, [0, 1.7, 0], [1.5, 1.7, 1.35]));
-  b.crownMat = own(b, glowMaterial(0xb580ff, 2.2, { additive: true }));
-  for (let i = 0; i < 5; i++) {
-    const a = (Math.PI * 2 * i) / 5;
-    g.add(piece(GEOM.shard, b.crownMat, [Math.cos(a) * 1.05, 3.2, Math.sin(a) * 1.05], [0.3, 0.85, 0.3], [Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]));
-  }
-  g.add(piece(GEOM.shard, b.crownMat, [0, 3.7, 0], [0.45, 1.25, 0.45]));
-  b.idleHex = 0;
-  b.idleI = 0;
-  b.mesh = g;
-}
-
-function buildVashkar(b) {
-  const g = new THREE.Group();
-  b.bodyMat = own(b, BASE.molten.clone());
-  g.add(piece(GEOM.molten, b.bodyMat, [0, 2.0, 0], [2.2, 1.9, 2.1]));
-  b.crackMat = own(b, glowMaterial(0xff7a2a, 2.4, { additive: true }));
-  b.eyeMat = own(b, glowMaterial(0xffc060, 2.6));
-  g.add(piece(GEOM.eye, b.eyeMat, [-0.8, 2.6, 1.9], [0.34, 0.34, 0.34]));
-  g.add(piece(GEOM.eye, b.eyeMat, [0.8, 2.6, 1.9], [0.34, 0.34, 0.34]));
-  const cracks = [[0.4, 0.2], [-1.1, 0.5], [2.0, -0.3], [-2.4, -0.1], [0.9, -0.9]]; // [angle, elevation]
-  for (const [a, e] of cracks) {
-    const x = Math.cos(a) * Math.cos(e) * 2.2;
-    const z = Math.sin(a) * Math.cos(e) * 2.1;
-    const y = 2.0 + Math.sin(e) * 1.9;
-    g.add(piece(GEOM.crack, b.crackMat, [x, y, z], [0.16, 0.06, 1.1], [0, Math.atan2(Math.cos(a), Math.sin(a)), 0]));
-  }
-  b.idleHex = 0xff5a2a;
-  b.idleI = 0.2;
-  b.mesh = g;
-}
-
-function buildHeart(b) {
-  const g = new THREE.Group();
-  b.bodyMat = own(b, BASE.crystal.clone());
-  b.glowMat = own(b, glowMaterial(0xffffff, 2.4, { transparent: true, opacity: 0.9, depthWrite: false, additive: true, side: THREE.DoubleSide }));
-  b.core = piece(GEOM.core, b.bodyMat, [0, 2.6, 0], [1.5, 1.5, 1.5]);
-  b.glowCore = piece(GEOM.core, b.glowMat, [0, 2.6, 0], [0.8, 0.8, 0.8]);
-  b.ring1 = piece(GEOM.ring, b.glowMat, [0, 2.6, 0], [2.8, 2.8, 2.8], [-Math.PI / 2, 0, 0]);
-  b.ring2 = piece(GEOM.ring, b.glowMat, [0, 2.6, 0], [2.6, 2.6, 2.6], [1.1, 0, 0]);
-  g.add(b.core, b.glowCore, b.ring1, b.ring2);
-  b.sats = [];
-  for (let i = 0; i < 3; i++) {
-    const s = piece(GEOM.shard, b.glowMat, [0, 2.6, 0], [0.3, 0.3, 0.3]);
-    b.sats.push(s);
-    g.add(s);
-  }
-  b.wardIdx = 0;
-  b.ward = WARDS[0];
-  b._applyWard();
-  b.mesh = g;
 }
 
 // -------------------------------------------------------------------------------------

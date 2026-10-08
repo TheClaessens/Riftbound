@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Projectile, fanDirections, damageArea } from './common.js';
 import { GEO, glowMaterial, ELEMENT_COLOR, dirXZ, randRange } from '../../core/utils.js';
 import { damageEnemy } from '../combat.js';
+import { blendAddMaterial } from '../fx.js';
 
 // =====================================================================================
 // FUSION SKILLS — evolved skills formed when two rank 3+ parents are combined.
@@ -107,17 +108,14 @@ export const plasmaOrb = {
       halo: null,
 
       init() {
-        const mat = glowMaterial(0xffe14a, 4);
+        const mat = glowMaterial(0xffe14a, 1.8);
         this.mesh = new THREE.Mesh(GEO.sphere, mat);
         this.mesh.scale.setScalar(0.35);
         this.mesh.position.copy(this.pos);
         game.scene.add(this.mesh);
 
         // Additive orange halo
-        const halMat = glowMaterial(0xff8a2a, 2);
-        halMat.transparent = true;
-        halMat.opacity = 0.6;
-        halMat.blending = THREE.AdditiveBlending;
+        const halMat = blendAddMaterial(0xff8a2a, { hdr: 1.5, opacity: 0.6, occ: 0.3 });
         this.halo = new THREE.Mesh(GEO.sphere, halMat);
         this.halo.scale.setScalar(0.55);
         this.halo.position.copy(this.pos);
@@ -176,9 +174,9 @@ export const plasmaOrb = {
 
       _detonate(g) {
         const r2 = (r >= 3 ? 4.5 : 3.5) * g.player.stats.area;
-        g.fx.flashDisc(this.pos, { color: 0xff8a2a, radius: r2, life: 0.3, hdr: 2.2 });
+        g.fx.flashDisc(this.pos, { color: 0xff8a2a, radius: r2, life: 0.3, hdr: 1.3 });
         g.fx.ring(this.pos, { color: 0xff8a2a, radius: r2, life: 0.4, width: 0.3 });
-        g.fx.burst(this.pos, { color: 0xff8a2a, count: 30, speed: 9, life: 0.6, size: 0.4 });
+        g.fx.burst(this.pos, { color: 0xff8a2a, count: 30, speed: 9, life: 0.6, size: 0.4, backing: 0.4, backingColor: 0x2a0f06 });
         g.fx.light(this.pos, 0xff8a2a, 60, 0.35);
         g.fx.shake(0.25);
 
@@ -247,7 +245,7 @@ export const stormHalo = {
       const y = 1.0;
 
       if (!wisp.mesh) {
-        const mat = glowMaterial(0xffe14a, 4);
+        const mat = glowMaterial(0xffe14a, 1.8);
         wisp.mesh = new THREE.Mesh(GEO.sphere, mat);
         wisp.mesh.scale.setScalar(0.25);
         game.scene.add(wisp.mesh);
@@ -395,7 +393,7 @@ export const arcaneBarrage = {
       const y = 1.0;
 
       if (!orb.mesh) {
-        const mat = glowMaterial(0xb67cff, 3.5);
+        const mat = glowMaterial(0xb67cff, 1.8);
         orb.mesh = new THREE.Mesh(GEO.sphere, mat);
         orb.mesh.scale.setScalar(0.3);
         game.scene.add(orb.mesh);

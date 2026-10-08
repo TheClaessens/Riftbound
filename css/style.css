@@ -6,9 +6,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #07080d; col
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #ui .interactive, #ui button { pointer-events: auto; }
 
-/* floating combat text */
-.ftext { position: absolute; left: 0; top: 0; font-weight: 800; font-size: 15px; white-space: nowrap; will-change: transform, opacity;
-  text-shadow: 0 0 2px #000, 0 1px 3px #000, 0 0 8px rgba(0,0,0,.6); }
-.ftext.crit { font-size: 21px; }
-.ftext.label { font-family: 'Cinzel', serif; font-size: 18px; letter-spacing: 1px; text-shadow: 0 0 10px currentColor, 0 1px 3px #000; }
-.ftext.label.big { font-size: 30px; }
+/* floating combat text: hard dark stroke under the fill (reads on bright, sunlit ground) */
+.ftext { position: absolute; left: 0; top: 0; font-weight: 800; font-size: 16px; white-space: nowrap; will-change: transform, opacity;
+  -webkit-text-stroke: 4px #120a1a; paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .45); }
+.ftext.crit { font-size: 22px; -webkit-text-stroke-width: 5px; }
+.ftext.label { font-family: 'Cinzel', serif; font-size: 18px; letter-spacing: 1px;
+  -webkit-text-stroke: 4px #120a1a;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(0, 0, 0, .35); }
+.ftext.label.big { font-size: 30px; -webkit-text-stroke-width: 5px; }

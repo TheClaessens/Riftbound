@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Events } from '../core/events.js';
 import { SpatialHash } from './spatial.js';
 import { FX } from './fx.js';
+import { CreatureRenderer } from './creatures/renderer.js';
 import { Player } from './player.js';
 import { Pickups } from './pickups.js';
 import { World } from './world.js';
@@ -11,9 +12,11 @@ import { Audio as GameAudio } from './audio.js';
 import { rollCards, applyCard } from './progression.js';
 import { rollRelics } from './relics.js';
 import { ACTS, ACT_LENGTH, SHIFT_DURATION } from './acts.js';
-import { loadMeta, saveMeta, recordRun } from './meta.js';
+import { loadMeta, saveMeta, recordRun, maxTierOf } from './meta.js';
+import { Tutorial } from './tutorial.js';
 
 export const CHAIN_WINDOW = 2.5;
+const RESONANCE_CHAIN_WINDOW = 4;   // Arcanist: the Chain holds longer
 const CHAIN_MILESTONES = [10, 25, 50];
 
 // Game states: 'title' | 'playing' | 'levelup' | 'relic' | 'paused' | 'shift' | 'dead' | 'victory'
@@ -47,6 +50,7 @@ export class Game {
     this.stats = freshStats();
     this.run = freshRun(this.meta);
 
+    this.creatures = new CreatureRenderer(this.scene, this.camera);
     this.fx = new FX(this);
     this.world = new World(this);
     this.pickups = new Pickups(this);
@@ -54,6 +58,8 @@ export class Game {
     this.spawner = new Spawner(this);
     this.ui = new UI(this);
     this.audio = new GameAudio(this);
+    this.tutorial = new Tutorial(this);
+    this.engine.shakeScale = this.meta.shake ?? 1;
 
     this.pendingLevelUps = 0;
     this.pendingChests = 0;
@@ -70,12 +76,14 @@ export class Game {
   }
 
   get actDef() { return ACTS[this.act]; }
+  get chainWindow() { return this.player?.traitId === 'resonance' ? RESONANCE_CHAIN_WINDOW : CHAIN_WINDOW; }
 
   // ------------------------------------------------------------------ lifecycle
-  // opts: { classId, tier }
+  // opts: { classId, tier, player } (player: started from the menus by a person; scripted starts
+  // such as sims and the promo renderer leave it off, which keeps the Rift Primer out of them)
   start(opts = {}) {
-    const classId = opts.classId ?? this.meta.lastClass ?? 'arcanist';
-    this.tier = Math.min(opts.tier ?? 0, this.meta.maxTier);
+    const classId = opts.classId ?? this.meta.lastClass ?? 'pyromancer';
+    this.tier = Math.min(opts.tier ?? 0, maxTierOf(this.meta));
     this.meta.lastClass = classId; this.meta.lastTier = this.tier; saveMeta(this.meta);
 
     for (const e of this.enemies) e.dispose(this);
@@ -83,6 +91,7 @@ export class Game {
     this.enemies.length = 0;
     this.actors.length = 0;
     this.fx.clear();
+    this.creatures.clear();
     this.pickups.reset();
     this.player?.dispose();
     this.stats = freshStats();
@@ -103,7 +112,7 @@ export class Game {
     this.spawner.reset();
     this.world.reset?.();
     this.state = 'playing';
-    this.events.emit('runStart', { classId, tier: this.tier });
+    this.events.emit('runStart', { classId, tier: this.tier, player: !!opts.player });
     this.events.emit('actStart', { act: 0, def: ACTS[0] });
   }
 
@@ -134,6 +143,7 @@ export class Game {
     for (const a of this.actors) a.dispose?.(this);
     this.enemies.length = 0; this.actors.length = 0;
     this.fx.clear(); this.pickups.reset();
+    this.creatures.clear();
     this.player?.dispose(); this.player = null;
     this.boss = null;
     this.state = 'title';
@@ -165,7 +175,7 @@ export class Game {
   _onReaction(e) {
     this._discover('reactions', e.type);
     const prev = this.chain;
-    this.chain = this.time - this._lastReactionT <= CHAIN_WINDOW ? this.chain + 1 : 1;
+    this.chain = this.time - this._lastReactionT <= this.chainWindow ? this.chain + 1 : 1;
     this._lastReactionT = this.time;
     if (this.chain > this.stats.maxChain) this.stats.maxChain = this.chain;
     for (const m of CHAIN_MILESTONES) if (prev < m && this.chain >= m) this.events.emit('chainMilestone', { chain: m });
@@ -186,7 +196,7 @@ export class Game {
     this._shiftSwapped = false;
     this.hitStop(0.12);
     this.engine.pulse?.('shift');
-    this.fx.shake(0.6);
+    this.fx.shake(0.6, 'threat');
     this.fx.ring(this.player.pos, { color: 0xe0c4ff, radius: 40, life: 1.4, width: 0.05 });
     // the horde dissolves into XP
     for (const e of this.enemies) {
@@ -257,10 +267,10 @@ export class Game {
     if (active && dt > 0) {
       this.time += dt;
       if (this.state === 'playing') {
-        this.actTime += dt;
+        if (!this.tutorial.holdClock) this.actTime += dt;   // the Rift Primer holds the act clock
         this.spawner.update(dt);
       } else this._updateShift(dt);
-      if (this.chain > 0 && this.time - this._lastReactionT > CHAIN_WINDOW) {
+      if (this.chain > 0 && this.time - this._lastReactionT > this.chainWindow) {
         this.events.emit('chainEnd', { chain: this.chain });
         this.chain = 0;
       }
@@ -288,6 +298,7 @@ export class Game {
       this.pickups.update(dt);
       this.world.update?.(dt, this.time);
       this.fx.update(dt);
+      this.creatures.update(dt, this.time);
 
       if (this.state === 'playing') {
         if (this.pendingLevelUps > 0) this._openLevelUp();
@@ -295,15 +306,18 @@ export class Game {
       }
     } else if (active) {
       // hit-stop: freeze the simulation but keep texts / camera alive
+      this.creatures.update(0, this.time);
       this.fx.updateTexts(0);
     } else {
       this.world.update?.(realDt * 0.3, this.time);
+      this.creatures.update(0, this.time);
       this.fx.updateTexts(0);
     }
 
     const followTarget = this.player ? this.player.pos : _origin;
     this.engine.follow(followTarget, realDt, input.wheel);
     this.engine.update?.(realDt, this);
+    this.tutorial.update(realDt);
     this.ui.update(realDt);
   }
 

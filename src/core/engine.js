@@ -8,6 +8,14 @@ import { clamp } from './utils.js';
 
 const _col = new THREE.Color();
 
+// Sun: front-left of the iso camera, ~52° elevation, so camera-facing sides are lit and shadows fall
+// screen-right / up (a 6 m tree throws a ~4.7 m shadow). SUN_VIEW is the light's rotation (texel snap).
+const SUN_OFFSET = new THREE.Vector3(-12, 34, 24).normalize().multiplyScalar(80);
+const SUN_VIEW = new THREE.Matrix4().lookAt(SUN_OFFSET, new THREE.Vector3(), new THREE.Vector3(0, 1, 0));
+const SUN_VIEW_INV = SUN_VIEW.clone().invert();
+const _sv = new THREE.Vector3();
+const SELF_SHAKE_MAX = 0.32;      // cap for player-caused shake (offset ≈ 0.09 u)
+
 // Linear-space RGB from a hex colour (HDR grade works in linear before OutputPass).
 const linHex = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
 
@@ -22,7 +30,7 @@ const PULSES = {
 const LOW_HP_STATES = new Set(['playing', 'levelup', 'relic']);
 
 // Grade defaults (setGrade fills missing fields from the current values).
-const GRADE_DEFAULT = { tint: [1, 1, 1], saturation: 1, contrast: 1, vignette: 0.35 };
+const GRADE_DEFAULT = { tint: [1, 1, 1], saturation: 1.06, contrast: 1.03, vignette: 0.18 };
 
 // Single full-screen grade pass, run after bloom and before OutputPass (tone mapping + sRGB).
 const GRADE_SHADER = {
@@ -31,7 +39,7 @@ const GRADE_SHADER = {
     uTint: { value: new THREE.Vector3(1, 1, 1) },
     uSaturation: { value: 1 },
     uContrast: { value: 1 },
-    uVignette: { value: 0.35 },
+    uVignette: { value: 0.18 },
     uLowHp: { value: 0 },
     uPulse: { value: 0 },
     uPulseColor: { value: new THREE.Vector3(1, 1, 1) },
@@ -115,13 +123,13 @@ export class Engine {
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.3;
     container.appendChild(this.renderer.domElement);
     this.canvas = this.renderer.domElement;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x07080d);
+    this.scene.background = new THREE.Color(0xb5d6b8);   // = biome haze colour (world.js sets it per biome)
 
     // Isometric camera. viewSize = world units visible vertically at zoom 1.
     this.viewSize = 24;
@@ -137,23 +145,29 @@ export class Engine {
     this.forward = new THREE.Vector3(-1, 0, -1).normalize(); // screen-up
     this.right = new THREE.Vector3(1, 0, -1).normalize();    // screen-right
 
-    // Lights
-    this.hemi = new THREE.HemisphereLight(0x8a9bff, 0x1a1020, 0.9);
+    // Lights (fixed set: never add/remove lights at runtime). Daylight: warm sun + blue-sky hemisphere
+    // (cool shadows). `moon` is the historical name of the sun DirectionalLight; `sun` aliases it.
+    this.hemi = new THREE.HemisphereLight(0xcfe4ff, 0x5f7034, 1.2);
     this.scene.add(this.hemi);
-    this.moon = new THREE.DirectionalLight(0xc4d0ff, 1.7);
-    this.moon.position.set(-18, 40, 10);
+    this.moon = this.sun = new THREE.DirectionalLight(0xfff0d6, 3.15);
     this.moon.castShadow = true;
     this.moon.shadow.mapSize.set(2048, 2048);
     const s = this.moon.shadow.camera;
-    s.left = -32; s.right = 32; s.top = 32; s.bottom = -32; s.near = 1; s.far = 120;
-    this.moon.shadow.bias = -0.0008;
+    s.left = -30; s.right = 30; s.top = 30; s.bottom = -30; s.near = 20; s.far = 150;
+    this.moon.shadow.bias = -0.0005;
     this.moon.shadow.normalBias = 0.03;
+    this.moon.shadow.intensity = 0.85;                     // r166+: shadows never go fully dark
+    this.moon.position.copy(SUN_OFFSET);
     this.scene.add(this.moon, this.moon.target);
+    this._skyFlash = 0;                                    // lightning: transient hemisphere boost
 
     // Post processing: render -> bloom -> grade -> output (tone mapping + sRGB).
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.5, 0.85);
+    // Bloom thresholds the PEAK channel of pre-exposure linear HDR with a soft knee: sunlit ground
+    // (peak ≲ 0.7) never blooms, HDR spells (×1.4+) do. See design/research/04-vfx-readability.md §3.2.
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.7, 0.35, 1.1);
+    patchBloomHighPass(this.bloom, 0.35);
     this.composer.addPass(this.bloom);
     this.grade = new ShaderPass(GRADE_SHADER);
     this.gradeU = this.grade.uniforms;
@@ -192,7 +206,19 @@ export class Engine {
     return (this.renderer.domElement.height / (this.camera.top - this.camera.bottom)) * this.camera.zoom;
   }
 
-  shake(amount) { this.trauma = clamp(this.trauma + amount, 0, 1); }
+  // Two shake channels. 'threat' (you got hit, boss slams, hazards, Rift Shift) reads at full
+  // strength. 'self' (your own reactions, impacts and blasts) is feedback: each kick is damped by
+  // how much self-shake happened in the last second and the channel saturates low, so a late-game
+  // build firing dozens of reactions a second never blurs the screen. shakeScale is the player
+  // setting (1 full, 0.5 reduced, 0 off).
+  shake(amount, kind = 'self') {
+    const k = this.shakeScale ?? 1;
+    if (k <= 0) return;
+    if (kind === 'threat') { this.trauma = clamp(this.trauma + amount * k, 0, 1); return; }
+    this._selfLoad = (this._selfLoad ?? 0) + amount;
+    const add = amount * k / (1 + Math.max(0, this._selfLoad - amount) * 4);   // a lone kick lands in full
+    this._selfTrauma = Math.min(SELF_SHAKE_MAX * k, (this._selfTrauma ?? 0) + add);
+  }
 
   follow(target, dt, wheel = 0) {
     if (wheel) this.targetZoom = clamp(this.targetZoom * (wheel > 0 ? 0.9 : 1.1), 0.6, 1.6);
@@ -201,20 +227,45 @@ export class Engine {
 
     this.camTarget.lerp(target, 1 - Math.exp(-8 * dt));
     this.trauma = Math.max(0, this.trauma - dt * 1.6);
-    const sh = this.trauma * this.trauma * 0.9;
+    this._selfTrauma = Math.max(0, (this._selfTrauma ?? 0) - dt * 2.4);
+    this._selfLoad = (this._selfLoad ?? 0) * Math.exp(-dt * 1.5);
+    const st = this._selfTrauma;
+    const sh = (this.trauma * this.trauma + st * st) * 0.9;
     this._shakeOff.set((Math.random() * 2 - 1) * sh, 0, (Math.random() * 2 - 1) * sh);
     this.camera.position.copy(this.camTarget).add(this.isoOffset).add(this._shakeOff);
     this.camera.lookAt(this.camTarget.x + this._shakeOff.x, 0, this.camTarget.z + this._shakeOff.z);
 
-    // Keep the shadow frustum centred on the player.
-    this.moon.position.set(this.camTarget.x - 18, 40, this.camTarget.z + 10);
-    this.moon.target.position.copy(this.camTarget);
+    this._followSun();
   }
+
+  // Sun shadow frustum: sized by zoom (crisp 3-5 cm texels), centred on the camera target and snapped
+  // to whole shadow texels in light space so crisp shadow edges don't crawl while the camera lerps.
+  _followSun() {
+    const sun = this.moon, cam = sun.shadow.camera;
+    const aspect = innerWidth / Math.max(1, innerHeight);
+    const half = clamp(15 * Math.max(1, aspect) / this.zoom + 6, 24, 52);
+    if (Math.abs(cam.right - half) > 0.5) {
+      cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
+      cam.updateProjectionMatrix();
+    }
+    const texel = (2 * cam.right) / sun.shadow.mapSize.x;
+    _sv.copy(this.camTarget).applyMatrix4(SUN_VIEW_INV);
+    _sv.x = Math.round(_sv.x / texel) * texel;
+    _sv.y = Math.round(_sv.y / texel) * texel;
+    _sv.applyMatrix4(SUN_VIEW);
+    sun.target.position.copy(_sv);
+    sun.position.copy(_sv).add(SUN_OFFSET);
+    sun.target.updateMatrixWorld();
+  }
+
+  // Lightning / sky flash: brief additive hemisphere boost (k ≈ 1 = strong), decays in ~0.25 s.
+  skyFlash(k = 1) { this._skyFlash = Math.max(this._skyFlash, k); }
 
   // ---- Atmosphere / grading API (used by world.js biomes and by gameplay feedback) ----
   // atmos: { background, hemiSky, hemiGround, hemiIntensity, moon, moonIntensity, grade?: { tint:[r,g,b], saturation, contrast, vignette } }
   // Colors are hex numbers. Lerps over `seconds` (0 = instant).
   setAtmosphere(atmos, seconds = 0) {
+    if (this._skyBoost) { this.hemi.intensity -= this._skyBoost; this._skyBoost = 0; }
     const from = {
       background: this.scene.background.clone(), hemiSky: this.hemi.color.clone(), hemiGround: this.hemi.groundColor.clone(),
       hemiIntensity: this.hemi.intensity, moon: this.moon.color.clone(), moonIntensity: this.moon.intensity,
@@ -286,7 +337,13 @@ export class Engine {
 
   // Per-frame (real dt). game may be in any state.
   update(dt, game) {
+    if (this._skyBoost) { this.hemi.intensity -= this._skyBoost; this._skyBoost = 0; }
     this._stepAtmos(dt);
+    if (this._skyFlash > 0.001) {
+      this._skyBoost = 2.4 * this._skyFlash;
+      this.hemi.intensity += this._skyBoost;
+      this._skyFlash *= Math.exp(-dt * 14);
+    }
     this._stepGrade(dt);
     this._flash.t = Math.max(0, this._flash.t - dt);
     this._aber.t = Math.max(0, this._aber.t - dt);
@@ -313,4 +370,25 @@ function lowHpAmount(game) {
   if (!p || !LOW_HP_STATES.has(game.state)) return 0;
   const max = p.stats?.maxHp || 1;
   return clamp((0.3 - p.hp / max) / 0.3, 0, 1);
+}
+
+// Replace UnrealBloomPass's luminance high-pass with a peak-channel, soft-knee one that only
+// feeds the energy ABOVE the threshold into the blur (no halos around large bright areas).
+function patchBloomHighPass(bloom, knee = 0.35) {
+  bloom.highPassUniforms.smoothWidth.value = knee;
+  bloom.materialHighPassFilter.fragmentShader = /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform vec3 defaultColor;
+    uniform float defaultOpacity;
+    uniform float luminosityThreshold;
+    uniform float smoothWidth;
+    varying vec2 vUv;
+    void main() {
+      vec4 texel = texture2D(tDiffuse, vUv);
+      float v = max(texel.r, max(texel.g, texel.b));
+      float alpha = smoothstep(luminosityThreshold, luminosityThreshold + smoothWidth, v);
+      vec3 excess = texel.rgb * clamp((v - luminosityThreshold) / max(v, 1e-4), 0.0, 1.0);
+      gl_FragColor = vec4(mix(defaultColor, excess, alpha), mix(defaultOpacity, texel.a, alpha));
+    }`;
+  bloom.materialHighPassFilter.needsUpdate = true;
 }

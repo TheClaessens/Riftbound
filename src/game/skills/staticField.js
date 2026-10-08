@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GEO } from '../../core/utils.js';
+import { blendAddMaterial } from '../fx.js';
 import { damageEnemy } from '../combat.js';
 
 // STATIC FIELD (storm, AUTO). No cast(): takes no slot. Every INTERVAL seconds it sky-strikes
@@ -33,10 +34,7 @@ export const staticField = {
     state.cd = INTERVAL[rank - 1];
     state.t = 0;
     // Faint crackling halo around the player (per-instance material, disposed in dispose()).
-    state.mat = new THREE.MeshBasicMaterial({
-      color: 0xffe14a, transparent: true, opacity: 0.1, depthWrite: false,
-      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    });
+    state.mat = blendAddMaterial(0xffe14a, { hdr: 1.4, opacity: 0.2, occ: 0.4, side: THREE.DoubleSide, depthTest: false });
     state.mesh = new THREE.Mesh(GEO.ring, state.mat);
     state.mesh.rotation.x = -Math.PI / 2;
     state.mesh.scale.setScalar(HALO_RADIUS);
@@ -55,7 +53,7 @@ export const staticField = {
     if (state.mesh) {
       state.mesh.position.set(p.pos.x, 0.09, p.pos.z);
       // Uneven flicker reads as crackling.
-      state.mat.opacity = 0.07 + 0.08 * Math.abs(Math.sin(state.t * 13) * Math.sin(state.t * 5.3));
+      state.mat.opacity = 0.16 + 0.2 * Math.abs(Math.sin(state.t * 13) * Math.sin(state.t * 5.3));
     }
 
     state.cd -= dt;

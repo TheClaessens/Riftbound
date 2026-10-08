@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Projectile, damageArea, timed } from './common.js';
 import { glowMaterial, GEO, ELEMENT_COLOR } from '../../core/utils.js';
+import { blendAddMaterial } from '../fx.js';
 import { damageEnemy } from '../combat.js';
 
 export const fireball = {
@@ -73,7 +74,7 @@ function explodeFireball(game, pos, radius, rank) {
   damageArea(game, pos, radius, dmg, { element: 'fire', knockback: 3 });
   game.fx.ring(pos, { color: 0xff7a2a, radius, life: 0.4 });
   game.fx.flashDisc(pos, { color: 0xff5a1a, radius: radius * 0.9, life: 0.3 });
-  game.fx.burst(pos, { color: 0xffb347, count: 16, speed: 6, life: 0.5, size: 0.4 });
+  game.fx.burst(pos, { color: 0xffb347, count: 16, speed: 6, life: 0.5, size: 0.4, backing: 0.3, backingColor: 0x2a0f06 });
   game.fx.burst(pos, { color: 0xffd700, count: 8, speed: 4, life: 0.3, size: 0.3 });
   game.fx.light(pos, 0xff7a2a, 50, 0.3);
   game.fx.shake(0.08);
@@ -81,7 +82,7 @@ function explodeFireball(game, pos, radius, rank) {
   // Rank 5: burning patch
   if (rank >= 5) {
     const patchRadius = 1.2 * game.player.stats.area;
-    const burnMat = glowMaterial(0xff7a2a, 3, { transparent: true, opacity: 0.6 });
+    const burnMat = blendAddMaterial(0xff7a2a, { hdr: 1.4, opacity: 0.6, occ: 0.4, side: THREE.DoubleSide, depthTest: false });
     const burnMesh = new THREE.Mesh(GEO.disc, burnMat);
     burnMesh.rotation.x = -Math.PI / 2;
     burnMesh.position.copy(pos);

@@ -20,26 +20,40 @@ function fresh() {
   return {
     v: 1, shards: 0,
     attune: Object.fromEntries(Object.keys(ATTUNEMENTS).map((k) => [k, 0])),
-    unlocked: { arcanist: true },
+    unlocked: { pyromancer: true },
     codex: { reactions: [], fusions: [], relics: [] },
     stats: { runs: 0, wins: 0, bestAct: 0, bossKills: 0, wardenKills: 0, totalKills: 0, bestChain: 0 },
-    maxTier: 0, lastClass: 'arcanist', lastTier: 0,
+    maxTier: 0, lastClass: 'pyromancer', lastTier: 0,
+    unlockAll: false,   // player setting: every class and Rift Tier playable; earned progress is kept separately
+    shake: 1,           // player setting: screen shake 1 full, 0.5 reduced, 0 off
+    tutorialDone: false, // the Rift Primer (first-run tutorial) has been completed or skipped
+    tips: [],           // contextual one-time hints already shown (tutorial.js)
   };
 }
+
+export const MAX_TIER = 5;
+
+// Read unlocks through these so the "Unlock all" setting can be switched off without losing real progress.
+export const isUnlocked = (meta, id) => !!CLASSES[id] && (!!meta?.unlockAll || !!meta?.unlocked?.[id]);
+export const maxTierOf = (meta) => (meta?.unlockAll ? MAX_TIER : (meta?.maxTier ?? 0));
 
 export function loadMeta() {
   let m = fresh();
   try {
     const raw = JSON.parse(localStorage.getItem(KEY));
-    if (raw && raw.v === 1) m = { ...m, ...raw, attune: { ...m.attune, ...raw.attune }, codex: { ...m.codex, ...raw.codex }, stats: { ...m.stats, ...raw.stats } };
+    if (raw && raw.v === 1) {
+      m = { ...m, ...raw, attune: { ...m.attune, ...raw.attune }, codex: { ...m.codex, ...raw.codex }, stats: { ...m.stats, ...raw.stats } };
+      // Saves from before the Pyromancer became the starter class: it is free, and veterans skip the primer.
+      m.unlocked = { ...raw.unlocked, pyromancer: true };
+      if (raw.tutorialDone === undefined && m.stats.runs > 0) m.tutorialDone = true;
+    }
     else {
       const old = JSON.parse(localStorage.getItem(OLD_CODEX_KEY));
       if (old?.reactions) { m.codex.reactions = old.reactions; m.codex.fusions = old.fusions ?? []; }
     }
   } catch { /* storage unavailable */ }
   if (typeof location !== 'undefined' && (/[?&]unlockall\b/.test(location.search) || location.hash === '#unlockall')) {
-    for (const id of Object.keys(CLASSES)) m.unlocked[id] = true;
-    m.maxTier = 5;
+    m.unlockAll = true;
   }
   return m;
 }
@@ -98,7 +112,7 @@ export function recordRun(meta, rs) {
   let tierUnlocked = null;
   if (rs.victory) {
     meta.stats.wins++;
-    if ((rs.tier ?? 0) >= meta.maxTier && meta.maxTier < 5) { meta.maxTier = (rs.tier ?? 0) + 1; tierUnlocked = meta.maxTier; }
+    if ((rs.tier ?? 0) >= meta.maxTier && meta.maxTier < MAX_TIER) { meta.maxTier = (rs.tier ?? 0) + 1; tierUnlocked = meta.maxTier; }
   }
   const unlocks = checkUnlocks(meta);
   saveMeta(meta);

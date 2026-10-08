@@ -1,4 +1,4 @@
-# RIFTBOUND — Game Design v1.0 (LOCKED)
+# RIFTBOUND — Game Design v2.1 (v2 = vibrant world + creatures; v2.1 = playtest fixes: Pyromancer starter, Rift Primer, shake, Rift Crystals)
 
 > An isometric horde-survival ARPG in three acts. Pick a class, weave elements into reactions, bend your build with relics, and dash through the telegraphs. Descend through the Rift and shatter its Heart.
 
@@ -12,14 +12,14 @@ The rationale and the cut list are in [design/PASSES.md](design/PASSES.md). This
 3. **Play-style is rewarded.** Class traits, relics, Chain and Perfect Dodge pay out for *how* you play, not just *what* you picked.
 
 ## 2. Fantasy
-Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It shattered and tore Rifts into the world. You are **Riftbound**, tethered to the Rift and unable to truly die. Each run is a descent through three warped strata to the **Rift Heart**. Death returns you to the **Sanctum** with **Rift Shards**.
+Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It shattered and tore Rifts into the world. You are **Riftbound**, tethered to the Rift and unable to truly die. Each run crosses three Rift-warped lands — a goblin forest, the orc-held barrens, and the riverlands where the crown fell and dragons came to drink its light — to slay the **Prism Dragon**. Death returns you to the **Sanctum** with **Rift Shards**.
 
 ## 3. Run structure
 | Act | Biome | Faction | Boss | Hazard | Geodes |
 |---|---|---|---|---|---|
-| I | **The Hollow Verge** (violet/teal ruined cloister) | The Hollow | **The Hollow Warden** | none | arcane, frost |
-| II | **The Cinder Wastes** (basalt, lava cracks, embers) | The Ashborn (resist Fire 50%) | **Vashkar, the Cinder Colossus** (resist Fire 50%) | Lava Vents | frost, storm |
-| III | **The Shattered Crown** (pale crystal ruins, storm) | The Riftborn (elites carry Prism Ward) | **The Rift Heart** (rotating Prism Ward) | Lightning Strikes | all 4 |
+| I | **The Thornwood** (sunlit goblin forest) | The Greenskins (goblins, trolls, spiders) | **Gorrak, the Troll King** | none | arcane, frost |
+| II | **The Sunscorch Barrens** (ochre badlands, mesas, orc war camps) | The Warband (orcs, ogres, wargs; resist Fire 50%) | **Vashkar, the Ashen Warchief** (resist Fire 50%) | Fissure Geysers | frost, storm |
+| III | **The Stormwater Reach** (stormy riverlands, drowned ruins, dragons) | The Wyrmkin (dragons, naga, kobolds; elites carry Prism Ward) | **Aurelith, the Prism Dragon** (rotating Prism Ward) | Lightning Strikes | all 4 |
 
 * **Act clock**: 3:00 of horde (`ACT_LENGTH = 180`), then the boss spawns. While a boss lives, the horde spawns at 35%.
 * **Beats per act**:
@@ -51,7 +51,7 @@ Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It 
 * Live cap: 320.
 * Elite chance (after 0:45 of an act): 1%.
 * Elites have ×4 HP, ×1.35 radius, ×6 XP (min 10), ×1.3 damage and a rim aura. Random elites drop a Relic Chest 6% of the time (≈ 7 relics per full run, counting surges and bosses).
-* Boss base HP: Warden 8,000 · Vashkar 20,000 · Rift Heart 60,000 (× tier mult). Bosses drop a chest (it flies to you during the Rift Shift), a health orb and a magnet.
+* Boss base HP: Gorrak 8,000 · Vashkar 20,000 · Aurelith 60,000 (× tier mult). Bosses drop a chest (it flies to you during the Rift Shift), a health orb and a magnet.
 
 ## 4. Controls
 | Input | Action |
@@ -72,9 +72,11 @@ Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It 
 | Element / colour | arcane `#c08cff` | fire `#ff7a33` | frost `#7fe0ff` | storm `#ffe45c` |
 | Starter (LMB) | Arcane Bolt | Cinder Bolt | Ice Shard | Spark |
 | Dash | **Phase Step**: instant blink, 5.5 u, cd 2.4 s, arcane burst at arrival (r 2, 10 dmg, *detonates statuses*) | **Flame Dash**: 5 u / 0.16 s, cd 3.0 s, leaves a fire trail (2 s, 4 fire dmg / 0.4 s, r 1.2) | **Glacial Slide**: 5 u / 0.2 s, cd 2.8 s, chills foes along the path (r 1.6, 6 frost dmg, statusPower 2) | **Lightning Dash**: 6 u / 0.12 s, **2 charges**, cd 1.8 s each, shocks foes along the path (r 1.3, 8 storm dmg) |
-| Trait | **Resonance**: +2% dmg and +1% CDR per Chain (max 25) | **Wildfire**: a burning foe that dies explodes (r 2.2 × area, 50% reaction base, fire, can react) | **Permafrost**: Frozen foes take +35% dmg; freezing a foe grants 1 Frost Armor (max 3, ≥ 1.2 s apart; each armor fully absorbs one hit) | **Momentum**: Charge 0–100 (+28/s moving, −60/s still); +0.5% dmg per Charge |
+| Trait | **Resonance**: +2% dmg and +1% CDR per Chain (max 25); the Chain window is 4 s instead of 2.5 s | **Wildfire**: a burning foe that dies explodes (r 2.2 × area, 50% reaction base, fire, can react) | **Permafrost**: Frozen foes take +35% dmg; freezing a foe grants 1 Frost Armor (max 3, ≥ 1.2 s apart; each armor fully absorbs one hit) | **Momentum**: Charge 0–100 (+28/s moving, −60/s still); +0.5% dmg per Charge |
 | Stat tilt | — | +10% dmg, −10 HP | +30 HP, −5% move | +10% move, −10 HP |
-| Unlock | free | defeat the Hollow Warden | discover 4 reactions | reach Act III |
+| Unlock | defeat Gorrak, the Troll King | **free (starter)** | discover 4 reactions | reach Act III |
+
+**Why the Pyromancer starts (playtest v2.1).** The Arcanist's trait pays out per Chain, which a new player who hasn't learned reactions yet never builds. Wildfire works from the first kill: a burning foe dies and the blast spreads Burn. Act I crystals (frost, arcane) react with fire (Steam Burst, Combust), so a new player's first reactions happen on their own. The Arcanist moved to the Gorrak unlock and got a longer Chain window to make Resonance easier to hold.
 
 **Dash (all classes).** I-frames for the dash duration + 0.1 s. Direction is the movement input, or the aim direction when standing still.
 
@@ -107,7 +109,7 @@ Reaction base = `(18 + 7·level) × stats.reaction`. A reaction can't trigger a 
 | **ARC FLASH** *(new)* | Arcane → Shock | stuns the target and foes within 3 × area for 1.2 s; 0.5 × base to each |
 
 * **Chain:** a reaction within 2.5 s of the previous one adds +1 Chain. Otherwise Chain resets to 1. Chain gives +0.5% XP per Chain (cap +25%). The HUD shows **CHAIN ×N**, and peak Chain is recorded in run stats.
-* **Hit-stop:** 45 ms on Shatter, Overload or Combust (at most once per 0.25 s).
+* **Hit-stop:** 45 ms on Shatter, Overload or Combust (at most once per 0.25 s, and only while Chain ≤ 3).
 * **Resistances:** `enemy.resist = { fire: 0.5 }` multiplies damage *and* status duration for that element.
 * **Prism Ward:** `enemy.ward = 'fire'|'frost'|'storm'|'arcane'` makes the foe immune (0 dmg, no status, "IMMUNE" label at most every 0.5 s). **Any reaction on the warded foe breaks the ward** (shatter FX, event `wardBroken`).
 * **Barrier:** `enemy.barrier` points absorb damage before HP (from the Prism Hexer).
@@ -220,7 +222,7 @@ Archetype (behaviour + model) × faction (palette, name, resist).
 | wraith | III | blinker | 28 | 3.4 | 10 | 2 | |
 | prismHexer | III | support | 40 | 2.4 | 6 | 4 | |
 
-**Act III Prism Ward:** every elite, and 12% of non-swarmer Riftborn, gets a random ward element.
+**Act III Prism Ward:** every elite, and 12% of non-swarmer Wyrmkin, gets a random ward element.
 
 **Spawn rosters** (weight, available from act-second):
 
@@ -230,36 +232,38 @@ Archetype (behaviour + model) × faction (palette, name, resist).
 | II | ashHusk 5 @0 · cinderling 3 @0 · emberSpitter 1.5 @20 · pyreBomber 1.5 @35 · magmaRam 1.2 @60 · obsidianBrute 1 @90 |
 | III | shardling 4 @0 · wraith 2 @0 · voidSpitter 1.5 @15 · crystalRam 1.2 @30 · prismHexer 0.8 @50 · colossus 1 @80 |
 
-**Visual language:**
-* ≤ 3 meshes per enemy, with emissive faction-coloured eyes/cores:
-  * Hollow: moss-grey flesh, cyan eyes.
-  * Ashborn: charred black with glowing orange cracks.
-  * Riftborn: pale violet crystal with a white-cyan core.
-* Elites get a pulsing rim aura. Ward is a rotating translucent shell in the ward element's colour.
-* Spawn-in: rises from the ground over 0.35 s. Death: 0.12 s white squash-shrink, then the burst.
+**Visual language (v2):**
+* Every enemy is a procedurally modelled, procedurally animated creature (GPU-instanced rig, dark outline, blob shadow); see `design/ART.md` and `design/research/03-creature-art.md`.
+  * **Greenskins** (Act I): Goblin Grunt (husk), Goblin Scamp (imp), Forest Troll (brute), Goblin Shaman (spitter), Broodmother (bloater) → Spiderlings (mite). Light olive skin over dark leather; lime accents.
+  * **Warband** (Act II): Orc Raider (ashHusk), Warg (cinderling), Ogre (obsidianBrute), Orc Spirit-Shaman (emberSpitter), War Boar + goblin rider (magmaRam), Goblin Sapper (pyreBomber). Dark olive and iron; spirit-teal accents.
+  * **Wyrmkin** (Act III): Dragon Whelp (shardling), Stone River Troll (colossus), Naga Tidecaller (voidSpitter), Crag Drake (crystalRam), Storm Wyvern (wraith), Kobold Prism-Shaman (prismHexer). Wine-crimson scales, saffron wings; prism-white crystals.
+* Archetypes share a shape code across acts (chaser = weapon out, swarmer = low wedge, tank = block, ranged = staff over the head, charger = battering front, bomber = object overhead, blinker = big wingspan, support = oversized totem).
+* Every wind-up is a pose change plus an accent glow ramp. Elites: ×1.35, gold trim, an elite-only crown/plume, gold eyes, pulsing gold rim light. Ward: fresnel-edge shell + accents recoloured to the ward element.
+* Spawn-in: rises from the ground over 0.35 s in a dust puff. Death: hit-flash, then the creature topples and sinks (0.55 s).
 
 ### Bosses (2 phases, phase 2 at 50% HP; every attack telegraphed)
-* **Hollow Warden** (r 1.8). Cycle (every 3.2 s, 2.2 s in phase 2):
+* **Gorrak, the Troll King** (`hollowWarden`, r 1.8). Uprooted-tree club, spore pods, war horn. Cycle (every 3.2 s, 2.2 s in phase 2):
   * **Slam**: circle r 5 at the player, 1.0 s telegraph, 1.6 × dmg.
-  * **Summon**: 6 husks.
+  * **Summon** (war horn): 6 goblin grunts.
   * **Volley**: 12 radial shots (24 in phase 2, two rings).
-* **Vashkar** (r 2.2, resist fire). Cycle 3.0 s (2.2 s in phase 2):
+* **Vashkar, the Ashen Warchief** (`vashkar`, r 2.2, resist fire). Molten greataxe, twin banners. Cycle 3.0 s (2.2 s in phase 2):
   * **Charge**: line telegraph 0.9 s, 22 u/s, leaves a lava trail (2.5 s, burns the player 8/0.5 s); phase 2 does 2 charges in a row.
   * **Meteor Rain**: 6 circles r 2.5 around the player, 1.1 s telegraph.
   * **Flame Ring**: an expanding ring from Vashkar (speed 9, width 0.8) that must be dashed through; phase 2 sends 2 rings 0.6 s apart.
-* **Rift Heart** (r 2.4, hovers, slow drift toward the player).
+* **Aurelith, the Prism Dragon** (`riftHeart`, r 2.4, slow, keeps ~5 m away). Spine crystals take the ward colour; beams are its breath.
   * **Ward cycle**: rotates its Prism Ward element every 10 s. It can't be broken permanently; a reaction on it removes the ward for the rest of that cycle.
   * **Twin Beams**: 2 opposite beams (length 22, width 1.2) telegraphed 1.0 s, then sweeping 180° over 3 s (phase 2: 4 beams, faster).
   * **Prism Volley**: 5 fans of 5 shots.
-  * **Summon**: 4 shardlings + 1 wraith.
+  * **Summon** (roar): 4 dragon whelps + 1 storm wyvern.
   * Phase 2 adds **Shard Rain**: 8 random circles every 4 s.
 
 ## 10. World
-* **Bounds** ±60. Per-biome props/obstacles (pillars and dead trees / basalt spires and rocks / crystal spires and floating ruins), rebuilt during Rift Shift.
-* **Rift Geodes:**
+* **Bounds** ±60 (playable circle r 55). An open world look: the arena edge is disguised by natural features (forest tree line / canyon mesas / cliffs and waterfalls) and the ground continues into haze. Per-biome props and obstacles (trees, rocks, logs / acacias, boulders, skulls / willows, ruins, boulders), rebuilt during Rift Shift. See `src/game/env/`.
+* **Rift Crystals** (internally "geodes"):
   * 8 live at a time, each respawning 25 s after it breaks. Element pool per act (§3).
-  * Inert (`inert: true`): not auto-targeted, no statuses, no XP, no kill count. HP 30 × actHp.
+  * Inert (`inert: true`): not auto-targeted, no statuses, no XP, no kill count. HP 10 × actHp (one or two hits).
   * Broken → **4.5 u burst** dealing 20 × actHp damage of its element, with statusPower 3 (applies status → reactions).
+  * **Look (playtest v2.1):** playtesters read the old rock-with-crystals as an ore node to mine. Now a tall crystal floats and turns over a glowing rift scar, with three shards orbiting it. There is no rock base. A dashed ground ring in the element colour marks the exact blast radius. While a foe stands inside it, the ring lights up, and the crystal pulses and jitters faster ("shoot it now"). The burst's shockwave lands exactly on the ring.
 * **Shrines:**
   * One at a time. The first appears at 0:35 of each act; the next spawns ~50 s after one is claimed or expires (it expires after 40 s unclaimed). Placed 14–22 u from the player.
   * Stand within r 2.2 for 2.5 s (a progress ring shows) to claim a 25 s buff:
@@ -273,19 +277,25 @@ Archetype (behaviour + model) × faction (palette, name, resist).
 
   * The HUD shows an edge arrow toward it.
 * **Hazards** (damage everyone):
-  * Act II **Lava Vents**: every 2.5 s, 2 vents at random spots within 14 u of the player (1.2 s telegraph, r 2.4), 15 × actDmg to the player, 40 × actHp to enemies, plus Burn.
+  * Act II **Fissure Geysers**: every 2.5 s, 2 vents at random spots within 14 u of the player (1.2 s telegraph, r 2.4), 15 × actDmg to the player, 40 × actHp to enemies, plus Burn.
   * Act III **Lightning Strikes**: every 1.6 s, 3 strikes within 12 u (1.0 s telegraph, r 1.8), 12 × actDmg to the player, 35 × actHp to enemies, plus Shock.
 
 ## 11. Look & feel
-* Per-act **atmosphere**:
+* Per-act **daylight atmosphere** (sun = the `moon` DirectionalLight; warm sun, cool blue sky light so shadows read cool; Neutral tone mapping; shader haze instead of fog; drifting cloud shadows). Values live in each biome definition (`src/game/env/biomes/*.js`):
 
-  | Act | Background | Hemisphere sky / ground | Moon | Grade tint |
-  |---|---|---|---|---|
-  | Verge | `#07080d` | `#8a9bff` / `#1a1020` | `#c4d0ff` 1.7 | cool |
-  | Cinder | `#0d0605` | `#ff9a6a` / `#200a05` | `#ffb080` 1.5 | warm, high contrast |
-  | Crown | `#0a0d14` | `#cfe8ff` / `#141a2a` | `#e0f0ff` 1.9 | cold, slightly desaturated |
+  | Act | Mood |
+  |---|---|
+  | Thornwood | warm late-morning sun, lush layered greens, dappled light, pollen and butterflies |
+  | Sunscorch Barrens | hot golden afternoon, ochre ground, red-rock mesas outside the arena, dust |
+  | Stormwater Reach | stormy dramatic sky with sun breaks, cool light, river and waterfalls, lightning flashes |
 
-* **Grade pass** after bloom: vignette (0.35), tint, saturation, low-HP red edge pulse with desaturation below 30% HP, and a chromatic-aberration kick on `pulse('hit'|'perfect'|'shift')`.
+* **Grade pass** after bloom: vignette (≈0.18), tint, saturation, low-HP red edge pulse with desaturation below 30% HP, and a chromatic-aberration kick on `pulse('hit'|'perfect'|'shift')`.
+* **Screen shake (playtest v2.1):** there are two channels.
+  * **Threat** shake comes from anything that hurts you: hits, boss attacks, hazards, the Rift Shift. It uses full trauma.
+  * **Self** shake comes from your own reactions, impacts and blasts. It is capped at trauma 0.32. Each kick is damped by the self-shake of the last ~second, but a lone kick lands in full.
+  * A late-game fight used to shake hard on ~20% of frames. With the two channels it's ~2%, and average shake is ~8× lower.
+  * Reaction hit-stop only plays at Chain ≤ 3, so high Chains don't stutter.
+  * Title-screen setting: Shake Full / Reduced / Off (`meta.shake`).
 * **Class models** with distinct silhouettes (Pass 9). The staff orb glows with the last-cast element.
 * **HUD**:
   * act bar (3 segments + skull markers, top centre)
@@ -300,6 +310,33 @@ Archetype (behaviour + model) × faction (palette, name, resist).
 * **Audio**:
   * Procedural music per act: drone + arpeggio. An intensity layer follows enemy count, and a boss layer plays during bosses.
   * SFX: dash, perfect dodge, relic open/pick, geode shatter, shrine claim, Rift Shift, boss phase, ward break, chain milestones (10/25/50).
+
+## 11b. Onboarding: the Rift Primer (playtest v2.1)
+The Rift Primer is a first-run tutorial (`src/game/tutorial.js`) played inside Act I itself. It has no separate level, no modal and no pause. A small objective panel on the left walks through one step at a time:
+* a progress pip row
+* the HUD element the step is about pulses gold
+* "Skip tutorial" link
+
+While the primer runs it **holds the act clock** at 0:00, at most 150 s. The shrine, Elite Surge and boss wait, and the spawner stays at its gentlest rate.
+
+| # | Objective | Completes when |
+|---|---|---|
+| 1 | Hold LMB to cast your starter. Your bolts leave foes Burning (or your element's status). | 5 kills |
+| 2 | Press Space to dash. Mid-dash you can't be hit. Dash as an attack lands for a PERFECT dodge. | a dash |
+| 3 | A Rift Crystal of the complementary element (fire → frost, frost → fire, storm → frost, arcane → fire) spawns 8 u toward the cursor, with a 6-goblin pack (3.5× HP) on its far side and a bobbing **SHOOT IT** marker. "Shoot it while foes are inside its ring." | the crystal breaks with foes in the blast |
+| 4 | "Now hit the Chilled foes with your Fire! Two elements on one foe set off a REACTION." | any reaction (0.9 s slow-mo) |
+| 5 | Names the reaction (e.g. STEAM BURST = Fire + Frost) and explains Chain and that crystals keep coming. | 7 s |
+
+* If the blast hits nobody, or the marked foes die without reacting (9 s), step 3 repeats with a "try again" hint, at most 3 times.
+* If foes are already Burning, the blast itself sets off the reaction, and step 4 is skipped.
+* On the primer run's first level-up, the card footer explains that a skill of another element lets you make reactions yourself.
+* `meta.tutorialDone` is set when the primer finishes or is skipped. Dying mid-primer replays it next run. The title-screen **Tutorial** checkbox replays it and also resets the tips. Saves with runs from before v2.1 count as done.
+* **One-time tips** (`meta.tips`) use the same panel, are shown once per profile, and never interrupt the primer:
+  * the first Rift Crystal you walk near (for players who skipped the primer)
+  * the first Shrine
+  * the first boss (red telegraphs, dash through)
+  * Act II (orcs resist Fire 50%, geysers)
+  * Act III (Prism Wards, any reaction breaks them)
 
 ## 12. Meta (Sanctum)
 * **Rift Shards per run** = `floor(kills/30) + 15·actsReached + 40·bossesKilled + floor(maxChain/10)`, × (1 + 0.25·tier).

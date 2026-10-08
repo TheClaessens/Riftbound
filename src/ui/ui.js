@@ -12,6 +12,8 @@ import { SLOT_KEYS } from '../game/player.js';
 import { ELEMENT_CSS } from '../core/utils.js';
 
 const GOLD = '#d4af37';
+// White accents (physical element, safety relics) vanish on parchment; swap for brass.
+const onParch = (c) => (c && c.toLowerCase() === '#ffffff' ? '#d9a441' : c);
 const LEVELUP_IGNORE_MS = 350;
 const RELIC_IGNORE_MS = 400;
 const FUSION_IDS = new Set(FUSIONS.map((f) => f.def.id));
@@ -25,7 +27,7 @@ function once(fn) {
 
 function cardHTML(card, i) {
   const fusion = card.type === 'fusion';
-  const accent = fusion ? GOLD : (ELEMENT_CSS[card.element] ?? '#c08cff');
+  const accent = fusion ? GOLD : onParch(ELEMENT_CSS[card.element] ?? '#c08cff');
   let tag = '';
   switch (card.type) {
     case 'new': tag = 'NEW SKILL'; break;
@@ -46,7 +48,7 @@ function cardHTML(card, i) {
 }
 
 function relicCardHTML(r, i) {
-  const col = RELIC_TAG_COLOR[r.tag] ?? '#c08cff';
+  const col = onParch(RELIC_TAG_COLOR[r.tag] ?? '#c08cff');
   return `
     <div class="ui-relic-card" data-idx="${i}" style="--tag:${col}">
       <span class="ui-card-key">${i + 1}</span>
@@ -158,7 +160,7 @@ function buildCodexHTML(codex) {
   const relicList = Object.values(RELICS);
   const relFound = new Set(codex.relics ?? []);
   const relTiles = relicList.map((r) => relFound.has(r.id)
-    ? `<div class="cx-tile" style="--tag:${RELIC_TAG_COLOR[r.tag] ?? '#c08cff'}">
+    ? `<div class="cx-tile" style="--tag:${onParch(RELIC_TAG_COLOR[r.tag] ?? '#c08cff')}">
          <div class="cx-name"><span class="cx-ico">${r.icon}</span> ${r.name}</div>
          <div class="cx-combo">${String(r.tag).toUpperCase()}</div>
          <div class="cx-desc">${r.desc}</div>
@@ -304,6 +306,7 @@ export class UI {
 
   hideLevelUp() {
     this._lu = null;
+    this.levelUpTip = '';   // tutorial tips are for one level-up only
     this._setModal(this.luEl, false);
   }
 
@@ -323,7 +326,7 @@ export class UI {
     R.banish.textContent = `⊘ Banish (${bb})`;
     R.banish.disabled = bb <= 0;
     R.banish.classList.toggle('active', L.banishMode);
-    R.hint.textContent = msg || (L.banishMode ? 'Click a card to banish it for this run.' : '');
+    R.hint.textContent = msg || (L.banishMode ? 'Click a card to banish it for this run.' : (this.levelUpTip || ''));
   }
 
   _luReroll() {

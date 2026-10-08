@@ -23,9 +23,9 @@ const ELITE_CHANCE = 0.01;      // per spawn, after ELITE_AFTER
 const BUSY_BOSS_MULT = 0.35;  // horde spawn rate while a boss lives
 const WARDS = ['fire', 'frost', 'storm', 'arcane'];
 const BOSS_SUB = {
-  hollowWarden: 'It guards the way down.',
-  vashkar: 'Its molten hide burns.',
-  riftHeart: 'Break its ward and shatter the Heart.',
+  hollowWarden: 'The old king of the Thornwood wakes.',
+  vashkar: 'The Warchief answers the war horns. Fire will not hurt him much.',
+  riftHeart: 'Its scales drink the elements. Strike with what it is not wearing.',
 };
 
 function freshBeats() {
@@ -145,9 +145,9 @@ export class Spawner {
       // The first elite is the Relic Bearer (bigger, gold-lit); the others only drop XP.
       e.dropsChest = i === 0;
       if (i === 0) {
-        e.mesh.scale.multiplyScalar(1.2); e.radius *= 1.1; e.maxHp *= 1.5; e.hp = e.maxHp;
+        e.visScale *= 1.2; e.radius *= 1.1; e.maxHp *= 1.5; e.hp = e.maxHp;
         const crown = new THREE.Mesh(GEO.octa, BEARER_MAT); // floating gold relic marker
-        crown.scale.set(0.22, 0.34, 0.22); crown.position.y = 2.4; e.mesh.add(crown);
+        crown.scale.set(0.22, 0.34, 0.22); crown.position.y = e.topY * e.visScale + 0.7; e.mesh.add(crown);
       }
       g.addEnemy(e);
     }
