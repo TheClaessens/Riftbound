@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Crownforge UI kit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Grenze:wght@600;700;800&family=Grenze+Gotisch:wght@700&family=Alegreya+Sans+SC:wght@700;800&family=Alegreya+Sans:ital,wght@0,500;0,700;0,800;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/theme.css">
+  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }</script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: auto; }
+    body { background: var(--bg, linear-gradient(135deg, #7bb147 0 33%, #ce7122 33% 66%, #3a7fb0 66%)); }
+    #ui { position: relative; padding: calc(30 * var(--u)); display: flex; flex-wrap: wrap; gap: calc(30 * var(--u)); align-items: flex-start; }
+    .box { padding: calc(18 * var(--u)) calc(22 * var(--u)); display: flex; flex-direction: column; gap: calc(10 * var(--u)); }
+    .row { display: flex; gap: calc(10 * var(--u)); align-items: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div class="cf-frame crown box" style="width: calc(420 * var(--u))">
+      <div class="cf-hero">The Thornwood</div>
+      <div class="cf-rule"><i></i></div>
+      <div class="cf-h">Gorrak, the Troll King</div>
+      <div class="cf-label">elite surge · relic bearer</div>
+      <div class="cf-body">Hurl a fireball that deals <span class="cf-hl" data-el="fire">38</span> fire damage in a small area.</div>
+      <div class="cf-prism"></div>
+      <div class="row"><button class="cf-btn primary">Begin Quest</button><button class="cf-btn">Reroll <span class="cf-key">f</span></button><button class="cf-btn" disabled>Banish</button><button class="cf-btn danger">Abandon?</button></div>
+    </div>
+
+    <div class="cf-plate box">
+      <div class="cf-label">skill sockets</div>
+      <div class="row" id="sockets"></div>
+      <div class="row"><span class="cf-key">lmb</span><span class="cf-key">q</span><span class="cf-key">space</span><span class="cf-pips"><i class="on"></i><i class="on"></i><i class="new"></i><i></i><i></i></span><span class="cf-pips" style="--pip: var(--fire)"><i class="on"></i><i class="on"></i><i></i></span></div>
+      <div class="cf-bar capped" style="width: calc(352 * var(--u))">
+        <div class="cf-bar-track"><i class="cf-bar-ghost" style="transform:scaleX(.74)"></i><i class="cf-bar-fill" style="transform:scaleX(.58)"></i><i class="cf-bar-shield" style="transform:translateX(58%) scaleX(.14)"></i><i class="cf-bar-ticks" style="--n:4"></i></div>
+        <span class="cf-bar-num num">87</span>
+      </div>
+      <div class="cf-bar" style="width: calc(352 * var(--u)); --h: 4px; --fill: var(--xp)"><div class="cf-bar-track"><i class="cf-bar-fill" style="transform:scaleX(.4)"></i></div></div>
+      <div class="row" id="gems"></div>
+    </div>
+
+    <div class="cf-plate sunken box"><div class="cf-label">plate · sunken</div><div class="cf-body">Rift-iron, bronze bezel.</div></div>
+    <div style="position:relative; width: calc(340 * var(--u)); height: calc(90 * var(--u))"><div class="cf-tip" style="left:0;top:0"><b>Alchemist's Coil</b><br>+<span class="cf-hl" data-el="arcane">40%</span> reaction damage.</div></div>
+  </div>
+  <script type="module">
+    import { installUiScale } from '../src/ui/scale.js';
+    import { ensureIcons, icon } from '../src/ui/icons/index.js';
+    installUiScale(); ensureIcons();
+    const q = new URLSearchParams(location.search);
+    if (q.get('bg')) document.body.style.setProperty('--bg', q.get('bg'));
+    document.getElementById('sockets').innerHTML = [
+      ['skill-fireball', 'fire', ''], ['skill-frostNova', 'frost', 'lit'], ['', '', 'empty'], ['relic-alchemistsCoil', '', ''], ['el-storm', 'storm', 'round'],
+    ].map(([id, el, c]) => `<div class="cf-socket ${c}" ${el ? `data-el="${el}"` : ''} ${c === 'round' ? 'style="--sz: calc(48 * var(--u))"' : ''}>${id ? icon(id) : ''}</div>`).join('');
+    document.getElementById('gems').innerHTML = ['el-fire', 'el-frost', 'el-storm', 'el-arcane'].map((id) => `<span style="font-size: calc(32 * var(--u))">${icon(id)}</span>`).join('') +
+      ['el-fire', 'el-frost', 'el-storm', 'el-arcane'].map((id) => `<span style="font-size: 16px">${icon(id)}</span>`).join('');
+  </script>
+</body>
+</html>

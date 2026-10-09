@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #07080d; color: #e8e6f0; font-family: 'Inter', system-ui, sans-serif; user-select: none; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #07080d; color: #e8e6f0; font-family: 'Alegreya Sans', system-ui, sans-serif; user-select: none; }
 #game, #game canvas { position: fixed; inset: 0; display: block; }
 #game canvas { cursor: crosshair; }
 #fx-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
@@ -7,11 +7,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #07080d; col
 #ui .interactive, #ui button { pointer-events: auto; }
 
 /* floating combat text: hard dark stroke under the fill (reads on bright, sunlit ground) */
-.ftext { position: absolute; left: 0; top: 0; font-weight: 800; font-size: 16px; white-space: nowrap; will-change: transform, opacity;
-  -webkit-text-stroke: 4px #120a1a; paint-order: stroke fill;
+.ftext { position: absolute; left: 0; top: 0; font-family: 'Alegreya Sans', system-ui, sans-serif; font-weight: 800; font-size: 17px; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; will-change: transform, opacity;
+  -webkit-text-stroke: 4px #0c0a12; paint-order: stroke fill;
   text-shadow: 0 2px 0 rgba(0, 0, 0, .45); }
 .ftext.crit { font-size: 22px; -webkit-text-stroke-width: 5px; }
-.ftext.label { font-family: 'Cinzel', serif; font-size: 18px; letter-spacing: 1px;
-  -webkit-text-stroke: 4px #120a1a;
+.ftext.label { font-family: 'Grenze', Georgia, serif; font-weight: 700; font-size: 20px; letter-spacing: .5px;
+  -webkit-text-stroke: 4px #0c0a12;
   text-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(0, 0, 0, .35); }
-.ftext.label.big { font-size: 30px; -webkit-text-stroke-width: 5px; }
+.ftext.label.big { font-size: 32px; -webkit-text-stroke-width: 5px; }

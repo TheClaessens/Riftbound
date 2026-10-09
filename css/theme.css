@@ -1,0 +1,387 @@
+/* ===================================================================
+   RIFTBOUND · CROWNFORGE THEME (core, owned by the orchestrator)
+   The UI is the reliquary that holds the shattered Riftcrown:
+   rift-iron plates (cool violet-black, chamfered, flat facets lit from
+   the upper-left), crown-bronze bezels with a 1px gilt rim, the four
+   Primes only as gems/enamel, and a prism crack reserved for crown
+   moments (fusions, Aurelith, Rift Shift, victory).
+   Spec: design/UI.md · research: design/research/05,06,07.
+   This file holds tokens + shared primitives only. Screen styles live
+   in hud.css / modals.css / menus.css (one owner each).
+   =================================================================== */
+
+:root {
+  /* rift-iron plates */
+  --cf-void:     #0c0a12;
+  --cf-plate-0:  #14111c;
+  --cf-plate-1:  #1c1826;
+  --cf-plate-2:  #262033;
+  --cf-plate-3:  #332b44;
+
+  /* rift enamel (socket fields; never text) */
+  --cf-enamel:    #2a2350;
+  --cf-enamel-hi: #463a86;
+
+  /* crown-bronze */
+  --cf-bronze-lo: #4e3a24;
+  --cf-bronze:    #8c6c43;
+  --cf-bronze-hi: #c8a874;
+  --cf-gilt:      #ecd9a6;
+
+  /* text */
+  --cf-text:  #f2ece0;
+  --cf-dim:   #b9b0c4;
+  --cf-faint: #8a8199;
+
+  /* the four Primes: lo / mid / hi */
+  --arcane-lo: #6d3fc0; --arcane: #c08cff; --arcane-hi: #e6d2ff;
+  --fire-lo:   #b23c0e; --fire:   #ff7a33; --fire-hi:   #ffd0a8;
+  --frost-lo:  #2b8fb8; --frost:  #7fe0ff; --frost-hi:  #e2f8ff;
+  --storm-lo:  #b58d14; --storm:  #ffe45c; --storm-hi:  #fff7c8;
+  --phys-lo:   #6b6378; --phys:   #d8d0e4; --phys-hi:   #ffffff;
+
+  --rift-white: #efe9ff;
+  --prism: linear-gradient(90deg, var(--arcane), var(--fire) 33%, var(--storm) 66%, var(--frost));
+
+  /* acts */
+  --act-thornwood: #9be15d;
+  --act-barrens:   #ffa04a;
+  --act-reach:     #7fd4ff;
+
+  /* meters */
+  --hp:      #e8413a; --hp-hi: #ff8a6a; --hp-lo: #7a1418; --hp-chip: #f6e7d0;
+  --shield:  #d9ecff;
+  --xp:      #9ff0d2;
+  --risk:    #b8324a;
+
+  /* reserved threat identity: NEVER decoration */
+  --threat-shot: #ff2a6d;
+
+  /* icon defaults (inherit through <use>) */
+  --ink:      var(--cf-void);
+  --metal-lo: var(--cf-bronze-lo);
+  --metal:    var(--cf-bronze);
+  --metal-hi: var(--cf-bronze-hi);
+  --glass:    #1b2030;
+  --stone-lo: #2b221f; --stone: #4a3c34; --stone-hi: #76614f;   /* meteor rock */
+  --acc:      var(--cf-gilt);
+  --el-lo: var(--phys-lo); --el: var(--phys); --el-hi: var(--phys-hi);
+
+  /* type */
+  --font-hero:  'Grenze Gotisch', 'Grenze', Georgia, serif;
+  --font-head:  'Grenze', Georgia, serif;
+  --font-label: 'Alegreya Sans SC', 'Alegreya Sans', system-ui, sans-serif;
+  --font-body:  'Alegreya Sans', system-ui, sans-serif;
+
+  /* motion */
+  --ease-forge: cubic-bezier(.2, .8, .2, 1);
+  --ease-stamp: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-rift:  cubic-bezier(.7, 0, .84, 0);
+
+  /* scale unit for frames/spacing: 1u = 1px at 1280x720, 1.5px at 1920x1080 */
+  --u: clamp(0.9px, calc(100vh / 720), 2px);
+}
+
+/* per-element binding for icons, gems, sockets */
+[data-el="arcane"]   { --el: var(--arcane); --el-lo: var(--arcane-lo); --el-hi: var(--arcane-hi); }
+[data-el="fire"]     { --el: var(--fire);   --el-lo: var(--fire-lo);   --el-hi: var(--fire-hi); }
+[data-el="frost"]    { --el: var(--frost);  --el-lo: var(--frost-lo);  --el-hi: var(--frost-hi); }
+[data-el="storm"]    { --el: var(--storm);  --el-lo: var(--storm-lo);  --el-hi: var(--storm-hi); }
+[data-el="physical"] { --el: var(--phys);   --el-lo: var(--phys-lo);   --el-hi: var(--phys-hi); }
+
+/* ---------------- icons ---------------- */
+.ico { display: inline-block; width: 1em; height: 1em; flex: none; overflow: visible; vertical-align: middle; }
+.ico-glyph { display: inline-grid; place-items: center; font-size: .8em; line-height: 1; color: var(--el, var(--cf-gilt)); }
+
+/* ---------------- type helpers ---------------- */
+.num { font-family: var(--font-body); font-weight: 800; font-variant-numeric: lining-nums tabular-nums; }
+.outlined { -webkit-text-stroke: 4px var(--cf-void); paint-order: stroke fill; }
+
+/* ===================================================================
+   SCALE + BASE
+   1rem is set by src/ui/scale.js (12/15/20 px at 720p/1080p/1440p).
+   --u = one "1080p pixel": author every size as calc(N * var(--u)).
+   =================================================================== */
+:root { --u: calc(1rem / 15); --dpx: 1px; }
+html { font-size: clamp(12px, min(100vw / 128, 100vh / 72), 22px); }
+
+#ui {
+  font-family: var(--font-body);
+  font-size: calc(18 * var(--u));
+  line-height: 1.3;
+  color: var(--cf-text);
+}
+[hidden] { display: none !important; }
+#ui *, #ui *::before, #ui *::after, [class^="cf-"], [class^="cf-"]::before, [class^="cf-"]::after { box-sizing: border-box; }
+
+/* ===================================================================
+   ORNAMENT GEOMETRY (masks: black = metal; colour comes from CSS)
+   =================================================================== */
+:root {
+  /* 24-unit chamfered corner bracket with a rivet, top-left orientation */
+  --orn-tl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M0 7L7 0H23L20.5 3H8.2L3 8.2V20.5L0 23Z'/%3E%3Ccircle cx='9' cy='9' r='2.2'/%3E%3C/svg%3E");
+  --orn-tr: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg transform='translate(24 0) scale(-1 1)'%3E%3Cpath d='M0 7L7 0H23L20.5 3H8.2L3 8.2V20.5L0 23Z'/%3E%3Ccircle cx='9' cy='9' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+  --orn-bl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg transform='translate(0 24) scale(1 -1)'%3E%3Cpath d='M0 7L7 0H23L20.5 3H8.2L3 8.2V20.5L0 23Z'/%3E%3Ccircle cx='9' cy='9' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+  --orn-br: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg transform='translate(24 24) scale(-1 -1)'%3E%3Cpath d='M0 7L7 0H23L20.5 3H8.2L3 8.2V20.5L0 23Z'/%3E%3Ccircle cx='9' cy='9' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+  /* crown point: a three-tined spike that sits on a top edge (40x16, base on y=16) */
+  --orn-crown: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 16'%3E%3Cpath d='M2 16L9 9L12.5 12L20 0L27.5 12L31 9L38 16Z'/%3E%3C/svg%3E");
+  --orn-crown-d: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 16'%3E%3Cpath d='M2 0L9 7L12.5 4L20 16L27.5 4L31 7L38 0Z'/%3E%3C/svg%3E");
+  /* finial end caps for bars (16x24) */
+  --orn-cap-l: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 24'%3E%3Cpath d='M16 3V21H9L1 12L9 3Z'/%3E%3C/svg%3E");
+  --orn-cap-r: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 24'%3E%3Cpath d='M0 3V21H7L15 12L7 3Z'/%3E%3C/svg%3E");
+
+  --metal-grad: linear-gradient(160deg, var(--cf-bronze-hi) 0 30%, var(--cf-bronze) 30% 62%, var(--cf-bronze-lo) 62%);
+  --gilt-grad:  linear-gradient(160deg, #fff4d2 0 30%, var(--cf-gilt) 30% 60%, var(--cf-bronze-hi) 60%);
+  --iron-grad:  linear-gradient(160deg, var(--cf-plate-2) 0 38%, var(--cf-plate-1) 38%);
+  --iron-grad-hi: linear-gradient(160deg, var(--cf-plate-3) 0 38%, var(--cf-plate-2) 38%);
+}
+
+/* ===================================================================
+   TIER 2 · PLATE  (chamfered rift-iron, bronze bezel, void keyline)
+   <div class="cf-plate">...</div>    --ch: chamfer size, --bw: bezel
+   =================================================================== */
+.cf-plate {
+  --ch: calc(8 * var(--u));
+  --bw: max(1px, round(calc(2 * var(--u)), 1px));
+  position: relative;
+  border: var(--bw) solid transparent;
+  border-radius: var(--ch);
+  corner-shape: bevel;
+  background: var(--iron-grad) padding-box, var(--metal-grad) border-box;
+  box-shadow:
+    0 0 0 1px var(--cf-void),
+    inset 1px 1px 0 rgb(236 217 166 / .22),
+    0 calc(3 * var(--u)) calc(8 * var(--u)) rgb(6 4 10 / .35);
+  color: var(--cf-text);
+}
+.cf-plate.flat   { box-shadow: 0 0 0 1px var(--cf-void), inset 1px 1px 0 rgb(236 217 166 / .22); }
+.cf-plate.sunken { background: linear-gradient(160deg, var(--cf-plate-0) 0 50%, #110e18 50%) padding-box, var(--metal-grad) border-box; }
+
+/* ===================================================================
+   TIER 1 · FRAME  (plate + gilded corner brackets; optional crown point)
+   <div class="cf-frame [crown]">...</div>
+   Ornaments overhang: never put overflow:hidden / contain:paint on a frame.
+   =================================================================== */
+.cf-frame {
+  --ch: calc(12 * var(--u));
+  --bw: max(2px, round(calc(3 * var(--u)), 1px));
+  --os: round(calc(26 * var(--u)), 1px);     /* corner ornament box */
+  --oo: round(calc(5 * var(--u)), 1px);      /* overhang */
+  --cw: round(calc(44 * var(--u)), 2px);     /* crown point */
+  --chh: round(calc(18 * var(--u)), 1px);
+  position: relative;
+  isolation: isolate;
+  border: var(--bw) solid transparent;
+  border-radius: var(--ch);
+  corner-shape: bevel;
+  background: var(--iron-grad) padding-box, var(--metal-grad) border-box;
+  outline: 1px solid rgb(236 217 166 / .16);
+  outline-offset: calc(-1 * var(--bw) - 3px);
+  box-shadow:
+    0 0 0 1px var(--cf-void),
+    inset 1px 1px 0 rgb(236 217 166 / .25),
+    0 calc(6 * var(--u)) calc(18 * var(--u)) rgb(6 4 10 / .45);
+  color: var(--cf-text);
+  --orn-mask:
+    var(--orn-tl) left top / var(--os) var(--os) no-repeat,
+    var(--orn-tr) right top / var(--os) var(--os) no-repeat,
+    var(--orn-bl) left bottom / var(--os) var(--os) no-repeat,
+    var(--orn-br) right bottom / var(--os) var(--os) no-repeat;
+}
+.cf-frame.crown {
+  --orn-mask:
+    var(--orn-tl) left top / var(--os) var(--os) no-repeat,
+    var(--orn-tr) right top / var(--os) var(--os) no-repeat,
+    var(--orn-bl) left bottom / var(--os) var(--os) no-repeat,
+    var(--orn-br) right bottom / var(--os) var(--os) no-repeat,
+    var(--orn-crown) center top / var(--cw) var(--chh) no-repeat;
+}
+.cf-frame::before,
+.cf-frame::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * (var(--bw) + var(--oo)));
+  pointer-events: none;
+  -webkit-mask: var(--orn-mask);
+          mask: var(--orn-mask);
+}
+.cf-frame.crown::before, .cf-frame.crown::after { top: calc(-1 * (var(--bw) + var(--chh) - 2px)); }
+.cf-frame::before { background: var(--cf-void); translate: 1px 1px; z-index: 1; }   /* engraved shadow */
+.cf-frame::after  { background: var(--gilt-grad); z-index: 2; }
+.cf-frame > * { position: relative; z-index: 3; }
+
+/* ===================================================================
+   SOCKET  (octagonal bronze bezel over rift enamel; holds an icon)
+   <div class="cf-socket" data-el="fire"><svg class="ico">...</svg></div>
+   --sz: outer size. .round = auto-skill gem socket. .empty = no skill.
+   .lit = bezel in the element colours (ready / selected).
+   =================================================================== */
+.cf-socket {
+  --sz: calc(64 * var(--u));
+  --bw: max(2px, round(calc(3 * var(--u)), 1px));
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: round(var(--sz), 2px);
+  height: round(var(--sz), 2px);
+  border: var(--bw) solid transparent;
+  border-radius: 28%;
+  corner-shape: bevel;
+  background:
+    radial-gradient(circle at 50% 55%, color-mix(in oklab, var(--el, var(--cf-enamel-hi)) 22%, transparent), transparent 70%) padding-box,
+    linear-gradient(160deg, var(--cf-enamel) 0 45%, #1f1a3e 45%) padding-box,
+    var(--metal-grad) border-box;
+  box-shadow: 0 0 0 1px var(--cf-void), inset 0 0 0 1px rgb(0 0 0 / .35);
+}
+.cf-socket > .ico { width: round(calc(var(--sz) * .64), 1px); height: round(calc(var(--sz) * .64), 1px); }
+.cf-socket.round { border-radius: 50%; corner-shape: round; }
+.cf-socket.empty { background: linear-gradient(160deg, #221d40 0 45%, #1a1633 45%) padding-box, var(--metal-grad) border-box; }
+.cf-socket.empty::after { content: ""; width: 26%; height: 26%; border: 1px dashed rgb(200 168 116 / .45); border-radius: 28%; corner-shape: bevel; }
+.cf-socket.lit {
+  background:
+    radial-gradient(circle at 50% 55%, color-mix(in oklab, var(--el, var(--cf-enamel-hi)) 34%, transparent), transparent 72%) padding-box,
+    linear-gradient(160deg, var(--cf-enamel) 0 45%, #1f1a3e 45%) padding-box,
+    linear-gradient(160deg, var(--el-hi, var(--cf-gilt)) 0 30%, var(--el, var(--cf-bronze)) 30% 62%, var(--el-lo, var(--cf-bronze-lo)) 62%) border-box;
+}
+
+/* ===================================================================
+   BAR  (enamel trough; fill / ghost / shield via transform; finial caps)
+   <div class="cf-bar capped" style="--fill:var(--hp)">
+     <div class="cf-bar-track"><i class="cf-bar-ghost"></i><i class="cf-bar-fill"></i>
+       <i class="cf-bar-shield"></i><i class="cf-bar-ticks" style="--n:4"></i></div>
+     <span class="cf-bar-num num">112</span></div>
+   Drive with transform: scaleX(p) on fill / ghost; shield: translateX(hp*100%) scaleX(sh).
+   Never write width per frame.
+   =================================================================== */
+.cf-bar {
+  --h: round(calc(16 * var(--u)), 2px);
+  --cap: round(calc(10 * var(--u)), 1px);
+  position: relative;
+  height: var(--h);
+}
+.cf-bar.capped { margin-inline: var(--cap); }
+.cf-bar.capped::before, .cf-bar.capped::after {
+  content: ""; position: absolute; top: 50%; width: var(--cap); height: calc(var(--h) + 8 * var(--u));
+  translate: 0 -50%; background: var(--metal-grad); z-index: 4; pointer-events: none;
+}
+.cf-bar.capped::before { right: calc(100% - 1px); -webkit-mask: var(--orn-cap-l) center / 100% 100% no-repeat; mask: var(--orn-cap-l) center / 100% 100% no-repeat; }
+.cf-bar.capped::after  { left: calc(100% - 1px);  -webkit-mask: var(--orn-cap-r) center / 100% 100% no-repeat; mask: var(--orn-cap-r) center / 100% 100% no-repeat; }
+.cf-bar-track {
+  position: absolute; inset: 0; overflow: clip;
+  border: 1px solid var(--cf-bronze-lo);
+  background: linear-gradient(180deg, #0f0c18, #1a1530);
+  box-shadow: 0 0 0 1px var(--cf-void), inset 0 2px 4px rgb(0 0 0 / .6);
+}
+.cf-bar-track > i { position: absolute; inset: 0; transform-origin: 0 50%; }
+.cf-bar-ghost  { background: var(--hp-chip); opacity: .85; will-change: transform; transform: scaleX(0); }
+.cf-bar-fill   { will-change: transform; transform: scaleX(1);
+  background: linear-gradient(180deg, rgb(255 255 255 / .32) 0 18%, transparent 18% 58%, rgb(0 0 0 / .22) 58%), var(--fill, var(--hp)); }
+.cf-bar-shield { will-change: transform; transform: scaleX(0);
+  background: repeating-linear-gradient(135deg, rgb(255 255 255 / .55) 0 2px, transparent 2px 5px), var(--shield); opacity: .92; }
+.cf-bar-ticks  { background: linear-gradient(90deg, transparent calc(100% - 2px), rgb(12 10 18 / .55) 0) 0 0 / calc(100% / var(--n, 4)) 100% repeat-x; }
+.cf-bar-num {
+  position: absolute; inset: 0; display: grid; place-items: center; z-index: 3;
+  font-size: calc(14 * var(--u)); line-height: 1; color: #fff8ec;
+  -webkit-text-stroke: 3px var(--cf-void); paint-order: stroke fill;
+}
+
+/* ===================================================================
+   BUTTONS
+   .cf-btn (iron, bronze bezel, gilt text) · .primary (forged bronze face)
+   .danger (armed / destructive) · :disabled built in
+   =================================================================== */
+.cf-btn {
+  --ch: calc(6 * var(--u));
+  display: inline-flex; align-items: center; justify-content: center; gap: calc(8 * var(--u));
+  min-height: calc(42 * var(--u));
+  padding: 0 calc(20 * var(--u));
+  border: max(1px, round(calc(2 * var(--u)), 1px)) solid transparent;
+  border-radius: var(--ch); corner-shape: bevel;
+  background: var(--iron-grad) padding-box, var(--metal-grad) border-box;
+  box-shadow: 0 0 0 1px var(--cf-void), inset 1px 1px 0 rgb(236 217 166 / .2);
+  color: var(--cf-gilt);
+  font: 700 calc(20 * var(--u)) / 1 var(--font-head);
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: transform .12s var(--ease-forge);
+  pointer-events: auto;
+}
+.cf-btn:hover:not(:disabled) { background: var(--iron-grad-hi) padding-box, var(--gilt-grad) border-box; color: #fff4d2; transform: translateY(-1px); }
+.cf-btn:active:not(:disabled) { transform: translateY(1px); }
+.cf-btn:focus-visible { outline: 2px solid var(--cf-gilt); outline-offset: 3px; }
+.cf-btn:disabled { color: var(--cf-faint); cursor: default; filter: saturate(.3) brightness(.8); }
+.cf-btn.primary {
+  background: linear-gradient(160deg, #ead2a0 0 34%, var(--cf-bronze-hi) 34% 66%, #a8854f 66%) padding-box,
+              linear-gradient(160deg, #fff4d2, var(--cf-bronze-lo)) border-box;
+  color: var(--cf-void);
+  box-shadow: 0 0 0 1px var(--cf-void), inset 1px 1px 0 rgb(255 255 255 / .5), 0 calc(3 * var(--u)) 0 var(--cf-bronze-lo);
+}
+.cf-btn.primary:hover:not(:disabled) {
+  background: linear-gradient(160deg, #f6e2b8 0 34%, #dcbd86 34% 66%, #b8955d 66%) padding-box,
+              linear-gradient(160deg, #fff, var(--cf-bronze)) border-box;
+  color: var(--cf-void);
+}
+.cf-btn.danger {
+  background: linear-gradient(160deg, #5a1c26 0 38%, #3d121b 38%) padding-box, linear-gradient(160deg, #ff8a6a, var(--risk)) border-box;
+  color: #ffe0d6;
+}
+
+/* ===================================================================
+   SMALL PARTS
+   =================================================================== */
+/* key cap: small bronze tab with void glyphs (text is lowercase; the SC face makes caps) */
+.cf-key {
+  display: inline-grid; place-items: center;
+  min-width: calc(20 * var(--u)); height: calc(18 * var(--u));
+  padding: 0 calc(4 * var(--u));
+  border-radius: calc(3 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(160deg, var(--cf-bronze-hi) 0 45%, var(--cf-bronze) 45%);
+  box-shadow: 0 0 0 1px var(--cf-void);
+  color: var(--cf-void);
+  font: 800 calc(14 * var(--u)) / 1 var(--font-label);
+  letter-spacing: .03em;
+  text-transform: lowercase;
+}
+/* pips: rhombus marks; .on lit in --pip (default gilt); .new = the pip being gained */
+.cf-pips { display: inline-flex; gap: calc(4 * var(--u)); align-items: center; }
+.cf-pips > i {
+  width: calc(8 * var(--u)); height: calc(8 * var(--u));
+  rotate: 45deg; background: #2a2440; box-shadow: 0 0 0 1px var(--cf-void);
+}
+.cf-pips > i.on { background: linear-gradient(135deg, #fff 0 22%, var(--pip, var(--cf-gilt)) 22%); }
+.cf-pips > i.new { background: #fff; box-shadow: 0 0 0 1px var(--cf-void), 0 0 calc(6 * var(--u)) var(--pip, var(--cf-gilt)); }
+
+/* type roles */
+.cf-label { font: 700 calc(15 * var(--u)) / 1.1 var(--font-label); letter-spacing: .05em; text-transform: lowercase; color: var(--cf-dim); }
+.cf-h     { font: 700 calc(26 * var(--u)) / 1.05 var(--font-head); letter-spacing: .01em; color: var(--cf-text); }
+.cf-hero  { font: 700 calc(64 * var(--u)) / 1 var(--font-hero); color: var(--cf-text); }
+.cf-body  { font: 500 calc(18 * var(--u)) / 1.3 var(--font-body); color: var(--cf-text); }
+.cf-dim   { color: var(--cf-dim); }
+.cf-hl    { color: var(--el, var(--cf-gilt)); font-weight: 800; }   /* key number inside effect text */
+
+/* divider with a central lozenge */
+.cf-rule { display: flex; align-items: center; gap: calc(8 * var(--u)); }
+.cf-rule::before, .cf-rule::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--cf-bronze) 30%, var(--cf-bronze) 70%, transparent); }
+.cf-rule > i { width: calc(7 * var(--u)); height: calc(7 * var(--u)); rotate: 45deg; background: var(--cf-gilt); box-shadow: 0 0 0 1px var(--cf-void); }
+
+/* prism crack: four-Prime hairline. Reserved for fusions, Aurelith, Rift Shift, victory */
+.cf-prism { height: max(2px, round(calc(2 * var(--u)), 1px)); background: var(--prism); box-shadow: 0 0 0 1px var(--cf-void), 0 0 calc(8 * var(--u)) rgb(239 233 255 / .45); }
+
+/* tooltip */
+.cf-tip {
+  position: absolute; z-index: 50; pointer-events: none;
+  max-width: calc(320 * var(--u));
+  padding: calc(10 * var(--u)) calc(12 * var(--u));
+  border: 1px solid var(--cf-bronze);
+  border-radius: calc(5 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(160deg, #241e30 0 30%, #17131f 30%);
+  box-shadow: 0 0 0 1px var(--cf-void), 0 calc(6 * var(--u)) calc(16 * var(--u)) rgb(0 0 0 / .5);
+  font: 500 calc(16 * var(--u)) / 1.3 var(--font-body);
+  color: var(--cf-text);
+}
+
+/* modal backdrop: vignette, no backdrop-filter over the live canvas */
+.cf-backdrop {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, rgb(12 10 18 / .5), rgb(12 10 18 / .86) 78%);
+}

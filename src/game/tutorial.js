@@ -319,7 +319,7 @@ export class Tutorial {
 
   _build(root) {
     root.insertAdjacentHTML('beforeend', `
-      <div class="tut" data-ref="tut">
+      <div class="tut cf-plate" data-ref="tut">
         <div class="tut-head">
           <span class="tut-kicker" data-ref="kicker"></span>
           <span class="tut-steps" data-ref="steps"><i></i><i></i><i></i><i></i><i></i></span>
@@ -327,11 +327,11 @@ export class Tutorial {
         <div class="tut-text" data-ref="text"></div>
         <div class="tut-sub" data-ref="sub"></div>
         <div class="tut-foot">
-          <span class="tut-prog" data-ref="prog"></span>
+          <span class="tut-prog num" data-ref="prog"></span>
           <button type="button" class="tut-skip" data-ref="skip">Skip tutorial</button>
         </div>
       </div>
-      <div class="tut-tip" data-ref="tip">
+      <div class="tut-tip cf-plate" data-ref="tip">
         <div class="tut-kicker">TIP</div>
         <div class="tut-text" data-ref="tipText"></div>
         <div class="tut-sub" data-ref="tipSub"></div>

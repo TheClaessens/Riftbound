@@ -275,7 +275,7 @@ export class Player {
     game.slowmo(0.35, 0.3);
     game.hitStop(0.09);
     game.engine.pulse?.('perfect');
-    game.fx.text({ x: this.pos.x, y: 1.2, z: this.pos.z }, 'PERFECT', '#9dffb0', true);
+    // the HUD stamps PERFECT above the character (hud-fx.js); no world text here
     game.fx.ring(this.pos, { color: 0x9dffb0, radius: 3.5, life: 0.4 });
     game.fx.burst(this.pos, { color: 0x9dffb0, count: 20, speed: 6, life: 0.5, size: 0.35, up: 1 });
     game.events.emit('perfectDodge', { source });

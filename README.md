@@ -26,11 +26,13 @@ Then open http://localhost:8080. To play every class at any Rift Tier, tick **Un
 | Wheel | Zoom |
 | Esc / P | Pause, build and Codex |
 | M | Mute |
+| 1–3 / F / X | Level-up: pick a card / reroll / banish |
 
 ## Docs
 * [DESIGN.md](DESIGN.md): the locked v1.0 game design spec
 * [design/PASSES.md](design/PASSES.md): the 10 design passes that produced it
 * [ARCHITECTURE.md](ARCHITECTURE.md): module contracts
+* [design/UI.md](design/UI.md): the v3 "Crownforge" UI spec (tokens, primitives, icons, screens); [design/UI_PASSES.md](design/UI_PASSES.md): the UI design passes
 
 ## Balance simulation
 From the browser console:
@@ -46,3 +48,9 @@ await runSim({ classId: 'cryomancer', seconds: 700 });
 * **Look**: Neutral tone mapping, peak-channel bloom (only real HDR glows), blend-add VFX tuned for bright ground.
 * Creature viewer: http://localhost:8080/dev/creatures.html?set=greenskins&zoom=2 (sets: greenskins, warband, wyrmkin, bossModels).
 * Research behind it: `design/research/01–04`. The v1.0 (dark) build is archived in `backup/riftbound-v1.0.zip`.
+
+## UI (v3 "Crownforge")
+* The UI is the reliquary of the shattered Riftcrown: chamfered rift-iron plates, crown-bronze bezels, the four Primes as gems, a prism crack for crown moments. Fonts: Grenze Gotisch / Grenze / Alegreya Sans (SC).
+* ~95 hand-authored SVG icons in one sprite (`src/ui/icons/`), no emoji. Gallery: http://localhost:8080/dev/icons.html?filter=relic- · primitives: http://localhost:8080/dev/ui-kit.html
+* UI harness (console): `const U = await import('/src/dev/uishots.js'); await U.hud({ act: 2, boss: true, chain: 30 }); U.levelUp(); U.relicPick(4); U.pause('codex'); U.title(); U.victory();`
+* Research behind it: `design/research/05–07`. The v2.1 UI is archived in `backup/riftbound-v2.1-preui.zip`.

@@ -1,0 +1,9 @@
+{
+  "name": "riftbound",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Isometric horde-survival action RPG built with Three.js",
+  "scripts": {
+    "start": "node serve.js"
+  }
+}

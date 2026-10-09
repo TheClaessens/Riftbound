@@ -1,6 +1,11 @@
 import { Engine } from './core/engine.js';
 import { Input } from './core/input.js';
 import { Game } from './game/game.js';
+import { installUiScale } from './ui/scale.js';
+import { ensureIcons } from './ui/icons/index.js';
+
+installUiScale();   // 1rem snapped to device pixels (css/theme.css authors in --u)
+ensureIcons();      // inject the Crownforge icon sprite once
 
 const engine = new Engine(document.getElementById('game'));
 const input = new Input(engine.canvas, engine.camera);

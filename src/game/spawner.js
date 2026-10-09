@@ -28,6 +28,12 @@ const BOSS_SUB = {
   riftHeart: 'Its scales drink the elements. Strike with what it is not wearing.',
 };
 
+// Beat schedule for the HUD act timeline (seconds into the act; the boss arrives at ACT_LENGTH).
+export const BEATS = [
+  { id: 'surge', at: SURGE_AT, name: 'Elite Surge' },
+  { id: 'swarm', at: SWARM_AT, name: 'Swarm' },
+];
+
 function freshBeats() {
   return { surge: false, swarm: false, boss: false };
 }
@@ -151,7 +157,7 @@ export class Spawner {
       }
       g.addEnemy(e);
     }
-    g.events.emit('announce', { text: 'ELITE SURGE', sub: 'Slay the Relic Bearer', color: '#ffc340' });
+    g.events.emit('announce', { kind: 'surge', text: 'ELITE SURGE', sub: 'Slay the Relic Bearer', color: '#ffc340' });
   }
 
   // A ring of swarmers around the player.
@@ -166,7 +172,7 @@ export class Spawner {
       g.world.collide(p, 0.5);
       g.addEnemy(createEnemy(g, def.swarmer, p, this._opts(act, t, def.swarmer, false)));
     }
-    g.events.emit('announce', { text: 'SWARM', sub: 'They come from all sides', color: '#ff9d3d' });
+    g.events.emit('announce', { kind: 'swarm', text: 'SWARM', sub: 'They come from all sides', color: '#ff9d3d' });
   }
 
   _spawnBoss(act) {
@@ -183,6 +189,7 @@ export class Spawner {
     g.boss = boss;
     g.events.emit('bossSpawned', { enemy: boss, final });
     g.events.emit('announce', {
+      kind: 'boss',
       text: def.bossName.toUpperCase(),
       sub: final ? 'Shatter the Heart to seal the Rift' : BOSS_SUB[def.boss],
       color: final ? '#ff4d5e' : def.color,
@@ -195,6 +202,6 @@ export class Spawner {
     g.boss = null;
     g.events.emit('bossKilled', { enemy, final: !!enemy.final });
     // The final boss ends the run; the game shows victory instead.
-    if (!enemy.final) g.events.emit('announce', { text: `${enemy.name.toUpperCase()} FALLS`, color: '#ffc340' });
+    if (!enemy.final) g.events.emit('announce', { kind: 'bossDown', text: `${enemy.name.toUpperCase()} FALLS`, color: '#ffc340' });
   }
 }

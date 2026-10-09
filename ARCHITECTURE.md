@@ -47,8 +47,12 @@ src/game/env/biomes/{forest,barrens,river}.js + props_*.js  the three biome defi
 src/dev/sim.js, src/dev/viewer.js, dev/creatures.html        balance sim, snap(), creature viewer (dev)
 src/game/audio.js                 procedural SFX + music                                      (audio)
 src/game/skills/*.js              skills; registry.js (core)
-src/ui/ui.js + css/ui.css         HUD, level-up, relic pick, pause/codex, banners             (ui-hud)
-src/ui/menus.js + css/menus.css   title, class select, sanctum, game over / victory          (ui-menus)
+css/theme.css, src/ui/scale.js    Crownforge tokens + primitives (.cf-plate/-frame/-socket/-bar/-btn…), root unit   (ui-core)
+src/ui/icons/index.js + set-*.js  SVG icon sprite: icon(id), ICON.*; sets: skills, relics, react, misc           (ui-icons)
+src/ui/hud.js, hud-fx.js, hud-util.js + css/hud.css   in-run HUD, event overlays, cached DOM setters + Meter (ui-hud)
+src/ui/ui.js + css/modals.css     UI orchestrator; level-up, relic chest, pause (build/codex)  (ui-modals)
+src/ui/menus.js + css/menus.css   title / Sanctum, game over / victory                        (ui-menus)
+src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, primitives page  (dev)
 ```
 
 ## The `game` object
@@ -221,7 +225,8 @@ Biomes are data: see the header of `src/game/env/biome.js` (palette, atmos, env 
 ## Engine (`src/core/engine.js`)
 `setAtmosphere({ background, hemiSky, hemiGround, hemiIntensity, moon (= the sun), moonIntensity, grade }, seconds)`, `setGrade({ tint:[r,g,b], saturation, contrast, vignette }, seconds)`, `pulse('hit'|'perfect'|'shift')`, `skyFlash(k)` (lightning sky boost), `update(dt, game)`, `shake(a, kind)` (two channels; `shakeScale` is the player setting), `follow(...)` (also moves the sun and its texel-snapped, zoom-sized shadow frustum), `render()`.
 
-## UI contract (`src/ui/ui.js`, which owns a `Menus` from `src/ui/menus.js`)
+## UI contract (`src/ui/ui.js`, which owns a `HUD` from `src/ui/hud.js` and a `Menus` from `src/ui/menus.js`)
+The look ("Crownforge"), scale unit, primitives, icon ids and per-screen specs are in **`design/UI.md`**. Boot (`src/main.js`) calls `installUiScale()` (1rem = 12/15/20 px at 720p/1080p/1440p, author sizes as `calc(N * var(--u))`) and `ensureIcons()` (injects the sprite). Never use emoji/unicode glyphs as UI icons: `icon(ICON.skill(id), { el, fallback })`. Data hooks for the HUD: `BEATS` (spawner.js), `WARD_CYCLE` (bosses.js), `announce` events carry `kind` (`surge`, `swarm`, `boss`, `bossDown`).
 ```js
 class UI {
   constructor(game)

@@ -1,8 +1,12 @@
 // =====================================================================================
-//  Out-of-run menus: the title / Sanctum (class select, rift tier, attunements, codex,
-//  run record) and the end screens (death / victory). UI owns one Menus instance and
-//  delegates showTitle / hideTitle / showGameOver / showVictory / hideEnd to it.
-//  All DOM is appended to root (#ui); root itself is never cleared.
+//  Out-of-run menus, Crownforge style (design/UI.md §8).
+//    · Title / Sanctum: the reliquary of the shattered Riftcrown, laid over the live world.
+//      Wordmark, 4 class medallions + one details panel, the Rift Tier gate with Begin Quest,
+//      six attunement stones, shard counter, codex tome, settings (gear) and controls (?).
+//    · End screens: Fallen / Victory with a shard count-up, an engraved ledger, reactions as
+//      element-gem pairs, fusions and relics as icons, unlock callouts.
+//  UI owns one Menus instance and delegates showTitle / hideTitle / showGameOver / showVictory
+//  / hideEnd to it. All DOM is appended to root (#ui); root itself is never cleared.
 // =====================================================================================
 import { CLASSES, CLASS_ORDER } from '../game/classes.js';
 import { ATTUNEMENTS, attuneCost, buyAttunement, isUnlocked, maxTierOf, saveMeta, MAX_TIER } from '../game/meta.js';
@@ -10,14 +14,17 @@ import { ACTS } from '../game/acts.js';
 import { REACTIONS } from '../game/combat.js';
 import { SKILLS, FUSIONS } from '../game/skills/registry.js';
 import { RELICS, RELIC_IDS, RELIC_TAG_COLOR } from '../game/relics.js';
+import { icon, hasIcon, ICON } from './icons/index.js';
 
 const GLYPH = { arcanist: '✦', pyromancer: '🜂', cryomancer: '❅', stormcaller: 'ϟ' };
-const TIER_STEP = { hp: 30, dmg: 12, shards: 25 };   // per Rift Tier, in percent
-const MAX_TIER_UI = MAX_TIER;
-const NONE_HTML = '<span class="menu-none">None</span>';
+const DASH_GLYPH = { blink: '✧', flame: '➶', frost: '❄', storm: 'ϟ' };
+const TIER_STEP = { hp: 30, dmg: 12, shards: 25 };   // per Rift Tier, in percent (acts.js / meta.js)
+const DASH_KEY = 'space';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
+
+const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 function make(tag, cls, html) {
   const el = document.createElement(tag);
@@ -31,13 +38,37 @@ function mmss(t) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-const tagHTML = (color, label, count) =>
-  `<span class="menu-tag" style="--c:${color}">${esc(label)}${count != null ? ` <span class="menu-tag-n">${esc(count)}</span>` : ''}</span>`;
+const fmt = (n) => Number(n ?? 0).toLocaleString('en-US');
+
+// "STEAM BURST" -> "Steam Burst"
+const titleCase = (s) => String(s ?? '').toLowerCase().replace(/(^|[\s-])(\S)/g, (m, a, b) => a + b.toUpperCase());
+
+// Wrap signed numbers ("+10%", "−10") in highlight spans.
+const hlNums = (s) => esc(s).replace(/([+−-]\d+%?)/g, '<b class="cf-hl">$1</b>');
 
 function relicByName(name) {
   for (const def of Object.values(RELICS)) if (def.name === name) return def;
   return null;
 }
+
+function fusionByName(name) {
+  return FUSIONS.find((f) => f.def?.name === name)?.def ?? null;
+}
+
+// "+4% damage per rank" -> { sign, n, pct, what }
+function parseAttune(def) {
+  const m = /^([+−-])(\d+)(%?)\s+(.*?)\s+per rank$/.exec(def.desc ?? '');
+  return m ? { sign: m[1], n: Number(m[2]), pct: m[3], what: m[4] } : null;
+}
+function attuneAmount(p, r) {
+  if (!p) return '';
+  const n = p.n * r;
+  let what = p.what;
+  if (n !== 1 && !p.pct) what = what.replace(/reroll$/, 'rerolls').replace(/banish$/, 'banishes');
+  return `${p.sign}${n}${p.pct} ${what}`;
+}
+
+const ui = (name, fallback, cls = '') => icon(ICON.ui(name), { fallback, cls });
 
 export class Menus {
   constructor(game, root) {
@@ -49,17 +80,36 @@ export class Menus {
     this.endOpen = false;
     this.endStats = null;
     this.refs = {};
+    this.pop = null;
+    this._justBought = null;
+    this._raf = [];
 
-    this.titleEl = make('div', 'menu-screen menu-title');
-    this.endEl = make('div', 'menu-screen menu-end');
+    this.titleEl = make('div', 'mn-screen mn-title');
+    this.endEl = make('div', 'mn-screen mn-end');
+    this.titleEl.setAttribute('role', 'dialog');
+    this.titleEl.setAttribute('aria-label', 'Riftbound: the Sanctum');
+    this.endEl.setAttribute('role', 'dialog');
     this.root.append(this.titleEl, this.endEl);
 
     this._buildTitle();
     this.titleEl.addEventListener('click', (e) => this._onTitleClick(e));
     this.titleEl.addEventListener('change', (e) => this._onTitleChange(e));
+    this.titleEl.addEventListener('pointerover', (e) => this._onAttHover(e));
+    this.titleEl.addEventListener('focusin', (e) => this._onAttHover(e));
+    this.refs.attunes.addEventListener('pointerleave', () => this._attInfo(null));
+    this.refs.attunes.addEventListener('focusout', (e) => { if (!this.refs.attunes.contains(e.relatedTarget)) this._attInfo(null); });
     this.endEl.addEventListener('click', (e) => this._onEndClick(e));
     // One window listener; it only acts while the title or an end screen is open.
     window.addEventListener('keydown', (e) => this._onKey(e));
+    window.addEventListener('pointerdown', (e) => {
+      if (this.pop && !e.target?.closest?.('.mn-pop, [data-act="pop"]')) this._setPop(null);
+    });
+
+    // Gate the wordmark on the display faces (≤ 1.5 s) so it never flashes in a fallback font.
+    const fonts = document.fonts?.load
+      ? Promise.all([document.fonts.load('700 64px "Grenze Gotisch"'), document.fonts.load('700 26px "Grenze"')]).catch(() => {})
+      : Promise.resolve();
+    Promise.race([fonts, new Promise((r) => setTimeout(r, 1500))]).then(() => this.titleEl.classList.add('mn-fonts'));
   }
 
   // ---------------------------------------------------------------- public API
@@ -69,16 +119,16 @@ export class Menus {
     const last = meta?.lastClass;
     this.selClass = this._unlocked(last) ? last : this._firstUnlocked();
     this.selTier = Math.max(0, Math.min(meta?.lastTier ?? 0, maxTierOf(meta)));
-    this._intro = true;
+    this._setPop(null);
     this._renderTitle();
-    this._intro = false;
-    this.titleEl.classList.add('menu-open');
+    this.titleEl.classList.add('mn-open');
     this.titleOpen = true;
   }
 
   hideTitle() {
     this.titleOpen = false;
-    this.titleEl.classList.remove('menu-open');
+    this._setPop(null);
+    this.titleEl.classList.remove('mn-open');
   }
 
   showGameOver(stats) { this._showEnd(stats, false); }
@@ -87,7 +137,8 @@ export class Menus {
 
   hideEnd() {
     this.endOpen = false;
-    this.endEl.classList.remove('menu-open');
+    this._stopCounts();
+    this.endEl.classList.remove('mn-open');
   }
 
   // ---------------------------------------------------------------- title skeleton
@@ -95,56 +146,84 @@ export class Menus {
     // "Aurelith, the Prism Dragon" -> "the Prism Dragon"
     const finalFoe = (ACTS[ACTS.length - 1]?.bossName ?? '').split(', ')[1] ?? 'the final boss';
     this.titleEl.innerHTML = `
-      <div class="menu-wrap">
-        <header class="menu-head">
-          <div class="menu-brand">
-            <div class="menu-logo">RIFTBOUND</div>
-            <div class="menu-tagline">Cross the Rifts. Weave the elements. Slay ${finalFoe}.</div>
+      <div class="mn-shade" aria-hidden="true"></div>
+
+      <header class="mn-brand">
+        <h1 class="mn-mark"><span class="mn-mark-ink" aria-hidden="true">Riftbound</span><span class="mn-mark-face">Riftbound</span></h1>
+        <div class="mn-mark-rule" aria-hidden="true"><i></i><span class="cf-prism"></span><i></i></div>
+        <p class="mn-tagline">cross the rifts · weave the primes · slay ${esc(finalFoe.toLowerCase())}</p>
+      </header>
+
+      <section class="mn-col mn-who" aria-label="Choose your Riftbound">
+        <div class="mn-sec-head">
+          <span class="mn-sec-title">Choose your Riftbound</span>
+          <span class="mn-sec-keys"><span class="cf-key">1</span>&ndash;<span class="cf-key">4</span></span>
+        </div>
+        <div class="mn-medals" data-ref="classes" role="radiogroup" aria-label="Class"></div>
+        <article class="cf-frame crown mn-detail" data-ref="detail" aria-live="polite"></article>
+      </section>
+
+      <section class="mn-gate" aria-label="Begin">
+        <div class="mn-tier" data-ref="tier" hidden></div>
+        <button type="button" class="cf-btn primary mn-begin" data-act="begin" data-ref="begin">
+          <span class="mn-begin-cls" data-ref="beginCls" aria-hidden="true"></span><span class="mn-begin-txt">Begin Quest</span><span class="cf-key">enter</span>
+        </button>
+      </section>
+
+      <section class="cf-frame mn-col mn-sanctum" aria-label="The Sanctum">
+        <div class="mn-sanc-head">
+          <span class="mn-sanc-title">The Sanctum</span>
+          <span class="cf-label">attunements · kept forever</span>
+        </div>
+        <div class="mn-attunes" data-ref="attunes"></div>
+        <div class="mn-att-info" data-ref="attInfo"></div>
+      </section>
+
+      <nav class="mn-bar" aria-label="Sanctum tools">
+        <div class="mn-shards" data-ref="shards" title="Rift Shards: earned every run, spent on attunements"></div>
+        <button type="button" class="mn-tome" data-act="pop" data-id="tome" data-ref="tome" aria-haspopup="dialog" aria-expanded="false"></button>
+        <button type="button" class="mn-tool" data-act="pop" data-id="settings" aria-haspopup="dialog" aria-expanded="false" title="Settings">${ui('gear', '✲')}</button>
+        <button type="button" class="mn-tool" data-act="pop" data-id="help" aria-haspopup="dialog" aria-expanded="false" title="Controls">${ui('help', '?')}</button>
+
+        <div class="cf-plate mn-pop mn-pop-tome" data-pop="tome" data-ref="tomePop" hidden></div>
+
+        <div class="cf-plate mn-pop mn-pop-settings" data-pop="settings" hidden>
+          <div class="mn-pop-title">Settings</div>
+          <label class="mn-toggle">
+            <input type="checkbox" data-ref="unlockAll"><i aria-hidden="true"></i>
+            <span><b>Unlock all</b><small>Any class at any Rift Tier. Earned unlocks are kept.</small></span>
+          </label>
+          <label class="mn-toggle">
+            <input type="checkbox" data-ref="auto"><i aria-hidden="true"></i>
+            <span><b>Auto-cast</b><small>Skills fire at the nearest foe. Toggle in a run with <span class="cf-key">t</span></small></span>
+          </label>
+          <label class="mn-toggle">
+            <input type="checkbox" data-ref="tutorial"><i aria-hidden="true"></i>
+            <span><b>Rift Primer</b><small>Play the short guided start in your next run.</small></span>
+          </label>
+          <div class="mn-seg-row">
+            <span><b>Screen shake</b><small>Your own spells always shake less.</small></span>
+            <div class="mn-seg" role="radiogroup" aria-label="Screen shake" data-ref="shake">
+              <label><input type="radio" name="mn-shake" value="1"><span>Full</span></label>
+              <label><input type="radio" name="mn-shake" value="0.5"><span>Low</span></label>
+              <label><input type="radio" name="mn-shake" value="0"><span>Off</span></label>
+            </div>
           </div>
-          <div class="menu-shards" data-ref="shards"></div>
-        </header>
-        <main class="menu-body">
-          <section class="menu-select">
-            <h2 class="menu-h">Choose your Riftbound <span class="menu-hint">keys 1&ndash;4</span></h2>
-            <div class="menu-classes" data-ref="classes"></div>
-            <div class="menu-tier" data-ref="tier" hidden></div>
-          </section>
-          <aside class="menu-sanctum">
-            <h2 class="menu-h">The Sanctum</h2>
-            <div class="menu-attunes" data-ref="attunes"></div>
-            <div class="menu-codex" data-ref="codex"></div>
-          </aside>
-        </main>
-        <footer class="menu-foot">
-          <div class="menu-controls">
-            <kbd>WASD</kbd> move &middot; <kbd>Mouse</kbd> aim &middot; <kbd>LMB</kbd>/<kbd>RMB</kbd>/<kbd>Q</kbd>/<kbd>E</kbd>/<kbd>R</kbd> cast &middot;
-            <kbd>SPACE</kbd> dash &middot; <kbd>T</kbd> auto-cast &middot; <kbd>Esc</kbd> pause
-          </div>
-          <div class="menu-actions">
-            <label class="menu-check" title="Play any class at any Rift Tier. Your earned unlocks are kept.">
-              <input type="checkbox" data-ref="unlockAll">
-              <span>Unlock all</span>
-            </label>
-            <label class="menu-check">
-              <input type="checkbox" data-ref="auto">
-              <span>Auto-cast</span>
-            </label>
-            <label class="menu-check" title="Play the Rift Primer (a short guided start) in your next run.">
-              <input type="checkbox" data-ref="tutorial">
-              <span>Tutorial</span>
-            </label>
-            <label class="menu-check menu-select-row" title="Screen shake. Your own spells always shake less than enemy hits.">
-              <span>Shake</span>
-              <select data-ref="shake">
-                <option value="1">Full</option>
-                <option value="0.5">Reduced</option>
-                <option value="0">Off</option>
-              </select>
-            </label>
-            <button type="button" class="menu-begin" data-act="begin">Begin Quest</button>
-          </div>
-        </footer>
-      </div>`;
+        </div>
+
+        <div class="cf-plate mn-pop mn-pop-help" data-pop="help" hidden>
+          <div class="mn-pop-title">Controls</div>
+          <dl class="mn-keys">
+            <dt><span class="cf-key">w</span><span class="cf-key">a</span><span class="cf-key">s</span><span class="cf-key">d</span></dt><dd>Move</dd>
+            <dt>${ui('mouse-l', '◐', 'mn-mouse')}</dt><dd>Aim and cast your starter</dd>
+            <dt>${ui('mouse-r', '◑', 'mn-mouse')}<span class="cf-key">q</span><span class="cf-key">e</span><span class="cf-key">r</span></dt><dd>Cast learned skills</dd>
+            <dt><span class="cf-key">space</span></dt><dd>Dash through danger</dd>
+            <dt><span class="cf-key">t</span></dt><dd>Toggle auto-cast</dd>
+            <dt><span class="cf-key">esc</span></dt><dd>Pause, build and codex</dd>
+          </dl>
+          <p class="mn-pop-note">Strike one Prime onto another to cause a <b>reaction</b>. Chain reactions to grow your power.</p>
+        </div>
+      </nav>`;
     this.titleEl.querySelectorAll('[data-ref]').forEach((n) => { this.refs[n.dataset.ref] = n; });
   }
 
@@ -154,133 +233,223 @@ export class Menus {
     this._renderTier();
     this._renderAttunes();
     this._renderCodex();
+    this._attInfo(null);
     if (this.refs.auto) this.refs.auto.checked = !!this.game.autoCast;
     if (this.refs.unlockAll) this.refs.unlockAll.checked = !!this.game.meta?.unlockAll;
     if (this.refs.tutorial) this.refs.tutorial.checked = !this.game.meta?.tutorialDone;
-    if (this.refs.shake) this.refs.shake.value = String(this.game.meta?.shake ?? 1);
+    const shake = String(this.game.meta?.shake ?? 1);
+    this.refs.shake?.querySelectorAll('input').forEach((r) => { r.checked = r.value === shake; });
   }
 
-  _renderShards() {
+  _renderShards(flash = false) {
     const n = this.game.meta?.shards ?? 0;
-    this.refs.shards.innerHTML = `<span class="menu-gem">◆</span><span class="menu-shard-n">${esc(n)}</span><span class="menu-shard-lbl">Rift Shards</span>`;
+    this.refs.shards.innerHTML = `${ui('shard', '◆', 'mn-shard-ico')}<span class="mn-shards-n num">${esc(fmt(n))}</span><span class="mn-shards-lbl">rift<br>shards</span>`;
+    if (flash) {
+      this.refs.shards.classList.remove('is-spent');
+      void this.refs.shards.offsetWidth;
+      this.refs.shards.classList.add('is-spent');
+    }
   }
 
+  // ---- class medallions + details
   _renderClasses() {
-    this.refs.classes.innerHTML = CLASS_ORDER.map((id, i) => this._cardHTML(CLASSES[id], i)).join('');
+    this.refs.classes.innerHTML = CLASS_ORDER.map((id, i) => this._medalHTML(CLASSES[id], i)).join('');
+    this._renderDetail();
   }
 
-  _cardHTML(c, i) {
+  _medalHTML(c, i) {
     if (!c) return '';
     const unlocked = this._unlocked(c.id);
-    const selected = c.id === this.selClass;
-    const starter = SKILLS[c.starter];
-    const cls = ['menu-card'];
-    if (this._intro) cls.push('menu-card-in');   // entrance animation only when the screen opens, not on every pick
-    if (selected) cls.push('is-selected');
+    const sel = c.id === this.selClass;
+    const cls = ['mn-medal'];
+    if (sel) cls.push('is-sel');
     if (!unlocked) cls.push('is-locked');
-    const style = `--cc:${c.color};--cca:${c.color}55`;
-    const starterName = `${starter?.icon ? `${esc(starter.icon)} ` : ''}${esc(starter?.name ?? c.starter)}`;
     return `
-      <button type="button" class="${cls.join(' ')}" style="${style}" data-act="pick" data-id="${esc(c.id)}"
-              aria-pressed="${selected}" ${unlocked ? '' : 'aria-disabled="true"'}>
-        <span class="menu-card-key">${i + 1}</span>
-        <span class="menu-card-glyph">${esc(GLYPH[c.id] ?? '✦')}</span>
-        <span class="menu-card-name">${esc(c.name)}</span>
-        <span class="menu-card-title">${esc(c.title)}</span>
-        <span class="menu-card-block">
-          <span class="menu-lbl">Starter</span>
-          <span class="menu-card-desc menu-card-strong">${starterName}</span>
-        </span>
-        <span class="menu-card-block">
-          <span class="menu-lbl">Dash &middot; ${esc(c.dash?.name)}</span>
-          <span class="menu-card-desc">${esc(c.dash?.desc)}</span>
-        </span>
-        <span class="menu-card-block">
-          <span class="menu-lbl">Trait &middot; ${esc(c.trait?.name)}</span>
-          <span class="menu-card-desc">${esc(c.trait?.desc)}</span>
-        </span>
-        <span class="menu-card-play">${esc(c.playstyle)}</span>
-        <span class="menu-card-tilt">${esc(c.tilt)}</span>
-        ${unlocked ? '' : `<span class="menu-card-lock">🔒 ${esc(c.unlock?.text ?? 'Locked')}</span>`}
+      <button type="button" class="${cls.join(' ')}" data-act="pick" data-id="${esc(c.id)}" data-el="${esc(c.element)}"
+              role="radio" aria-checked="${sel}" ${unlocked ? '' : 'aria-disabled="true"'}
+              title="${esc(unlocked ? `${c.name}, ${c.title}` : `Locked: ${c.unlock?.text ?? ''}`)}">
+        <span class="cf-socket mn-medal-socket${sel ? ' lit' : ''}">${icon(ICON.cls(c.id), { el: c.element, fallback: GLYPH[c.id] ?? '✦' })}
+          ${unlocked ? '' : `<span class="mn-medal-lock">${ui('lock', '✕')}</span>`}</span>
+        <span class="cf-key mn-medal-key">${i + 1}</span>
+        <span class="mn-medal-name">${esc(c.name)}</span>
+        ${unlocked ? '' : `<span class="mn-medal-unlock">${esc(c.unlock?.text ?? 'Locked')}</span>`}
       </button>`;
   }
 
+  _renderDetail() {
+    const c = CLASSES[this.selClass];
+    if (!c) { this.refs.detail.innerHTML = ''; return; }
+    const sk = SKILLS[c.starter];
+    const skDesc = typeof sk?.desc === 'function' ? sk.desc(1) : '';
+    const row = (sock, label, keyHTML, name, desc) => `
+      <div class="mn-row">
+        ${sock}
+        <div class="mn-row-txt">
+          <div class="mn-row-head"><span class="mn-row-lbl">${label}</span>${keyHTML}<span class="mn-row-name">${esc(name)}</span></div>
+          <div class="mn-row-desc">${esc(desc)}</div>
+        </div>
+      </div>`;
+    this.refs.detail.dataset.el = c.element;
+    this.refs.detail.style.setProperty('--sel', String(Math.max(0, CLASS_ORDER.indexOf(c.id))));
+    this.refs.beginCls.innerHTML = icon(ICON.cls(c.id), { el: c.element, fallback: GLYPH[c.id] ?? '✦' });
+    this.refs.begin.setAttribute('aria-label', `Begin Quest as ${c.name}`);
+    this.refs.detail.innerHTML = `
+      <div class="mn-detail-in">
+        <header class="mn-detail-head">
+          <span class="mn-detail-gem">${icon(ICON.el(c.element), { el: c.element, fallback: '◆' })}</span>
+          <div>
+            <h2 class="mn-detail-name">${esc(c.name)}</h2>
+            <div class="mn-detail-title">${esc(c.title)}</div>
+          </div>
+        </header>
+        <div class="cf-rule mn-detail-rule"><i></i></div>
+        ${row(`<span class="cf-socket mn-row-sock" data-el="${esc(sk?.element ?? c.element)}">${icon(ICON.skill(c.starter), { el: sk?.element ?? c.element, fallback: sk?.icon ?? '✦' })}</span>`,
+          'starter', `<span class="mn-row-key">${ui('mouse-l', 'lmb', 'mn-mouse')}</span>`, sk?.name ?? c.starter, skDesc)}
+        ${row(`<span class="cf-socket mn-row-sock" data-el="${esc(c.element)}">${icon(ICON.dash(c.dash?.kind), { el: c.element, fallback: DASH_GLYPH[c.dash?.kind] ?? '➶' })}</span>`,
+          'dash', `<span class="cf-key">${DASH_KEY}</span>`, c.dash?.name, c.dash?.desc)}
+        ${row(`<span class="cf-socket round mn-row-sock" data-el="${esc(c.element)}">${icon(ICON.el(c.element), { el: c.element, fallback: '◆' })}</span>`,
+          'trait', '', c.trait?.name, c.trait?.desc)}
+        <footer class="mn-detail-foot">
+          <span class="mn-play">${esc(c.playstyle)}</span>
+          <span class="mn-tilt">${hlNums(c.tilt)}</span>
+        </footer>
+      </div>`;
+  }
+
+  // ---- rift tier gate
   _renderTier() {
     const box = this.refs.tier;
-    const max = Math.min(MAX_TIER_UI, maxTierOf(this.game.meta));
+    const max = Math.min(MAX_TIER, maxTierOf(this.game.meta));
     if (max <= 0) {
       box.hidden = true;
       box.innerHTML = '';
       this.selTier = 0;
+      this.titleEl.style.setProperty('--tier', '0');
       return;
     }
     box.hidden = false;
     this.selTier = Math.max(0, Math.min(this.selTier, max));
-    let chips = '';
-    for (let t = 0; t <= max; t++) {
-      const on = t === this.selTier;
-      chips += `<button type="button" class="menu-chip${on ? ' is-on' : ''}" data-act="tier" data-id="${t}" aria-pressed="${on}">${t}</button>`;
-    }
+    this.titleEl.style.setProperty('--tier', String(this.selTier));
     const t = this.selTier;
-    const sel = t > 0
-      ? ` <span class="menu-tier-now">Tier ${t}: +${t * TIER_STEP.hp}% HP, +${t * TIER_STEP.dmg}% dmg, +${t * TIER_STEP.shards}% shards</span>`
-      : '';
+    let gems = '';
+    for (let i = 0; i <= MAX_TIER; i++) {
+      const locked = i > max;
+      const cls = ['mn-tgem'];
+      if (i === t) cls.push('is-sel');
+      if (i > 0 && i <= t) cls.push('is-lit');
+      if (locked) cls.push('is-locked');
+      const mods = `foes +${i * TIER_STEP.hp}% HP, +${i * TIER_STEP.dmg}% damage; +${i * TIER_STEP.shards}% shards`;
+      const tip = locked ? `Rift Tier ${i}: win a run at Tier ${i - 1} to open it` : (i === 0 ? 'Rift Tier 0: the Rift as it is' : `Rift Tier ${i}: ${mods}`);
+      gems += `<button type="button" class="${cls.join(' ')}" data-act="tier" data-id="${i}" role="radio" aria-checked="${i === t}"
+        ${locked ? 'aria-disabled="true"' : ''} title="${esc(tip)}"><i></i><span class="num">${i}</span></button>`;
+    }
+    const line = t > 0
+      ? `foes <b class="mn-up">+${t * TIER_STEP.hp}%</b> hp · <b class="mn-up">+${t * TIER_STEP.dmg}%</b> dmg · <b class="mn-gain">+${t * TIER_STEP.shards}%</b> shards`
+      : `the rift as it is · no modifiers`;
     box.innerHTML = `
-      <div class="menu-tier-head">
-        <h3 class="menu-h-sm">Rift Tier</h3>
-        <div class="menu-tier-chips">${chips}</div>
-      </div>
-      <div class="menu-tier-desc">+${TIER_STEP.hp}% enemy HP, +${TIER_STEP.dmg}% dmg, +${TIER_STEP.shards}% shards per tier${sel}</div>`;
+      <div class="mn-tier-head">${ui('tier', '▲', 'mn-tier-ico')}<span class="mn-tier-lbl">Rift Tier</span></div>
+      <div class="mn-tgems" role="radiogroup" aria-label="Rift Tier">${gems}</div>
+      <div class="mn-tier-line">${line}</div>`;
   }
 
+  // ---- attunement stones
   _renderAttunes() {
     const meta = this.game.meta ?? {};
+    const just = this._justBought;
+    this._justBought = null;
     this.refs.attunes.innerHTML = Object.values(ATTUNEMENTS).map((def) => {
       const r = meta.attune?.[def.id] ?? 0;
       const maxed = r >= def.max;
       const cost = attuneCost(r + 1);
       const can = !maxed && (meta.shards ?? 0) >= cost;
       let pips = '';
-      for (let i = 0; i < def.max; i++) pips += `<span class="menu-pip${i < r ? ' is-on' : ''}"></span>`;
-      const label = maxed ? 'Maxed' : `Buy <span class="menu-gem">◆</span> ${esc(cost)}`;
-      const title = maxed ? '' : (can ? '' : 'Not enough Rift Shards');
+      for (let i = 0; i < def.max; i++) pips += `<i class="${i < r ? 'on' : ''}${just === def.id && i === r - 1 ? ' new' : ''}"></i>`;
+      const p = parseAttune(def);
+      const short = p ? `${p.sign}${p.n}${p.pct} ${p.what}` : def.desc;
+      const price = maxed
+        ? '<span class="mn-att-max">mastered</span>'
+        : `<span class="mn-att-cost${can ? '' : ' is-poor'}">${ui('shard', '◆', 'mn-cost-ico')}<span class="num">${cost}</span></span>`;
+      const state = maxed ? ' is-max' : (can ? ' is-buy' : ' is-poor');
       return `
-        <div class="menu-att${maxed ? ' is-maxed' : ''}">
-          <div class="menu-att-ico">${esc(def.icon)}</div>
-          <div class="menu-att-main">
-            <div class="menu-att-top">
-              <span class="menu-att-name">${esc(def.name)}</span>
-              <span class="menu-pips">${pips}</span>
-              <span class="menu-att-rank">${r}/${def.max}</span>
-            </div>
-            <div class="menu-att-desc">${esc(def.desc)}</div>
-          </div>
-          <button type="button" class="menu-buy" data-act="buy" data-id="${esc(def.id)}" title="${esc(title)}" ${can ? '' : 'disabled'}>${label}</button>
-        </div>`;
+        <button type="button" class="mn-att${state}${r > 0 ? ' is-owned' : ''}${just === def.id ? ' is-just' : ''}" data-act="buy" data-id="${esc(def.id)}"
+                ${can ? '' : 'aria-disabled="true"'} aria-label="${esc(`${def.name}, rank ${r} of ${def.max}. ${def.desc}.${maxed ? ' Mastered.' : ` Costs ${cost} Rift Shards.`}`)}">
+          <span class="cf-socket round mn-att-sock">${icon(ICON.attune(def.id), { fallback: def.icon })}</span>
+          <span class="mn-att-name">${esc(def.name)}</span>
+          <span class="mn-att-desc">${esc(short)}</span>
+          <span class="cf-pips mn-att-pips">${pips}</span>
+          ${price}
+        </button>`;
     }).join('');
   }
 
+  _onAttHover(e) {
+    const tile = e.target?.closest?.('.mn-att');
+    if (tile && this.refs.attunes.contains(tile)) this._attInfo(tile.dataset.id);
+  }
+
+  _attInfo(id) {
+    const box = this.refs.attInfo;
+    if (!box) return;
+    const def = ATTUNEMENTS[id];
+    if (!def) {
+      box.innerHTML = '<span class="mn-info-idle">Spend Rift Shards on permanent boons. Every run earns more.</span>';
+      return;
+    }
+    const meta = this.game.meta ?? {};
+    const r = meta.attune?.[id] ?? 0;
+    const p = parseAttune(def);
+    const maxed = r >= def.max;
+    const cost = attuneCost(r + 1);
+    const can = !maxed && (meta.shards ?? 0) >= cost;
+    const now = r > 0 ? `now <b class="cf-hl">${esc(attuneAmount(p, r))}</b>` : `<span class="cf-dim">not attuned</span>`;
+    const next = maxed
+      ? '<span class="mn-att-max">mastered</span>'
+      : `next <b class="cf-hl">${esc(attuneAmount(p, r + 1))}</b> for ${ui('shard', '◆', 'mn-cost-ico')}<b class="num${can ? '' : ' mn-poor'}">${cost}</b>${can ? '' : ` <span class="mn-poor">(need ${cost - (meta.shards ?? 0)} more)</span>`}`;
+    box.innerHTML = `<b class="mn-info-name">${esc(def.name)}</b><span class="mn-info-rank num">${r}/${def.max}</span><span class="mn-info-sep"></span>${now}<span class="mn-info-sep"></span>${next}`;
+  }
+
+  // ---- codex tome
   _renderCodex() {
     const m = this.game.meta ?? {};
     const cod = m.codex ?? {};
     const st = m.stats ?? {};
-    const nReact = Object.keys(REACTIONS).length;
-    const nFus = FUSIONS.length;
-    const nRel = RELIC_IDS.length;
+    const nR = Object.keys(REACTIONS).length, nF = FUSIONS.length, nL = RELIC_IDS.length;
+    const r = cod.reactions?.length ?? 0, f = cod.fusions?.length ?? 0, l = cod.relics?.length ?? 0;
     const bestAct = st.bestAct ? (ACTS[st.bestAct - 1]?.numeral ?? '—') : '—';
-    this.refs.codex.innerHTML = `
-      <div class="menu-codex-row">
-        <span class="menu-lbl">Codex</span>
-        <span>Reactions <b>${cod.reactions?.length ?? 0}/${nReact}</b></span>
-        <span>Fusions <b>${cod.fusions?.length ?? 0}/${nFus}</b></span>
-        <span>Relics <b>${cod.relics?.length ?? 0}/${nRel}</b></span>
-      </div>
-      <div class="menu-codex-row">
-        <span class="menu-lbl">Record</span>
-        <span>Runs <b>${st.runs ?? 0}</b></span>
-        <span>Wins <b>${st.wins ?? 0}</b></span>
-        <span>Best act <b>${esc(bestAct)}</b></span>
+    this.refs.tome.title = 'Codex and record';
+    this.refs.tome.innerHTML = `
+      ${ui('tome', '▤', 'mn-tome-ico')}
+      <span class="mn-tome-txt">
+        <span class="mn-tome-top"><span class="mn-tome-lbl">codex</span><span class="num">${r + f + l}</span><span class="mn-tome-of num">/${nR + nF + nL}</span></span>
+        <span class="mn-tome-sub"><span class="num">${fmt(st.runs ?? 0)}</span> runs · <span class="num">${fmt(st.wins ?? 0)}</span> wins · best act <span class="mn-num-r">${esc(bestAct)}</span></span>
+      </span>`;
+    const bar = (label, n, of, ico) => `
+      <div class="mn-cx-row">${ico}<span class="mn-cx-lbl">${label}</span>
+        <span class="mn-cx-track"><i style="transform:scaleX(${of ? n / of : 0})"></i></span>
+        <span class="num mn-cx-n">${n}<small>/${of}</small></span></div>`;
+    const rec = (label, v) => `<div class="mn-rec"><span>${label}</span><b class="num">${v}</b></div>`;
+    this.refs.tomePop.innerHTML = `
+      <div class="mn-pop-title">Codex</div>
+      ${bar('Reactions', r, nR, icon(ICON.react('steam'), { fallback: '◇', cls: 'mn-cx-ico' }))}
+      ${bar('Fusions', f, nF, icon(ICON.skill('plasmaOrb'), { el: 'storm', fallback: '✧', cls: 'mn-cx-ico' }))}
+      ${bar('Relics', l, nL, icon(ICON.relic('alchemistsCoil'), { fallback: '⚗', cls: 'mn-cx-ico' }))}
+      <div class="mn-pop-title mn-pop-title-2">Record</div>
+      <div class="mn-recs">
+        ${rec('Runs', fmt(st.runs ?? 0))}${rec('Wins', fmt(st.wins ?? 0))}
+        ${rec('Best act', esc(bestAct))}${rec('Best chain', fmt(st.bestChain ?? 0))}
+        ${rec('Bosses slain', fmt(st.bossKills ?? 0))}${rec('Foes slain', fmt(st.totalKills ?? 0))}
       </div>`;
+  }
+
+  // ---- popovers
+  _setPop(id) {
+    this.pop = id && this.pop !== id ? id : null;
+    this.titleEl.querySelectorAll('.mn-pop').forEach((p) => { p.hidden = p.dataset.pop !== this.pop; });
+    this.titleEl.querySelectorAll('[data-act="pop"]').forEach((b) => {
+      const on = b.dataset.id === this.pop;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-expanded', String(on));
+    });
   }
 
   // ---------------------------------------------------------------- title interaction
@@ -293,6 +462,7 @@ export class Menus {
       case 'tier': this._setTier(Number(id)); break;
       case 'buy': this._buy(id); break;
       case 'begin': this._begin(); break;
+      case 'pop': this._setPop(id); break;
       default: break;
     }
   }
@@ -306,7 +476,7 @@ export class Menus {
       saveMeta(meta);
       return;
     }
-    if (meta && e.target === this.refs.shake) {
+    if (meta && e.target.name === 'mn-shake') {
       meta.shake = Number(e.target.value);
       this.game.engine.shakeScale = meta.shake;
       saveMeta(meta);
@@ -330,21 +500,28 @@ export class Menus {
 
   _pick(id) {
     if (!this._unlocked(id)) return;
+    const changed = id !== this.selClass;
     this.selClass = id;
     this._renderClasses();
+    if (changed) this.refs.detail.classList.remove('is-swap'), void this.refs.detail.offsetWidth, this.refs.detail.classList.add('is-swap');
+    this.refs.classes.querySelector(`[data-id="${id}"]`)?.focus?.({ preventScroll: true, focusVisible: false });
   }
 
   _setTier(t) {
-    const max = Math.min(MAX_TIER_UI, maxTierOf(this.game.meta));
+    const max = Math.min(MAX_TIER, maxTierOf(this.game.meta));
     if (!Number.isFinite(t) || t < 0 || t > max) return;
     this.selTier = t;
     this._renderTier();
+    this.refs.tier.querySelector(`[data-id="${t}"]`)?.focus?.({ preventScroll: true });
   }
 
   _buy(id) {
     if (!this.game.meta || !buyAttunement(this.game.meta, id)) return;
-    this._renderShards();
+    this._justBought = id;
+    this._renderShards(true);
     this._renderAttunes();
+    this.refs.attunes.querySelector(`[data-id="${id}"]`)?.focus?.({ preventScroll: true });
+    this._attInfo(id);
   }
 
   _begin() {
@@ -358,91 +535,157 @@ export class Menus {
     this.hideTitle();
     this.endStats = stats ?? {};
     this._renderEnd(this.endStats, victory);
-    this.endEl.classList.add('menu-open');
+    this.endEl.classList.add('mn-open');
     this.endOpen = true;
     this.endEl.querySelector('[data-act="again"]')?.focus?.({ preventScroll: true });
+    this._startCounts();
   }
 
   _renderEnd(s, victory) {
-    this.endEl.className = `menu-screen menu-end ${victory ? 'is-victory' : 'is-death'}`;
+    this.endEl.className = `mn-screen mn-end ${victory ? 'is-victory' : 'is-death'}`;
+    this.endEl.setAttribute('aria-label', victory ? 'Victory' : 'Fallen');
     const meta = this.game.meta ?? {};
     const cls = CLASSES[s.classId];
-    const act = ACTS[s.act ?? 0] ?? ACTS[0];
+    const actIdx = Math.max(0, Math.min(ACTS.length - 1, s.act ?? 0));
+    const act = ACTS[actIdx];
     const tier = s.tier ?? 0;
     const shards = s.shardsEarned ?? 0;
     const total = s.totalShards ?? meta.shards ?? 0;
-
-    const unlocks = (s.unlocks ?? []).map((id) => CLASSES[id]?.name).filter(Boolean);
-    let delay = 0.35;
-    const callouts = [];
-    for (const name of unlocks) {
-      callouts.push(`<div class="menu-callout menu-callout-class" style="--d:${delay.toFixed(2)}s">New class unlocked: <b>${esc(name)}</b></div>`);
-      delay += 0.2;
-    }
-    if (s.tierUnlocked) {
-      callouts.push(`<div class="menu-callout menu-callout-tier" style="--d:${delay.toFixed(2)}s">Rift Tier ${esc(s.tierUnlocked)} unlocked</div>`);
-    }
-
-    const reactions = Object.entries(s.reactions ?? {})
-      .filter(([, n]) => n > 0)
-      .map(([type, n]) => tagHTML(REACTIONS[type]?.color ?? '#c08cff', REACTIONS[type]?.name ?? type, `×${n}`))
-      .join('');
-    const fusions = (s.fusions ?? []).map((name) => tagHTML('#9ff3ff', name)).join('');
-    const relics = (s.relics ?? []).map((name) => {
-      const def = relicByName(name);
-      const label = def?.icon ? `${def.icon} ${name}` : name;
-      return tagHTML(RELIC_TAG_COLOR[def?.tag] ?? '#c08cff', label);
-    }).join('');
+    const el = cls?.element ?? 'arcane';
 
     // "Aurelith, the Prism Dragon" -> "Aurelith"
     const finalBoss = (ACTS[ACTS.length - 1]?.bossName ?? 'The final boss').split(',')[0];
-    const row = (k, v) => `<div class="menu-stat"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`;
-    const subParts = [cls?.name, tier > 0 ? `Rift Tier ${tier}` : null].filter(Boolean);
+    const hero = victory ? `${finalBoss} is slain` : 'The Rift claims you';
+
+    // unlock callouts
+    const callouts = [];
+    for (const id of s.unlocks ?? []) {
+      const c = CLASSES[id];
+      if (!c) continue;
+      callouts.push(`
+        <div class="cf-plate mn-callout" data-el="${esc(c.element)}">
+          <span class="cf-socket lit mn-callout-sock">${icon(ICON.cls(c.id), { el: c.element, fallback: GLYPH[c.id] ?? '✦' })}</span>
+          <span class="mn-callout-txt"><span class="mn-callout-k">new riftbound</span><span class="mn-callout-n">${esc(c.name)}</span><span class="mn-callout-s">${esc(c.title)}</span></span>
+        </div>`);
+    }
+    if (s.tierUnlocked) {
+      callouts.push(`
+        <div class="cf-plate mn-callout mn-callout-tier">
+          <span class="cf-socket lit mn-callout-sock" data-el="arcane">${ui('tier', '▲')}</span>
+          <span class="mn-callout-txt"><span class="mn-callout-k">the rift deepens</span><span class="mn-callout-n">Rift Tier ${esc(s.tierUnlocked)}</span><span class="mn-callout-s">fiercer foes · <b class="mn-gain">+${s.tierUnlocked * TIER_STEP.shards}%</b> shards</span></span>
+        </div>`);
+    }
+
+    // ledger
+    const row = (k, vHTML, ico = '') => `<div class="mn-led-row"><dt>${ico}${esc(k)}</dt><dd>${vHTML}</dd></div>`;
+    const actGems = ACTS.map((a, i) => `<i class="${i < actIdx || victory ? 'done' : (i === actIdx ? 'here' : '')}" style="--a:${a.color}"></i>`).join('');
+    const ledger = `
+      <dl class="mn-ledger">
+        ${row('Class', `<span class="mn-led-cls" data-el="${esc(el)}">${icon(ICON.cls(s.classId), { el, fallback: GLYPH[s.classId] ?? '✦' })}${esc(cls?.name ?? '—')}</span>`)}
+        ${row('Act reached', `<span class="mn-led-act"><span class="mn-actgems" aria-hidden="true">${actGems}</span><span class="mn-num-r">${esc(act.numeral)}</span> ${esc(act.name.replace(/^The /, ''))}</span>`)}
+        ${row('Time', `<span class="num">${mmss(s.time)}</span>`)}
+        ${row('Level', `<span class="num">${esc(s.level ?? 1)}</span>`)}
+        ${row('Foes slain', `<span class="num">${fmt(s.kills ?? 0)}</span>`)}
+        ${row('Max chain', `<span class="num">×${fmt(s.maxChain ?? 0)}</span>`)}
+      </dl>`;
+
+    // reactions as element-gem pairs
+    const reacts = Object.entries(s.reactions ?? {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+    const maxR = reacts[0]?.[1] ?? 1;
+    const reactHTML = reacts.map(([type, n]) => {
+      const def = REACTIONS[type];
+      const gems = hasIcon(ICON.react(type))
+        ? icon(ICON.react(type), { cls: 'mn-react-ico' })
+        : `<span class="mn-react-pair">${(def?.elements ?? []).map((e) => icon(ICON.el(e), { el: e, fallback: '◆' })).join('')}</span>`;
+      return `<li class="mn-react">${gems}<span class="mn-react-name">${esc(titleCase(def?.name ?? type))}</span>
+        <span class="mn-react-bar"><i style="transform:scaleX(${(n / maxR).toFixed(3)})"></i></span><span class="num mn-react-n">×${fmt(n)}</span></li>`;
+    }).join('');
+
+    const fusions = (s.fusions ?? []).map((name) => {
+      const d = fusionByName(name);
+      return `<li class="mn-thing mn-fusion" data-el="${esc(d?.element ?? 'arcane')}" title="${esc(name)}">
+        <span class="cf-socket mn-thing-sock">${icon(d ? ICON.skill(d.id) : 'x', { el: d?.element ?? 'arcane', fallback: d?.icon ?? '✧' })}</span><span>${esc(name)}</span></li>`;
+    }).join('');
+    const relicList = s.relics ?? [];
+    const compact = relicList.length > 8;
+    const relics = relicList.map((name) => {
+      const d = relicByName(name);
+      const acc = RELIC_TAG_COLOR[d?.tag] ?? 'var(--cf-gilt)';
+      return `<li class="mn-thing mn-relic" style="--acc:${esc(acc)}" title="${esc(name)}">
+        <span class="cf-socket mn-thing-sock">${icon(d ? ICON.relic(d.id) : 'x', { fallback: d?.icon ?? '◆' })}</span>${compact ? '' : `<span>${esc(name)}</span>`}</li>`;
+    }).join('');
+    const none = (t, hint = '') => `<p class="mn-none">${t}</p>${hint ? `<p class="mn-hint">${hint}</p>` : ''}`;
+
+    const sub = [cls?.name, tier > 0 ? `Rift Tier ${tier}` : 'Rift Tier 0'].filter(Boolean).join(' · ');
 
     this.endEl.innerHTML = `
-      <div class="menu-end-wrap">
-        <header class="menu-end-head menu-panel" style="--d:0s">
-          <div class="menu-end-eyebrow">${victory ? 'Victory' : 'Fallen'}</div>
-          <h1 class="menu-end-title">${esc(victory ? `${finalBoss} is slain` : 'The Rift claims you')}</h1>
-          <div class="menu-end-sub">${esc(subParts.join(' · '))}</div>
+      <div class="mn-end-shade" aria-hidden="true"></div>
+      <div class="mn-end-wrap">
+        <header class="mn-end-head">
+          ${victory ? '<span class="mn-end-crown" aria-hidden="true"></span>' : ''}
+          <div class="mn-eyebrow"><i></i><span>${victory ? 'victory' : 'fallen'}</span><i></i></div>
+          <h1 class="mn-end-hero">${esc(hero)}</h1>
+          ${victory ? '<div class="cf-prism mn-end-prism" aria-hidden="true"></div>' : '<div class="mn-end-rule" aria-hidden="true"></div>'}
+          <div class="mn-end-sub" data-el="${esc(el)}">${icon(ICON.cls(s.classId), { el, fallback: GLYPH[s.classId] ?? '✦' })}<span>${esc(sub)}</span></div>
         </header>
-        ${callouts.length ? `<div class="menu-callouts">${callouts.join('')}</div>` : ''}
-        <div class="menu-end-grid">
-          <section class="menu-panel" style="--d:0.12s">
-            <div class="menu-reward">
-              <div class="menu-reward-gain">+${esc(shards)}<span>Rift Shards</span></div>
-              <div class="menu-reward-total">Total <span class="menu-gem">◆</span> <b>${esc(total)}</b></div>
-            </div>
-            <dl class="menu-stats">
-              ${row('Class', cls?.name ?? '—')}
-              ${row('Act reached', `${act.numeral} · ${act.name}`)}
-              ${row('Time', mmss(s.time))}
-              ${row('Level', s.level ?? 1)}
-              ${row('Kills', s.kills ?? 0)}
-              ${row('Max chain', s.maxChain ?? 0)}
-            </dl>
+
+        <div class="mn-reward-row">
+          <div class="mn-reward" aria-label="${esc(`${shards} Rift Shards earned, ${total} total`)}">
+            ${ui('shard', '◆', 'mn-reward-ico')}
+            <span class="mn-reward-gain"><span class="num" data-count="${shards}" data-from="0">+0</span><span class="mn-reward-lbl">rift shards</span></span>
+            <span class="mn-reward-total"><span class="mn-reward-lbl">total</span><span class="num" data-count="${total}" data-from="${Math.max(0, total - shards)}" data-plain="1">${fmt(Math.max(0, total - shards))}</span></span>
+          </div>
+          ${callouts.join('')}
+        </div>
+
+        <div class="mn-end-grid">
+          <section class="cf-frame mn-end-card mn-end-ledger">
+            <h3 class="mn-card-h">The Ledger</h3>
+            ${ledger}
           </section>
-          <section class="menu-panel" style="--d:0.22s">
-            <div class="menu-block">
-              <h3 class="menu-h-sm">Reactions</h3>
-              <div class="menu-chips">${reactions || NONE_HTML}</div>
-            </div>
-            <div class="menu-block">
-              <h3 class="menu-h-sm">Fusions made</h3>
-              <div class="menu-chips">${fusions || NONE_HTML}</div>
-            </div>
-            <div class="menu-block">
-              <h3 class="menu-h-sm">Relics</h3>
-              <div class="menu-chips">${relics || NONE_HTML}</div>
-            </div>
+          <section class="cf-frame mn-end-card">
+            <h3 class="mn-card-h">Reactions</h3>
+            ${reactHTML ? `<ul class="mn-reacts">${reactHTML}</ul>` : none('No Primes collided this run.', `Strike a foe with two Primes: ${icon(ICON.el('fire'), { el: 'fire' })} Fire on ${icon(ICON.el('frost'), { el: 'frost' })} Frost bursts into Steam.`)}
+          </section>
+          <section class="cf-frame mn-end-card">
+            <h3 class="mn-card-h">Fusions forged</h3>
+            ${fusions ? `<ul class="mn-things">${fusions}</ul>` : none('None forged.', 'Raise two skills to rank 3 and the Rift offers a fusion.')}
+            <h3 class="mn-card-h mn-card-h2">Relics bound</h3>
+            ${relics ? `<ul class="mn-things${compact ? ' is-compact' : ''}">${relics}</ul>` : none('None bound.', 'The gold-marked Relic Bearer of each Elite Surge carries a chest.')}
           </section>
         </div>
-        <div class="menu-end-actions">
-          <button type="button" class="menu-begin" data-act="again">Quest Again</button>
-          <button type="button" class="menu-ghost" data-act="sanctum">Return to Sanctum</button>
+
+        <div class="mn-end-actions">
+          <button type="button" class="cf-btn primary mn-again" data-act="again"><span>Quest Again</span><span class="cf-key">enter</span></button>
+          <button type="button" class="cf-btn mn-tosanc" data-act="sanctum"><span>Return to Sanctum</span><span class="cf-key">esc</span></button>
         </div>
-        <div class="menu-end-hint">Enter: quest again</div>
       </div>`;
+  }
+
+  _startCounts() {
+    this._stopCounts();
+    const nodes = [...this.endEl.querySelectorAll('[data-count]')];
+    const instant = reduceMotion();
+    const delay = 420, dur = 1100;
+    const t0 = performance.now();
+    const paint = (n, v) => { n.textContent = n.dataset.plain ? fmt(v) : `+${fmt(v)}`; };
+    if (instant) { nodes.forEach((n) => paint(n, Number(n.dataset.count))); return; }
+    const tick = (now) => {
+      const k = Math.max(0, Math.min(1, (now - t0 - delay) / dur));
+      const e = 1 - Math.pow(1 - k, 3);
+      for (const n of nodes) {
+        const a = Number(n.dataset.from), b = Number(n.dataset.count);
+        paint(n, Math.round(a + (b - a) * e));
+      }
+      if (k < 1) this._raf.push(requestAnimationFrame(tick));
+      else this.endEl.querySelector('.mn-reward')?.classList.add('is-done');
+    };
+    this._raf.push(requestAnimationFrame(tick));
+  }
+
+  _stopCounts() {
+    for (const id of this._raf) cancelAnimationFrame(id);
+    this._raf.length = 0;
   }
 
   _onEndClick(e) {
@@ -473,10 +716,17 @@ export class Menus {
       if (e.key === 'Enter') {
         e.preventDefault();
         if (!e.repeat) this._again();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (!e.repeat) this._toSanctum();
       }
       return;
     }
     if (!this.titleOpen) return;
+    if (e.key === 'Escape') {
+      if (this.pop) { e.preventDefault(); this._setPop(null); }
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       if (!e.repeat) this._begin();

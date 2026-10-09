@@ -1,0 +1,710 @@
+/* ===================================================================
+   RIFTBOUND · IN-RUN HUD (Crownforge) — owner: HUD agent
+   Spec: design/UI.md §6. Builds on css/theme.css primitives.
+   Units: calc(N * var(--u)) = N "1080p pixels" (0.8 px at 720p).
+   Per-frame updates only touch transform / opacity / text (hud.js).
+   =================================================================== */
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--font-body);
+  color: var(--cf-text);
+  --stroke: max(3px, round(calc(4 * var(--u)), 1px));
+}
+.hud .ico { --ink: var(--cf-void); }
+
+/* ---------------- low HP: edge vignette (pre-drawn, opacity-only pulse ≤ 1 Hz) ---------------- */
+.hud-vig, .hud-vig-hit { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.hud-vig {
+  background: radial-gradient(ellipse 72% 68% at 50% 50%, transparent 62%, rgb(130 18 24 / .3) 82%, rgb(96 8 16 / .62) 100%);
+  transition: opacity .4s;
+}
+.hud-vig.on { animation: hud-pulse 1s ease-in-out infinite alternate; }
+.hud-vig-hit { background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 60%, rgb(170 22 30 / .4) 100%); }
+@keyframes hud-pulse { from { opacity: .45; } to { opacity: 1; } }
+
+/* ===================================================================
+   TOP CENTRE · act timeline + ribbon + boss bar
+   =================================================================== */
+.hud-top {
+  position: absolute; top: calc(12 * var(--u)); left: 0; right: 0;
+  display: flex; flex-direction: column; align-items: center; gap: calc(6 * var(--u));
+  contain: layout style;
+  --act: var(--act-thornwood);
+}
+/* slim Tier-2 strip under the timeline so it reads over trees / river / sand */
+.hud-act {
+  --ch: calc(7 * var(--u));
+  display: flex; align-items: center; gap: calc(16 * var(--u));
+  height: calc(42 * var(--u)); padding: 0 calc(12 * var(--u)) 0 calc(14 * var(--u));
+  background: linear-gradient(160deg, rgb(38 32 51 / .9) 0 38%, rgb(24 20 34 / .9) 38%) padding-box, var(--metal-grad) border-box;
+}
+
+/* act gems: done = gilt, current = act colour, upcoming = hollow */
+.hud-act-gems { display: flex; gap: calc(10 * var(--u)); padding-inline: calc(4 * var(--u)); }
+.hud-act-gems > i {
+  width: round(calc(13 * var(--u)), 1px); height: round(calc(13 * var(--u)), 1px);
+  rotate: 45deg;
+  background: rgb(12 10 18 / .6);
+  box-shadow: 0 0 0 1px var(--cf-void), inset 0 0 0 max(1px, round(calc(2 * var(--u)), 1px)) var(--cf-bronze-hi);
+}
+.hud-act-gems > i.done { background: linear-gradient(135deg, #fff4d2 0 30%, var(--cf-gilt) 30% 62%, var(--cf-bronze-hi) 62%); box-shadow: 0 0 0 1px var(--cf-void); }
+.hud-act-gems > i.cur {
+  background: linear-gradient(135deg, #fff 0 22%, var(--act) 22% 62%, color-mix(in oklab, var(--act) 55%, #000) 62%);
+  box-shadow: 0 0 0 1px var(--cf-void), 0 0 0 max(2px, round(calc(3 * var(--u)), 1px)) var(--cf-bronze-hi), 0 0 0 calc(max(2px, round(calc(3 * var(--u)), 1px)) + 1px) var(--cf-void);
+}
+
+/* 0:00–3:00 track */
+.hud-tl { position: relative; width: calc(420 * var(--u)); height: round(calc(12 * var(--u)), 2px); }
+.hud-tl-track {
+  position: absolute; inset: 0; overflow: clip;
+  border: max(1px, round(calc(2 * var(--u)), 1px)) solid var(--cf-bronze);
+  border-radius: calc(4 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(180deg, #0f0c18, #1d1832);
+  box-shadow: 0 0 0 1px var(--cf-void), 0 calc(2 * var(--u)) calc(6 * var(--u)) rgb(6 4 10 / .45);
+}
+.hud-tl-fill {
+  position: absolute; inset: 0; transform-origin: 0 50%; will-change: transform; transform: scaleX(0);
+  background: linear-gradient(180deg, rgb(255 255 255 / .35) 0 25%, transparent 25% 60%, rgb(0 0 0 / .22) 60%), var(--act);
+}
+.hud-tl-ticks { position: absolute; inset: 0; background: linear-gradient(90deg, transparent calc(100% - 2px), rgb(12 10 18 / .7) 0) 0 0 / calc(100% / 3) 100% repeat-x; }
+.hud-tl-headw { position: absolute; inset: 0; will-change: transform; pointer-events: none; }
+.hud-tl-head {
+  position: absolute; left: round(calc(-6 * var(--u)), 1px); top: calc(50% - round(calc(6 * var(--u)), 1px));
+  width: round(calc(12 * var(--u)), 1px); height: round(calc(12 * var(--u)), 1px);
+  rotate: 45deg; background: linear-gradient(135deg, #fff 0 30%, var(--cf-gilt) 30%); box-shadow: 0 0 0 1px var(--cf-void);
+}
+.hud-tl-beats { position: absolute; inset: 0; }
+.hud-beat {
+  position: absolute; top: 50%;
+  width: round(calc(30 * var(--u)), 2px); height: round(calc(30 * var(--u)), 2px);
+  margin: calc(round(calc(30 * var(--u)), 2px) / -2) 0 0 calc(round(calc(30 * var(--u)), 2px) / -2);
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--cf-plate-3), var(--cf-plate-0) 75%);
+  box-shadow: 0 0 0 1px var(--cf-void), inset 0 0 0 max(1px, round(calc(2 * var(--u)), 1px)) var(--cf-bronze-hi);
+  font-size: calc(20 * var(--u));
+}
+.hud-beat .ico-glyph { color: var(--cf-gilt); font-size: .85em; }
+.hud-beat.boss { box-shadow: 0 0 0 1px var(--cf-void), inset 0 0 0 max(1px, round(calc(2 * var(--u)), 1px)) var(--hp-hi); }
+.hud-beat.boss .ico-glyph { color: var(--hp-hi); }
+.hud-beat.past { opacity: .4; }
+.hud-beat.soon { animation: hud-blink 1s ease-in-out infinite alternate; }
+@keyframes hud-blink { from { opacity: 1; } to { opacity: .45; } }
+
+.hud-timer { display: flex; align-items: center; gap: calc(6 * var(--u)); min-width: calc(76 * var(--u)); margin-left: calc(4 * var(--u)); }
+.hud-timer .num { font-size: calc(30 * var(--u)); line-height: 1; color: var(--cf-text); -webkit-text-stroke-width: var(--stroke); }
+.hud-hold { display: none; width: calc(12 * var(--u)); height: calc(16 * var(--u));
+  background: linear-gradient(90deg, var(--cf-gilt) 0 34%, transparent 34% 66%, var(--cf-gilt) 66%); box-shadow: 0 0 0 1px var(--cf-void); }
+.hud-timer.held .hud-hold { display: block; }
+.hud-timer.held .num { color: var(--cf-dim); }
+
+/* beat ribbon: "elite surge in 0:08" */
+.hud-ribbon {
+  --ch: calc(6 * var(--u));
+  display: flex; align-items: center; gap: calc(8 * var(--u));
+  height: calc(32 * var(--u)); padding: 0 calc(14 * var(--u)) 0 calc(8 * var(--u));
+  opacity: 0; translate: 0 calc(-6 * var(--u));
+  transition: opacity .2s, translate .25s var(--ease-forge);
+}
+.hud-ribbon.on { opacity: 1; translate: 0 0; }
+.hud-rb-ico { font-size: calc(22 * var(--u)); line-height: 0; }
+.hud-rb-ico:empty { display: none; }
+.hud-rb-ico .ico-glyph { color: var(--cf-gilt); }
+.hud-rb-txt { font: 800 calc(18 * var(--u)) / 1 var(--font-label); letter-spacing: .06em; color: var(--cf-text); text-transform: lowercase; white-space: nowrap; }
+.hud-rb-t { font-size: calc(20 * var(--u)); line-height: 1; color: var(--cf-gilt); min-width: 2.6ch; }
+.hud-rb-t:empty { display: none; }
+.hud-ribbon.boss .hud-rb-txt, .hud-ribbon.boss .hud-rb-t { color: var(--hp-hi); }
+.hud-ribbon.boss .ico-glyph { color: var(--hp-hi); }
+
+/* boss fight: the timeline collapses to the act gems */
+.hud-top.boss .hud-tl, .hud-top.boss .hud-timer, .hud-top.boss .hud-ribbon { display: none; }
+.hud-top.boss .hud-act { height: calc(24 * var(--u)); padding: 0 calc(8 * var(--u)); }
+.hud-top.boss .hud-boss { margin-top: calc(18 * var(--u)); }
+
+/* ---------------- boss bar (Tier 1, crowned) ---------------- */
+.hud-boss {
+  display: none;
+  /* never under the relic tray: keep clear of a full 6-wide tray (+ the ward badge overhang) on both sides */
+  width: min(calc(880 * var(--u)), calc(100vw - 2 * 300 * var(--u)));
+  margin-top: calc(10 * var(--u));
+  padding: 0 calc(20 * var(--u)) calc(9 * var(--u)) calc(50 * var(--u));
+}
+.hud-boss.on { display: block; }
+.hud-boss-head { display: flex; justify-content: center; align-items: baseline; gap: calc(10 * var(--u)); height: calc(31 * var(--u)); padding-right: calc(30 * var(--u)); }
+.hud-boss-name { font: 700 calc(31 * var(--u)) / 1 var(--font-head); letter-spacing: .02em; color: var(--cf-text); text-shadow: 0 1px 0 var(--cf-void); }
+.hud-boss-epi { font: 700 calc(17 * var(--u)) / 1 var(--font-label); letter-spacing: .06em; color: var(--cf-dim); }
+.hud-boss-row { display: flex; align-items: center; gap: calc(12 * var(--u)); }
+.hud-boss-bar { flex: 1; --h: round(calc(20 * var(--u)), 2px); --fill: linear-gradient(180deg, #e8413a, #a8202a); }
+.hud-boss-bar .cf-bar-ghost { background: var(--hp-chip); }
+.hud-bar-flash { background: #fff; opacity: 0; }
+.hud-boss-notch {
+  position: absolute; left: 50%; top: round(calc(-3 * var(--u)), 1px); bottom: round(calc(-3 * var(--u)), 1px);
+  width: max(2px, round(calc(3 * var(--u)), 1px)); margin-left: -1px;
+  background: var(--cf-void); z-index: 3;
+}
+.hud-boss-notch::before {
+  content: ""; position: absolute; left: 50%; top: 100%;
+  width: round(calc(24 * var(--u)), 2px); height: round(calc(10 * var(--u)), 1px); margin-left: calc(round(calc(24 * var(--u)), 2px) / -2);
+  background: var(--gilt-grad);
+  -webkit-mask: var(--orn-crown) center / 100% 100% no-repeat; mask: var(--orn-crown) center / 100% 100% no-repeat;
+}
+.hud-boss-notch.past::before { background: var(--cf-faint); }
+.hud-boss-ph > i { width: calc(11 * var(--u)); height: calc(11 * var(--u)); --pip: var(--hp-hi); }
+.hud-boss-prism {   /* Aurelith: prism crack along the top edge of the bar */
+  display: none; position: absolute; z-index: 2; left: 0; right: 0;
+  top: calc(-1 * max(3px, round(calc(4 * var(--u)), 1px)) - 1px); height: max(3px, round(calc(4 * var(--u)), 1px));
+  background: linear-gradient(90deg, var(--arcane), var(--fire) 33%, var(--storm) 66%, var(--frost));
+  clip-path: polygon(0 40%, 8% 0, 17% 60%, 26% 10%, 37% 70%, 48% 0, 58% 55%, 69% 5%, 80% 65%, 90% 10%, 100% 45%, 100% 100%, 0 100%);
+}
+.hud-boss.prism .hud-boss-prism { display: block; }
+
+/* Prism Ward badge, mounted on the left end of the frame */
+.hud-boss > .hud-ward {
+  position: absolute; left: round(calc(-24 * var(--u)), 1px); top: calc(50% - round(calc(32 * var(--u)), 1px));
+  width: round(calc(64 * var(--u)), 2px); height: round(calc(64 * var(--u)), 2px);
+  display: none; place-items: center; z-index: 5;
+}
+.hud-boss > .hud-ward.on { display: grid; }
+.hud-ward-sock { --sz: calc(48 * var(--u)); grid-area: 1 / 1; }
+.hud-ward-gem { font-size: calc(30 * var(--u)); line-height: 0; }
+.hud-ward-ring { grid-area: 1 / 1; width: 100%; height: 100%; rotate: -90deg; overflow: visible; }
+.hud-ward-ring circle { fill: none; stroke-width: 3.2; }
+.hud-ward-ring .bg { stroke: var(--cf-void); stroke-width: 5; opacity: .85; }
+.hud-ward-ring .fg { stroke: var(--el, var(--cf-gilt)); stroke-linecap: butt; }
+.hud-ward-t {
+  position: absolute; right: round(calc(-2 * var(--u)), 1px); bottom: round(calc(-4 * var(--u)), 1px);
+  font-size: calc(18 * var(--u)); line-height: 1; color: #fff;
+  -webkit-text-stroke: max(3px, round(calc(4 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+.hud-ward.broken .hud-ward-sock { background: linear-gradient(160deg, #3a3446 0 45%, #2a2534 45%) padding-box, linear-gradient(160deg, #8a8199, #4a4456) border-box; }
+.hud-ward.broken .hud-ward-sock::after {
+  content: ""; width: 56%; height: 56%;
+  background: linear-gradient(45deg, transparent 46%, var(--cf-faint) 46% 54%, transparent 54%), linear-gradient(-45deg, transparent 46%, var(--cf-faint) 46% 54%, transparent 54%);
+}
+.hud-ward.broken .hud-ward-ring .fg { stroke: var(--cf-faint); }
+
+/* ===================================================================
+   TOP LEFT · relic tray (no pointer events during play)
+   =================================================================== */
+.hud-relics {
+  --ch: calc(6 * var(--u));
+  position: absolute; left: calc(18 * var(--u)); top: calc(18 * var(--u));
+  display: none; grid-template-columns: repeat(var(--cols, 6), round(calc(36 * var(--u)), 2px)); gap: calc(5 * var(--u));
+  padding: calc(6 * var(--u));
+  pointer-events: none; contain: layout style;
+}
+.hud-relics.on { display: grid; }
+.hud-relic {
+  position: relative;
+  width: round(calc(36 * var(--u)), 2px); height: round(calc(36 * var(--u)), 2px);
+  display: grid; place-items: center;
+  border-radius: calc(5 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(160deg, #1f1a2b 0 50%, #15111d 50%);
+  box-shadow: inset 0 0 0 1px rgb(200 168 116 / .35), 0 0 0 1px var(--cf-void);
+  font-size: calc(30 * var(--u));
+}
+.hud-relic::before { content: ""; position: absolute; left: 22%; right: 22%; bottom: 0; height: max(2px, round(calc(2 * var(--u)), 1px)); background: var(--acc); }
+.hud-relic::after { content: ""; position: absolute; inset: -2px; border: 2px solid var(--cf-gilt); border-radius: inherit; corner-shape: bevel; opacity: 0; }
+.hud-relic .ico-glyph { color: var(--acc); }
+.hud-relic.spent { opacity: .4; filter: grayscale(1); }
+
+/* ===================================================================
+   RIGHT LANE · Chain, Resonance, reaction feed, discovery toasts
+   =================================================================== */
+.hud-lane {
+  position: absolute; right: calc(26 * var(--u)); top: calc(250 * var(--u));
+  width: calc(360 * var(--u));
+  display: flex; flex-direction: column; align-items: flex-end; gap: calc(8 * var(--u));
+  contain: layout style;
+}
+.hud-chain {
+  position: relative; display: flex; flex-direction: column; align-items: flex-end;
+  opacity: 0; transition: opacity .6s;
+}
+.hud-chain.on { opacity: 1; transition-duration: .1s; }
+.hud-chain-lbl {
+  font: 800 calc(18 * var(--u)) / 1 var(--font-label); letter-spacing: .14em; color: var(--cf-gilt);
+  -webkit-text-stroke: max(3px, round(calc(4 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+  margin-right: calc(4 * var(--u));
+}
+.hud-chain-n {
+  position: relative; display: block;
+  font-size: calc(62 * var(--u)); line-height: .95;
+  -webkit-text-stroke: max(4px, round(calc(6 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+  transform-origin: 100% 60%;
+}
+.hud-chain-base { color: #fff; }
+.hud-chain-prism {
+  display: none; position: absolute; inset: 0; text-align: right;
+  background: linear-gradient(100deg, var(--arcane-hi) 10%, var(--fire) 38%, var(--storm) 62%, var(--frost) 88%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 0;
+}
+.hud-chain.prism .hud-chain-prism { display: block; }
+.hud-chain.prism .hud-chain-base { color: #fff; }
+.hud-chain.crowned .hud-chain-n::before {
+  content: ""; position: absolute; right: calc(16 * var(--u)); bottom: 100%;
+  width: round(calc(44 * var(--u)), 2px); height: round(calc(18 * var(--u)), 1px);
+  background: var(--gilt-grad);
+  -webkit-mask: var(--orn-crown) center / 100% 100% no-repeat; mask: var(--orn-crown) center / 100% 100% no-repeat;
+}
+.hud-chain.tut-glow { opacity: 1; }
+
+/* milestone stamp beside the number */
+.hud-ms {
+  position: absolute; right: calc(100% + 10 * var(--u)); top: calc(34 * var(--u));
+  font-size: calc(30 * var(--u)); line-height: 1; white-space: nowrap; color: #e0a030;
+  -webkit-text-stroke: max(3px, round(calc(5 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+  opacity: 0; rotate: 0deg;
+}
+.hud-ms.prism { color: var(--rift-white); }
+
+/* Arcanist Resonance: 25 ticks under the Chain */
+.hud-res { --ch: calc(5 * var(--u)); display: none; align-items: center; gap: calc(8 * var(--u)); padding: calc(5 * var(--u)) calc(10 * var(--u)); }
+.hud-res.on { display: flex; }
+.hud-res-track {
+  position: relative; overflow: clip;
+  width: calc(200 * var(--u)); height: round(calc(8 * var(--u)), 2px);
+  background: #0f0c18; box-shadow: 0 0 0 1px var(--cf-bronze-lo), 0 0 0 2px var(--cf-void);
+}
+.hud-res-fill { position: absolute; inset: 0; transform-origin: 0 50%; will-change: transform; transform: scaleX(0);
+  background: linear-gradient(180deg, var(--arcane-hi) 0 30%, var(--arcane) 30% 70%, var(--arcane-lo) 70%); }
+.hud-res.full .hud-res-fill { background: linear-gradient(180deg, #fff 0 30%, var(--arcane-hi) 30% 70%, var(--arcane) 70%); }
+.hud-res-ticks { position: absolute; inset: 0; background: linear-gradient(90deg, transparent calc(100% - 1px), var(--cf-void) 0) 0 0 / calc(100% / 25) 100% repeat-x; }
+.hud-res-v { font-size: calc(18 * var(--u)); line-height: 1; color: var(--arcane-hi); min-width: 5.6ch; text-align: right; }
+
+/* reaction feed */
+.hud-feed { display: flex; flex-direction: column; align-items: flex-end; gap: calc(4 * var(--u)); }
+.hud-fd {
+  display: flex; align-items: center; gap: calc(8 * var(--u));
+  height: calc(32 * var(--u)); padding: 0 calc(10 * var(--u)) 0 calc(6 * var(--u));
+  border-radius: calc(4 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(160deg, var(--cf-plate-2) 0 40%, var(--cf-plate-1) 40%);
+  box-shadow: inset max(2px, round(calc(3 * var(--u)), 1px)) 0 0 var(--c), 0 0 0 1px var(--cf-void);
+}
+.hud-fd-ico { font-size: calc(22 * var(--u)); line-height: 0; display: inline-flex; }
+.hud-gems { display: inline-flex; }
+.hud-gems .ico + .ico { margin-left: calc(-7 * var(--u)); }
+.hud-fd-name { font: 800 calc(18 * var(--u)) / 1 var(--font-label); letter-spacing: .05em; color: var(--c); white-space: nowrap; }
+.hud-fd-n { font-size: calc(20 * var(--u)); line-height: 1; color: var(--cf-text); min-width: 2.4ch; text-align: right; }
+
+/* discovery toasts */
+.hud-toasts {
+  position: absolute; right: 0; top: calc(330 * var(--u));
+  display: flex; flex-direction: column; align-items: flex-end; gap: calc(8 * var(--u));
+}
+.hud-toast {
+  --ch: calc(8 * var(--u));
+  display: flex; align-items: center; gap: calc(12 * var(--u));
+  width: calc(360 * var(--u)); padding: calc(8 * var(--u)) calc(14 * var(--u)) calc(8 * var(--u)) calc(9 * var(--u));
+}
+.hud-toast-ico { --sz: calc(54 * var(--u)); flex: none; }
+.hud-toast-ico > .hud-gems { font-size: calc(26 * var(--u)); }
+.hud-toast-ico > .ico { --acc: var(--acc); }
+.hud-toast-txt { min-width: 0; display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
+.hud-toast-kick { font: 800 calc(15 * var(--u)) / 1 var(--font-label); letter-spacing: .1em; color: var(--c, var(--acc, var(--cf-gilt))); }
+.hud-toast-title { font: 700 calc(24 * var(--u)) / 1.05 var(--font-head); color: var(--cf-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-toast-desc { font: 500 calc(16 * var(--u)) / 1.2 var(--font-body); color: var(--cf-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-toast-crack { position: absolute; left: calc(12 * var(--u)); right: calc(12 * var(--u)); top: -1px; }
+.hud-toast.prism .hud-toast-kick { color: var(--cf-gilt); }
+
+/* ===================================================================
+   UNDER THE CHARACTER · status cluster
+   =================================================================== */
+.hud-cl { position: absolute; left: 0; top: 0; display: none; will-change: transform; }
+.hud-cl.on { display: block; }
+.hud-cl-in {
+  --w: round(calc(72 * var(--u)), 2px);
+  position: absolute; left: calc(var(--w) / -2); top: 0; width: var(--w);
+  display: flex; flex-direction: column; align-items: center; gap: max(2px, round(calc(3 * var(--u)), 1px));
+  opacity: .7; transition: opacity .15s;
+}
+.hud-cl.loud .hud-cl-in { opacity: 1; }
+.hud .hud-cl-hp {
+  position: relative; inset: auto; width: 100%; height: max(5px, round(calc(7 * var(--u)), 1px));
+  border: 0; background: rgb(12 10 18 / .55);
+  box-shadow: 0 0 0 max(1px, round(calc(2 * var(--u)), 1px)) var(--cf-void);
+}
+.hud-cl-hp .cf-bar-fill { background: linear-gradient(180deg, var(--hp-hi) 0 30%, var(--hp) 30%); }
+.hud-cl-hp .cf-bar-shield { background: repeating-linear-gradient(135deg, #fff 0 2px, var(--shield) 2px 4px); }
+.hud-cl-low { background: #fff; opacity: 0; }
+.hud-cl.low .hud-cl-low { animation: hud-lowfill 1s ease-in-out infinite alternate; }
+@keyframes hud-lowfill { from { opacity: 0; } to { opacity: .45; } }
+.hud-cl-mom { display: none; position: relative; overflow: clip; width: 100%; height: max(2px, round(calc(3 * var(--u)), 1px));
+  background: rgb(12 10 18 / .6); box-shadow: 0 0 0 1px var(--cf-void); }
+.hud-cl-mom.on { display: block; }
+.hud-cl-mom > i { position: absolute; inset: 0; transform-origin: 0 50%; will-change: transform; transform: scaleX(0); background: var(--storm-lo); }
+.hud-cl-mom.hot > i { background: linear-gradient(90deg, var(--storm), var(--storm-hi)); }
+.hud-cl-mom.hot { box-shadow: 0 0 0 1px var(--cf-void), 0 0 calc(6 * var(--u)) var(--storm); }
+.hud-cl-row { display: flex; align-items: center; gap: calc(6 * var(--u)); }
+.hud-cl-dash { display: inline-flex; gap: calc(3 * var(--u)); }
+.hud-cl-dash > i {
+  position: relative; overflow: clip;
+  width: round(calc(14 * var(--u)), 1px); height: max(4px, round(calc(5 * var(--u)), 1px));
+  background: rgb(12 10 18 / .6); box-shadow: 0 0 0 1px var(--cf-void);
+}
+.hud-cl-dash > i > b { position: absolute; inset: 0; transform-origin: 0 50%; will-change: transform; background: var(--el); opacity: .45; }
+.hud-cl-dash > i.on > b { opacity: 1; background: linear-gradient(180deg, var(--el-hi) 0 40%, var(--el) 40%); }
+.hud-cl-armor { display: none; gap: calc(3 * var(--u)); }
+.hud-cl-armor.on { display: inline-flex; }
+.hud-cl-armor > i {
+  width: round(calc(11 * var(--u)), 1px); height: round(calc(12 * var(--u)), 1px);
+  background: var(--cf-void);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  display: grid; place-items: center;
+}
+.hud-cl-armor > i::after { content: ""; width: calc(100% - 3px); height: calc(100% - 3px); background: #2a2440; clip-path: inherit; }
+.hud-cl-armor > i.on::after { background: linear-gradient(160deg, var(--frost-hi) 0 35%, var(--frost) 35% 65%, var(--frost-lo) 65%); }
+
+/* ===================================================================
+   EDGE MARKERS · shrine / Relic Bearer / chests
+   =================================================================== */
+.hud-markers { position: absolute; inset: 0; }
+.hud-mk { position: absolute; left: 0; top: 0; display: none; will-change: transform; --acc: var(--cf-gilt); }
+.hud-mk.on { display: block; }
+.hud-mk-disk {
+  --d: round(calc(40 * var(--u)), 2px);
+  position: absolute; left: calc(var(--d) / -2); top: calc(var(--d) / -2); width: var(--d); height: var(--d);
+  display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--cf-plate-3), var(--cf-plate-0) 75%);
+  box-shadow: 0 0 0 max(2px, round(calc(3 * var(--u)), 1px)) var(--acc), 0 0 0 calc(max(2px, round(calc(3 * var(--u)), 1px)) + 1px) var(--cf-void), 0 calc(3 * var(--u)) calc(8 * var(--u)) rgb(6 4 10 / .5);
+}
+.hud-mk-ico { grid-area: 1 / 1; font-size: calc(26 * var(--u)); line-height: 0; }
+.hud-mk-ico .ico-glyph { color: var(--acc); }
+.hud-mk-ring { grid-area: 1 / 1; width: calc(100% + 14 * var(--u)); height: calc(100% + 14 * var(--u)); rotate: -90deg; overflow: visible; display: none; }
+.hud-mk.prog .hud-mk-ring { display: block; }
+.hud-mk-ring circle { fill: none; stroke-width: 3; }
+.hud-mk-ring .bg { stroke: rgb(12 10 18 / .7); stroke-width: 4.5; }
+.hud-mk-ring .fg { stroke: var(--acc); }
+.hud-mk-arrow { position: absolute; left: 0; top: 0; width: 0; height: 0; display: none; transform-origin: 0 0; }
+.hud-mk.edge .hud-mk-arrow { display: block; }
+.hud-mk-arrow::before {
+  content: ""; position: absolute; left: round(calc(25 * var(--u)), 1px); top: round(calc(-8 * var(--u)), 1px);
+  width: round(calc(13 * var(--u)), 1px); height: round(calc(16 * var(--u)), 2px);
+  background: var(--acc); clip-path: polygon(0 0, 100% 50%, 0 100%, 22% 50%); z-index: 1;
+}
+.hud-mk-arrow::after {   /* void keyline under the notch */
+  content: ""; position: absolute; left: calc(round(calc(25 * var(--u)), 1px) - 2px); top: calc(round(calc(-8 * var(--u)), 1px) - 3px);
+  width: calc(round(calc(13 * var(--u)), 1px) + 5px); height: calc(round(calc(16 * var(--u)), 2px) + 6px);
+  background: var(--cf-void); clip-path: polygon(0 0, 100% 50%, 0 100%, 22% 50%);
+}
+.hud-mk-d {
+  display: none; position: absolute; left: calc(-40 * var(--u)); width: calc(80 * var(--u)); top: calc(24 * var(--u));
+  text-align: center; font-size: calc(17 * var(--u)); line-height: 1; color: #fff;
+  -webkit-text-stroke: max(3px, round(calc(4 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+.hud-mk.edge .hud-mk-d { display: block; }
+
+/* ===================================================================
+   BOTTOM · the action bar (Tier 1)
+   =================================================================== */
+.hud-bottom {
+  position: absolute; left: 0; right: 0; bottom: round(calc(4 * var(--u)), 1px);
+  display: flex; justify-content: center;
+}
+.hud-actionw { position: relative; }
+.hud-action {
+  --ch: calc(10 * var(--u));
+  display: flex; flex-direction: column; gap: calc(5 * var(--u));
+  padding: calc(3 * var(--u)) calc(14 * var(--u)) calc(6 * var(--u));
+  contain: layout style;
+}
+
+/* vitals: level chip · HP + XP · HP number */
+.hud-vitals { display: flex; align-items: center; gap: calc(12 * var(--u)); }
+.hud-lv {
+  position: relative; flex: none;
+  width: round(calc(64 * var(--u)), 2px); height: round(calc(22 * var(--u)), 2px);
+  display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u));
+  border-radius: calc(4 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(160deg, var(--cf-bronze-hi) 0 45%, var(--cf-bronze) 45%);
+  box-shadow: 0 0 0 1px var(--cf-void), inset 1px 1px 0 rgb(255 244 210 / .5);
+  color: var(--cf-void);
+}
+.hud-lv::after { content: ""; position: absolute; inset: 0; border-radius: inherit; corner-shape: bevel; background: #fff4d2; opacity: 0; }
+.hud-lv-l { font: 800 calc(14 * var(--u)) / 1 var(--font-label); letter-spacing: .04em; }
+.hud-lv .num { font-size: calc(19 * var(--u)); line-height: 1; }
+.hud-hp { position: relative; width: calc(5 * 64 * var(--u) + 4 * 6 * var(--u)); display: flex; flex-direction: column; gap: max(2px, round(calc(3 * var(--u)), 1px)); }
+.hud-hpbar { --h: round(calc(16 * var(--u)), 2px); }
+.hud-hpbar .cf-bar-fill { background: linear-gradient(180deg, rgb(255 255 255 / .34) 0 20%, transparent 20% 58%, rgb(0 0 0 / .22) 58%), linear-gradient(90deg, var(--hp), #f0503f); }
+.hud-hpbar .cf-bar-ghost, .hud-cl-hp .cf-bar-ghost { background: linear-gradient(180deg, #ffd9a0, #e09a4a); opacity: .9; }   /* amber = "just lost"; shield stays the white-blue hatch */
+.hud-hp-low { background: linear-gradient(180deg, rgb(255 210 190 / .7), rgb(255 120 100 / .2)); opacity: 0; }
+.hud-hp.low .hud-hp-low { animation: hud-lowfill 1s ease-in-out infinite alternate; }
+.hud-xp {
+  position: relative; overflow: clip;
+  margin-inline: round(calc(10 * var(--u)), 1px);
+  height: max(2px, round(calc(4 * var(--u)), 1px));
+  background: #0f0c18; box-shadow: 0 0 0 1px var(--cf-void);
+}
+.hud-xp > i { position: absolute; inset: 0; transform-origin: 0 50%; will-change: transform; transform: scaleX(0); background: linear-gradient(180deg, #e6fff5 0 40%, var(--xp) 40%); }
+.hud-hpnum { display: flex; align-items: baseline; gap: calc(6 * var(--u)); min-width: calc(110 * var(--u)); }
+.hud-hp-n { font-size: calc(24 * var(--u)); line-height: 1; color: #fff8ec; }
+.hud-hp.low ~ .hud-hpnum .hud-hp-n { color: var(--hp-hi); }
+.hud-sh-n { font-size: calc(17 * var(--u)); line-height: 1; color: var(--shield); }
+
+/* sockets row */
+.hud-row { display: flex; align-items: center; gap: calc(6 * var(--u)); }
+.hud-div { flex: none; width: max(1px, round(calc(2 * var(--u)), 1px)); height: calc(46 * var(--u)); margin-inline: calc(3 * var(--u));
+  background: linear-gradient(180deg, transparent, var(--cf-bronze) 25%, var(--cf-bronze) 75%, transparent); }
+.hud-slots { position: relative; display: flex; gap: calc(6 * var(--u)); }
+.hud-sk, .hud-dash { position: relative; flex: none; }
+.hud-sock { --sz: calc(64 * var(--u)); }
+.hud-sock-ico { display: grid; place-items: center; width: round(calc(var(--sz) * .64), 1px); height: round(calc(var(--sz) * .64), 1px); font-size: round(calc(var(--sz) * .64), 1px); line-height: 0; }
+.hud-sock-ico > .ico-glyph { font-size: .78em; }
+
+/* ready / filled sockets wear the element bezel; cooling ones fall back to bronze */
+.hud-sk:not(.sweep):not(.empty) > .hud-sock,
+.hud-dash:not(.sweep) > .hud-sock,
+.hud-auto:not(.none) > .hud-sock {
+  background:
+    radial-gradient(circle at 50% 55%, color-mix(in oklab, var(--el, var(--cf-enamel-hi)) 30%, transparent), transparent 72%) padding-box,
+    linear-gradient(160deg, var(--cf-enamel) 0 45%, #1f1a3e 45%) padding-box,
+    linear-gradient(160deg, var(--el-hi, var(--cf-gilt)) 0 30%, var(--el, var(--cf-bronze)) 30% 62%, var(--el-lo, var(--cf-bronze-lo)) 62%) border-box;
+}
+.hud-sk.cooling .hud-sock-ico { opacity: .8; }
+/* cooling: the icon stays recognisable (desaturated, static filter); ready pops by contrast */
+.hud-sk.sweep .hud-sock-ico, .hud-dash.sweep .hud-sock-ico { opacity: .8; filter: saturate(.35); }
+
+/* cooldown: dark conic with a 0.7° feather + clock hand (clipped to the octagon) */
+.hud-cd, .hud-clip {
+  position: absolute; inset: 0; pointer-events: none;
+  border-radius: calc(var(--sz) * .28 - 3px); corner-shape: bevel;
+}
+.hud-cd {
+  --cd: 0deg;
+  background: conic-gradient(rgb(8 6 14 / 0) calc(var(--cd) - .35deg), rgb(8 6 14 / .5) calc(var(--cd) + .35deg));
+  opacity: 0;
+}
+.sweep > .hud-sock > .hud-cd { opacity: 1; }
+.hud-hand {
+  position: absolute; left: calc(50% - 1px); top: 0; width: 2px; height: 50%;
+  transform-origin: 50% 100%; will-change: transform;
+  background: linear-gradient(180deg, var(--el-hi, #fff), transparent 90%);
+  opacity: 0; pointer-events: none;
+}
+.sweep > .hud-sock > .hud-hand { opacity: .9; }
+.hud-clip { overflow: hidden; }
+.hud-glint { position: absolute; inset: -20%; background: linear-gradient(90deg, transparent 38%, rgb(255 244 210 / .95) 50%, transparent 62%); opacity: 0; }
+.hud-num {
+  position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none;
+  font-size: calc(26 * var(--u)); line-height: 1; color: #fff;
+  -webkit-text-stroke: max(3px, round(calc(5 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+
+/* key caps: inside the top-left corner */
+.hud-key { position: absolute; left: round(calc(-4 * var(--u)), 1px); top: round(calc(-3 * var(--u)), 1px); z-index: 5; }
+.hud-key.mouse { padding: 0 calc(2 * var(--u)); }
+.hud-key .ico { font-size: calc(15 * var(--u)); --el: var(--cf-void); --el-lo: var(--cf-void); --el-hi: var(--cf-bronze-lo); }
+.hud-key .ico-glyph { color: var(--cf-void); font: 800 calc(14 * var(--u)) / 1 var(--font-label); }
+.hud-key.wide { left: 0; right: 0; margin-inline: auto; width: fit-content; top: round(calc(-3 * var(--u)), 1px); font-size: calc(14 * var(--u)); }
+
+/* rank pips + dash charges: gems set into the bottom bezel */
+.hud-rank { position: absolute; left: 0; right: 0; bottom: round(calc(-4 * var(--u)), 1px); z-index: 4; justify-content: center; gap: calc(3 * var(--u)); --pip: var(--el); }
+.hud-rank > i { width: round(calc(7 * var(--u)), 1px); height: round(calc(7 * var(--u)), 1px); }
+.hud-sk.fusion .hud-rank, .hud-auto.fusion .hud-rank { --pip: var(--cf-gilt); }
+.hud-charges { position: absolute; left: 0; right: 0; bottom: round(calc(-4 * var(--u)), 1px); z-index: 4; display: flex; justify-content: center; gap: calc(4 * var(--u)); }
+.hud-charges > i {
+  position: relative; overflow: clip;
+  width: round(calc(20 * var(--u)), 2px); height: round(calc(7 * var(--u)), 1px);
+  background: #2a2440; box-shadow: 0 0 0 1px var(--cf-void);
+}
+.hud-charges > i > b { position: absolute; inset: 0; transform-origin: 0 50%; will-change: transform; background: var(--el); opacity: .45; }
+.hud-charges > i.on > b { opacity: 1; background: linear-gradient(180deg, var(--el-hi) 0 40%, var(--el) 40%); }
+
+/* empty slot */
+.hud-sk.empty .hud-rank, .hud-sk.empty .hud-num { display: none; }
+.hud-sk.empty .hud-key { opacity: .7; }
+
+/* fusion: prism crack across the top bezel */
+.hud-crack { display: none; }
+.hud-sk.fusion .hud-crack {
+  display: block; position: absolute; z-index: 4;
+  left: 22%; right: 14%; top: round(calc(-2 * var(--u)), 1px); height: round(calc(6 * var(--u)), 2px);
+  background: var(--prism);
+  clip-path: polygon(0 45%, 30% 30%, 46% 70%, 64% 25%, 82% 60%, 100% 40%, 100% 75%, 82% 95%, 64% 60%, 46% 100%, 30% 65%, 0 80%);
+}
+
+/* auto skills */
+.hud-autos { display: flex; gap: calc(8 * var(--u)); align-items: center; }
+.hud-auto { position: relative; }
+.hud-auto > .hud-sock { --sz: calc(48 * var(--u)); }
+.hud-auto .hud-rank { bottom: round(calc(-5 * var(--u)), 1px); gap: calc(2 * var(--u)); }
+.hud-auto .hud-rank > i { width: round(calc(6 * var(--u)), 1px); height: round(calc(6 * var(--u)), 1px); }
+.hud-auto.none > .hud-sock { opacity: .55; }
+
+/* auto-cast chip */
+.hud-ac { position: relative; margin-left: calc(4 * var(--u)); }
+.hud-ac-sock { --sz: calc(34 * var(--u)); opacity: .5; font-size: calc(20 * var(--u)); }
+.hud-ac-sock > .ico { width: round(calc(22 * var(--u)), 1px); height: round(calc(22 * var(--u)), 1px); }
+.hud-ac .ico-glyph { color: var(--cf-dim); font: 800 calc(16 * var(--u)) / 1 var(--font-label); }
+.hud-ac.on .hud-ac-sock { opacity: 1; background: linear-gradient(160deg, var(--cf-enamel-hi) 0 45%, var(--cf-enamel) 45%) padding-box, var(--gilt-grad) border-box; }
+.hud-ac.on .ico-glyph { color: var(--cf-gilt); }
+.hud-ac .hud-key { left: auto; right: round(calc(-7 * var(--u)), 1px); top: round(calc(-8 * var(--u)), 1px); min-width: calc(18 * var(--u)); height: calc(17 * var(--u)); }
+
+/* buffs: beside the bar, newest nearest */
+.hud-buffs { position: absolute; right: calc(100% + 16 * var(--u)); bottom: calc(10 * var(--u)); display: flex; flex-direction: row-reverse; gap: calc(8 * var(--u)); }
+.hud-buff { position: relative; width: round(calc(38 * var(--u)), 2px); height: round(calc(38 * var(--u)), 2px); }
+.hud-buff-sq {
+  position: absolute; inset: 0; overflow: hidden;
+  display: grid; place-items: center; font-size: calc(28 * var(--u)); line-height: 0;
+  border: max(2px, round(calc(2 * var(--u)), 1px)) solid var(--acc);
+  border-radius: calc(6 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(160deg, var(--cf-plate-2) 0 45%, var(--cf-plate-1) 45%);
+  box-shadow: 0 0 0 1px var(--cf-void);
+}
+.hud-buff-sweep { --cd: 0deg; position: absolute; inset: 0; background: conic-gradient(rgb(8 6 14 / .7) calc(var(--cd) - .35deg), rgb(8 6 14 / 0) calc(var(--cd) + .35deg)); }
+.hud-buff-t {
+  position: absolute; right: round(calc(-6 * var(--u)), 1px); bottom: round(calc(-7 * var(--u)), 1px); z-index: 2;
+  font-size: calc(16 * var(--u)); line-height: 1; color: #fff;
+  -webkit-text-stroke: max(3px, round(calc(4 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+
+/* ===================================================================
+   EVENT OVERLAYS (hud-fx.js)
+   =================================================================== */
+.hud-tc, .hud-bi, .hud-stamp { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; text-align: center; opacity: 0; pointer-events: none; }
+.hud-tc { top: 15%; --act: var(--cf-gilt); }
+.hud-tc-kick {
+  font: 800 calc(20 * var(--u)) / 1 var(--font-label); letter-spacing: .4em; margin-right: -.4em; color: var(--cf-gilt);
+  -webkit-text-stroke: max(3px, round(calc(4 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+.hud-tc-num {
+  font: 700 calc(120 * var(--u)) / .95 var(--font-hero); color: var(--cf-text);
+  -webkit-text-stroke: max(5px, round(calc(8 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+  text-shadow: 0 calc(4 * var(--u)) 0 rgb(12 10 18 / .5);
+}
+.hud-tc-name {
+  font: 700 calc(46 * var(--u)) / 1.05 var(--font-head); color: var(--cf-text);
+  -webkit-text-stroke: max(4px, round(calc(6 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+.hud-tc-line {
+  display: block; width: calc(460 * var(--u)); height: max(2px, round(calc(3 * var(--u)), 1px)); margin-top: calc(10 * var(--u));
+  background: linear-gradient(90deg, transparent, var(--act) 18%, var(--act) 82%, transparent);
+  box-shadow: 0 1px 0 rgb(12 10 18 / .7);
+}
+
+.hud-bi { top: 22%; }
+.hud-bi-name {
+  font: 700 calc(84 * var(--u)) / 1 var(--font-hero); color: var(--cf-text);
+  -webkit-text-stroke: max(5px, round(calc(8 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+.hud-bi-rule { width: calc(380 * var(--u)); margin: calc(4 * var(--u)) 0; }
+.hud-bi-epi {
+  font: 800 calc(24 * var(--u)) / 1 var(--font-label); letter-spacing: .12em; color: var(--hp-hi);
+  -webkit-text-stroke: max(3px, round(calc(5 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+.hud-bi.prism .hud-bi-rule::before, .hud-bi.prism .hud-bi-rule::after { background: var(--prism); }
+
+.hud-stamp {
+  top: 26%;
+  font: 700 calc(52 * var(--u)) / 1 var(--font-head); color: var(--c, var(--cf-gilt));
+  -webkit-text-stroke: max(4px, round(calc(7 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+
+.hud-shift { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(ellipse 70% 60% at 50% 50%, rgb(239 233 255 / .5), rgb(192 140 255 / .2) 45%, transparent 78%); }
+.hud-shift-crack { position: absolute; left: 8%; right: 8%; top: 50%; height: max(2px, round(calc(3 * var(--u)), 1px)); background: var(--prism);
+  box-shadow: 0 0 calc(14 * var(--u)) rgb(239 233 255 / .85); transform: scaleX(0); }
+
+.hud-perfect { position: absolute; left: 0; top: 0; pointer-events: none; }
+.hud-perfect > span {
+  position: absolute; left: calc(-120 * var(--u)); width: calc(240 * var(--u)); top: calc(-20 * var(--u));
+  text-align: center; opacity: 0;
+  font: 800 calc(30 * var(--u)) / 1 var(--font-label); letter-spacing: .14em; color: var(--cf-gilt);
+  -webkit-text-stroke: max(4px, round(calc(6 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+
+/* ===================================================================
+   RIFT PRIMER (tutorial.js): objective plate, tips, crystal marker
+   =================================================================== */
+.tut, .tut-tip {
+  --ch: calc(8 * var(--u));
+  position: absolute; left: calc(20 * var(--u)); top: 34%;
+  width: calc(390 * var(--u));
+  padding: calc(12 * var(--u)) calc(16 * var(--u)) calc(12 * var(--u));
+  opacity: 0; translate: calc(-16 * var(--u)) 0;
+  transition: opacity .3s, translate .35s var(--ease-forge);
+  pointer-events: none;
+}
+.tut.on, .tut-tip.on { opacity: 1; translate: 0 0; }
+.tut.on { pointer-events: auto; }
+.tut.hide { opacity: 0; pointer-events: none; }
+.tut::after { content: ""; position: absolute; inset: calc(-6 * var(--u)); border: 2px solid var(--cf-gilt); border-radius: var(--ch); corner-shape: bevel; opacity: 0; pointer-events: none; }
+.tut.pop::after { animation: tut-pop .55s ease-out; }
+@keyframes tut-pop { from { opacity: 1; } to { opacity: 0; } }
+.tut.done { background: var(--iron-grad) padding-box, var(--gilt-grad) border-box; }
+.tut-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(8 * var(--u)); }
+.tut-kicker { font: 800 calc(16 * var(--u)) / 1 var(--font-label); letter-spacing: .08em; color: var(--cf-gilt); text-transform: lowercase; }
+.tut-steps { display: flex; gap: calc(7 * var(--u)); padding-right: calc(2 * var(--u)); }
+.tut-steps i { width: calc(9 * var(--u)); height: calc(9 * var(--u)); rotate: 45deg; background: #2a2440; box-shadow: 0 0 0 1px var(--cf-void); }
+.tut-steps i.ok { background: linear-gradient(135deg, #fff4d2 0 30%, var(--cf-gilt) 30%); }
+.tut-steps i.cur { background: var(--cf-text); animation: hud-blink .9s ease-in-out infinite alternate; }
+.tut-text { font: 700 calc(19 * var(--u)) / 1.3 var(--font-body); color: var(--cf-text); text-wrap: pretty; }
+.tut-sub { margin-top: calc(6 * var(--u)); font: 500 calc(18 * var(--u)) / 1.35 var(--font-body); color: var(--cf-dim); }
+.tut-text b, .tut-sub b { font-weight: 800; }
+.tut kbd, .tut-tip kbd {
+  display: inline-grid; place-items: center; vertical-align: .08em;
+  min-width: calc(22 * var(--u)); height: calc(20 * var(--u)); padding: 0 calc(5 * var(--u));
+  border-radius: calc(3 * var(--u)); corner-shape: bevel;
+  background: linear-gradient(160deg, var(--cf-bronze-hi) 0 45%, var(--cf-bronze) 45%);
+  box-shadow: 0 0 0 1px var(--cf-void);
+  font: 800 calc(15 * var(--u)) / 1 var(--font-label); letter-spacing: .03em; color: var(--cf-void); text-transform: lowercase;
+}
+.tut-foot { display: flex; align-items: center; justify-content: space-between; margin-top: calc(10 * var(--u)); min-height: calc(20 * var(--u)); }
+.tut-prog { font-size: calc(20 * var(--u)); color: var(--cf-gilt); }
+.tut-skip {
+  margin-left: auto; padding: calc(2 * var(--u)) calc(4 * var(--u));
+  font: 700 calc(15 * var(--u)) / 1 var(--font-label); letter-spacing: .04em; text-transform: lowercase;
+  color: var(--cf-faint); background: none; border: none; cursor: pointer;
+  text-decoration: underline; text-underline-offset: .2em;
+}
+.tut-skip:hover { color: var(--cf-text); }
+.tut-tip { top: calc(34% + 4 * var(--u)); }
+
+/* the HUD element a primer step talks about: a gilt ring, opacity-only pulse */
+.tut-glow { position: relative; }
+.tut-glow::after {
+  content: ""; position: absolute; inset: calc(-8 * var(--u)); z-index: 6; pointer-events: none;
+  border: 2px solid var(--cf-gilt); border-radius: calc(8 * var(--u)); corner-shape: bevel;
+  box-shadow: 0 0 calc(12 * var(--u)) rgb(236 217 166 / .65), inset 0 0 calc(8 * var(--u)) rgb(236 217 166 / .35);
+  animation: tut-glow .9s ease-in-out infinite alternate;
+}
+@keyframes tut-glow { from { opacity: .25; } to { opacity: 1; } }
+
+/* marker over the tutorial crystal */
+.tut-mark { position: absolute; left: 0; top: 0; display: none; pointer-events: none; }
+.tut-mark.on { display: block; }
+.tut-mark-label {
+  position: absolute; left: 0; bottom: calc(26 * var(--u)); translate: -50% 0;
+  padding: calc(3 * var(--u)) calc(10 * var(--u));
+  white-space: nowrap; font: 800 calc(17 * var(--u)) / 1 var(--font-label); letter-spacing: .08em; text-transform: lowercase;
+  color: var(--cf-void); background: linear-gradient(160deg, #fff4d2 0 40%, var(--cf-gilt) 40%);
+  border-radius: calc(4 * var(--u)); corner-shape: bevel; box-shadow: 0 0 0 1px var(--cf-void), 0 0 0 3px rgb(12 10 18 / .35);
+}
+.tut-mark-arrow {
+  position: absolute; left: calc(-14 * var(--u)); top: calc(-24 * var(--u));
+  width: calc(28 * var(--u)); height: calc(16 * var(--u));
+  background: var(--gilt-grad);
+  -webkit-mask: var(--orn-crown-d) center / 100% 100% no-repeat; mask: var(--orn-crown-d) center / 100% 100% no-repeat;
+  animation: tut-bob .8s ease-in-out infinite alternate;
+}
+@keyframes tut-bob { from { transform: translateY(0); } to { transform: translateY(calc(6 * var(--u))); } }
+.tut-mark.edge .tut-mark-label { display: none; }
+.tut-mark.edge .tut-mark-arrow { top: calc(-8 * var(--u)); animation: none; transform: rotate(var(--rot)); }
+
+/* nothing of the primer survives outside a run (title, end screens) */
+.hud-off .tut, .hud-off .tut-tip, .hud-off .tut-mark { display: none !important; }
+
+/* ---------------- reduced motion ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .hud-vig.on, .hud-beat.soon, .hud-cl.low .hud-cl-low, .hud-hp.low .hud-hp-low, .tut-steps i.cur, .tut-mark-arrow { animation: none; }
+  .hud-vig.on { opacity: .8; }
+  .tut-glow::after { animation: none; opacity: .9; }
+  .hud-ribbon, .tut, .tut-tip { transition: opacity .2s; translate: none; }
+}
+
+/* while a modal is open (level-up / relic / pause) the action bar and markers step aside */
+.hud-actionw, .hud-markers, .hud-lane { transition: opacity .18s var(--ease-forge); }
+.hud-modal .hud-actionw, .hud-modal .hud-markers, .hud-modal .hud-lane { opacity: 0; }

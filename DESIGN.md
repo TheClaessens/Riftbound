@@ -297,16 +297,13 @@ Archetype (behaviour + model) × faction (palette, name, resist).
   * Reaction hit-stop only plays at Chain ≤ 3, so high Chains don't stutter.
   * Title-screen setting: Shake Full / Reduced / Off (`meta.shake`).
 * **Class models** with distinct silhouettes (Pass 9). The staff orb glows with the last-cast element.
-* **HUD**:
-  * act bar (3 segments + skull markers, top centre)
-  * HP bar with shield overlay
-  * dash pips
-  * trait meter
-  * CHAIN ×N (right of centre)
-  * relic tray (top-left)
-  * shrine edge arrow
-  * skill bar with radial cooldowns and key labels
-  * boss bar with name and phase pip
+* **HUD** (v3 "Crownforge", full spec in `design/UI.md`, rationale in `design/UI_PASSES.md`):
+  * top centre: act timeline (act gems, 0:00–3:00 track with Elite Surge / Swarm / Boss markers, timer) + a beat ribbon ("Elite Surge in 0:08"); in boss fights a crowned boss nameplate bar with a 50% phase notch and the Prism Ward badge (element gem + countdown)
+  * bottom centre: one compact action bar: level, HP (shield hatch, damage ghost), XP line, dash socket with charge pips, 5 skill sockets with cooldown sweeps and rank pips, auto-skill gems, auto-cast toggle, buffs with radial timers
+  * under the character: mini HP, dash pips, Frost Armor pips / Momentum strip (replaces the old trait panel)
+  * right lane: CHAIN ×N (white → amber → prism), milestone stamps, Arcanist Resonance meter, reaction feed, discovery toasts
+  * top-left relic tray; edge markers for shrines, the Relic Bearer and dropped chests
+  * level-up: keys 1–3, **F** reroll, **X** banish; cards show rank pips before → after and the change, plus the current loadout
 * **Audio**:
   * Procedural music per act: drone + arpeggio. An intensity layer follows enemy count, and a boss layer plays during bosses.
   * SFX: dash, perfect dodge, relic open/pick, geode shatter, shrine claim, Rift Shift, boss phase, ward break, chain milestones (10/25/50).
