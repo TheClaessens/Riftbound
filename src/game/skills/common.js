@@ -20,6 +20,10 @@ const _hits = [];
 //   onHit(game, enemy, proj)   — after damage is dealt
 //   onExpire(game, proj)       — when range runs out OR pierce exhausted (proj.pos = last position)
 //   hitCooldown                — if set, the projectile can re-hit the same enemy after this many seconds
+//   ribbon: { color, width, hdr, segLen } — a game.vfx ribbon trail following the projectile (stops on dispose)
+//   onUpdate(game, proj, dt)   — per-frame visual hook (proj.pos, proj.dir, proj.age, proj.travelled, proj.mesh)
+//   onDispose(game, proj)      — visual cleanup / end flourish (called once when the projectile is removed)
+//   (mesh: null = no default sphere; pass a custom Object3D or draw everything via game.vfx)
 export class Projectile {
   constructor(game, opts) {
     this.o = opts;
@@ -37,13 +41,14 @@ export class Projectile {
     this.trailAcc = 0;
     const color = opts.color ?? ELEMENT_COLOR[opts.element] ?? 0xffffff;
     this.color = color;
-    if (opts.mesh) this.mesh = opts.mesh;
+    if (opts.mesh === null) this.mesh = null;
+    else if (opts.mesh) this.mesh = opts.mesh;
     else {
       this.mesh = new THREE.Mesh(GEO.sphere, glowMaterial(color, 1.8));
       this.mesh.scale.setScalar(opts.size ?? 0.25);
     }
-    this.mesh.position.copy(this.pos);
-    game.scene.add(this.mesh);
+    if (this.mesh) { this.mesh.position.copy(this.pos); game.scene.add(this.mesh); }
+    if (opts.ribbon && game.vfx) this.ribbon = game.vfx.trail(this.pos, { color: opts.ribbon.color ?? color, width: opts.ribbon.width ?? 0.4, hdr: opts.ribbon.hdr ?? 1.5, segLen: opts.ribbon.segLen });
   }
 
   update(dt, game) {
@@ -68,8 +73,9 @@ export class Projectile {
     const step = this.speed * dt;
     this.pos.addScaledVector(this.dir, step);
     this.travelled += step;
-    this.mesh.position.copy(this.pos);
-    if (o.spin) this.mesh.rotation.y += o.spin * dt;
+    if (this.mesh) this.mesh.position.copy(this.pos);
+    if (o.spin && this.mesh) this.mesh.rotation.y += o.spin * dt;
+    o.onUpdate?.(game, this, dt);
 
     if (o.trail) {
       this.trailAcc += dt * (o.trail.rate ?? 40);
@@ -96,6 +102,9 @@ export class Projectile {
   }
 
   dispose(game) {
+    this.ribbon?.stop();
+    this.o.onDispose?.(game, this);
+    if (!this.mesh) return;
     game.scene.remove(this.mesh);
     // Only dispose materials we created (custom meshes manage themselves).
     if (!this.o.mesh) this.mesh.material.dispose();

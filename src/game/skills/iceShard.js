@@ -1,34 +1,25 @@
 import * as THREE from 'three';
 import { Projectile, fanDirections } from './common.js';
-import { GEO, glowMaterial } from '../../core/utils.js';
+import { shardLook } from '../vfx/elements/frost.js';
 
 // Cryomancer starter (frost). Piercing crystal shards; at r5 each expiring shard splits.
+// Look (vfx/elements/frost.js shardLook): a thrown icicle (faceted hex ice, navy outline, spinning)
+// trailing a painted contrail and shed flakes, scratching a rime line on the ground under its path;
+// it chips forward through foes, sticks into the ground at range and crumbles, or shatters when stopped.
 
-// ONE shared material and two shared templates (module scope). Shots pass cloned Meshes,
-// which share this geometry and material; Projectile does not dispose custom-mesh materials.
-const SHARD_MAT = glowMaterial(0x6fd8ff, 1.7);
-const shardTemplate = new THREE.Mesh(GEO.octa, SHARD_MAT);
-shardTemplate.scale.set(0.12, 0.12, 0.55); // long axis = local Z, tips at +-0.55
-const miniTemplate = new THREE.Mesh(GEO.octa, SHARD_MAT);
-miniTemplate.scale.set(0.07, 0.07, 0.3);
-
-// Clone a template and point its long axis along `dir` (XZ). rotation.y = atan2(x, z) maps local +Z onto dir.
-function shardMesh(template, dir) {
-  const m = template.clone();
-  m.rotation.set(0, Math.atan2(dir.x, dir.z), 0);
-  return m;
-}
+const _hand = new THREE.Vector3();
 
 // r5: expiring shard becomes 3 mini-shards (6 dmg) in a fan.
 function splitShard(game, p) {
   for (const d of fanDirections(p.dir, 3, 0.5)) {
+    const look = shardLook(game, { len: 0.6, wid: 0.075, mini: true });
     game.addActor(new Projectile(game, {
       pos: p.pos, dir: d, speed: 16, range: 5, radius: 0.36, damage: 6, element: 'frost',
-      mesh: shardMesh(miniTemplate, d),
-      trail: { rate: 30, color: 0xd8fbff, size: 0.14, life: 0.2 },
+      mesh: null,
+      onUpdate: look.onUpdate, onDispose: look.onDispose, onHit: look.onHit,
+      onExpire: (g, pp) => look.expire(g, pp),
     }));
   }
-  game.fx.burst(p.pos, { color: 0xbff4ff, count: 6, speed: 3, life: 0.3, size: 0.2 });
 }
 
 export const iceShard = {
@@ -56,16 +47,20 @@ export const iceShard = {
     const dmg = 16 * (r >= 2 ? 1.2 : 1);
     const pierce = 2 + (r >= 4 ? 2 : 0);
     const split = r >= 5;
+    // visual: leave from the casting hand; with 3+ shards each head is x0.85 (starter size cap)
+    const h = game.player.hand ? game.player.hand(_hand) : null;
+    const from = h ? { x: h.x, y: h.y, z: h.z } : null;
+    const k = count >= 3 ? 0.85 : 1;
     for (const d of fanDirections(ctx.dir, count, 0.18 * (count - 1))) {
+      const look = shardLook(game, { len: 1.1 * k, wid: 0.12 * k, hoar: r >= 4, from });
       game.addActor(new Projectile(game, {
         pos: ctx.origin, dir: d, speed: 20, range: 15,
         radius: 0.42, damage: dmg, element: 'frost', pierce, statusPower: 2, knockback: 1,
-        mesh: shardMesh(shardTemplate, d),
-        trail: { rate: 45, color: 0xd8fbff, size: 0.2, life: 0.3 },
-        onHit: (g, e, p) => g.fx.burst(p.pos, { color: 0x9fe9ff, count: 4, speed: 2.5, life: 0.25, size: 0.2 }),
-        onExpire: split ? (g, p) => splitShard(g, p) : undefined,
+        mesh: null,
+        onUpdate: look.onUpdate, onDispose: look.onDispose,
+        onHit: look.onHit,
+        onExpire: split ? (g, p) => { look.expire(g, p, { split: true }); splitShard(g, p); } : (g, p) => look.expire(g, p),
       }));
     }
-    game.fx.burst({ x: ctx.origin.x + ctx.dir.x * 0.8, y: 0.4, z: ctx.origin.z + ctx.dir.z * 0.8 }, { color: 0xbff4ff, count: 3, speed: 2, life: 0.2, size: 0.3 });
   },
 };

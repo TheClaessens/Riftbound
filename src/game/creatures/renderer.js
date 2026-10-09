@@ -14,6 +14,9 @@ import { makeRigMaterials, Pose, POSE_STRIDE, solvePose } from './rig.js';
 //    h.accent        : null | [r,g,b,mix] recolours emissive parts (wards)
 //    h.elite         : true → trim parts turn gold, elite-only parts appear
 //    h.frozen        : true → animation time stops (frozen enemies hold their pose)
+//    h.hidden        : true → instance collapses (blink)
+//    h.stat          : null | [burn 0..1, cold 0..1 (1 = frozen), shock 0..1] → status looks in the rig shader
+//    renderer.add(def, { track: true }) + renderer.boneWorld(h, bone, [x,y,z], outVec3) → world point on a bone
 //    renderer.remove(h, { corpse: true })                     // death topple, then free
 //    renderer.update(dt, time)                                // once per frame (dt 0 = hold)
 //    renderer.setRim(hex, strength)                           // biome rim light colour
@@ -30,6 +33,7 @@ const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 const _pos = new THREE.Vector3();
 const _scl = new THREE.Vector3();
 const _col = new THREE.Color();
+const RIG_TIME = { value: 0 };   // shared rigTime uniform (status flicker in the rig shader)
 
 function blobTexture() {
   const c = document.createElement('canvas');
@@ -46,11 +50,12 @@ function blobTexture() {
 }
 
 class Batch {
-  constructor(scene, def, rimUniform, outlineUniform) {
+  constructor(scene, def, rimUniform, outlineUniform, renderOrder = 0) {
+    this.renderOrder = renderOrder;
     this.scene = scene;
     this.def = def;
     this.handles = [];
-    this.uniforms = { boneTex: { value: null }, rigRim: rimUniform, rigOutline: outlineUniform };
+    this.uniforms = { boneTex: { value: null }, rigRim: rimUniform, rigOutline: outlineUniform, rigTime: RIG_TIME, rigHeight: { value: def.geometry.boundingBox.max.y } };
     const mats = makeRigMaterials(this.uniforms, def.spec.material);
     this.material = mats.color;
     this.depthMaterial = mats.depth;
@@ -95,6 +100,7 @@ class Batch {
     mesh.frustumCulled = false;
     mesh.count = 0;
     mesh.name = `creature:${def.id}`;
+    mesh.renderOrder = this.renderOrder;
     if (old) { this.scene.remove(old); old.dispose(); }
     if (this.hull) { this.scene.remove(this.hull); this.hull.dispose(); this.hull = null; }
     if (this.hullMaterial) {
@@ -103,6 +109,7 @@ class Batch {
       hull.frustumCulled = false;
       hull.count = 0;
       hull.name = `creature-hull:${def.id}`;
+      hull.renderOrder = this.renderOrder;
       this.scene.add(hull);
       this.hull = hull;
     }
@@ -120,10 +127,12 @@ class Batch {
 }
 
 export class CreatureRenderer {
-  constructor(scene, camera = null) {
+  // opts: { outlinePx (default 1.6), renderOrder (heroes draw after their ground ring) }
+  constructor(scene, camera = null, opts = {}) {
     this.camera = camera;
     this.outline = { value: 0.035 };
-    this.outlinePx = 1.6;
+    this.outlinePx = opts.outlinePx ?? 1.6;
+    this.renderOrder = opts.renderOrder ?? 0;
     this.scene = scene;
     this.batches = new Map();
     this.pose = new Pose();
@@ -159,7 +168,7 @@ export class CreatureRenderer {
 
   _batch(def) {
     let b = this.batches.get(def.id);
-    if (!b) { b = new Batch(this.scene, def, this.rim, this.outline); this.batches.set(def.id, b); }
+    if (!b) { b = new Batch(this.scene, def, this.rim, this.outline, this.renderOrder); this.batches.set(def.id, b); }
     return b;
   }
 
@@ -190,8 +199,24 @@ export class CreatureRenderer {
       const v = 0.94 + seed * 0.12;
       h.color = [v * (0.98 + 0.04 * ((seed * 7.3) % 1)), v, v * (0.98 + 0.04 * ((seed * 3.1) % 1))];
     }
+    if (opts.track) {
+      // keep this instance's solved bone matrices + instance matrix for boneWorld() (heroes)
+      h.bones = new Float32Array(def.boneCount * 16);
+      h.matrix = new THREE.Matrix4();
+    }
     b.handles.push(h);
     return h;
+  }
+
+  // World position of a model-space point carried by `bone` (name or index), as of the last update().
+  // Needs a handle added with { track: true }.
+  boneWorld(h, bone, local, out) {
+    const bi = typeof bone === 'number' ? bone : h.def.B[bone];
+    const m = h.bones, o = bi * 16, x = local[0], y = local[1], z = local[2];
+    out.set(m[o] * x + m[o + 4] * y + m[o + 8] * z + m[o + 12],
+      m[o + 1] * x + m[o + 5] * y + m[o + 9] * z + m[o + 13],
+      m[o + 2] * x + m[o + 6] * y + m[o + 10] * z + m[o + 14]);
+    return out.applyMatrix4(h.matrix);
   }
 
   // corpse: play the death topple first (the handle stays alive DEATH_TIME seconds).
@@ -224,6 +249,7 @@ export class CreatureRenderer {
 
   update(dt, time) {
     this.time = time;
+    RIG_TIME.value = time % 1000;
     const cam = this.camera;
     if (cam && cam.isOrthographicCamera) this.outline.value = this.outlinePx * (cam.top - cam.bottom) / (cam.zoom * Math.max(1, innerHeight));
     const s = this._s;
@@ -273,6 +299,7 @@ export class CreatureRenderer {
         this.pose.reset(h.pose, bones);
         def.animate(this.pose, s, def.B);
         solvePose(def, h.pose, tex, i * bones * 16);
+        if (h.bones) h.bones.set(tex.subarray(i * bones * 16, (i + 1) * bones * 16));
 
         // ---- instance transform (+ hit squash, + generic death topple: fall and sink)
         let lift = h.lift, sc = h.scale, rx = 0, rz = 0, sy = 1, sxz = 1;
@@ -286,12 +313,14 @@ export class CreatureRenderer {
           lift -= Math.max(0, k - 0.45) / 0.55 * 0.9 * sc;
           sc *= 1 - 0.25 * Math.max(0, k - 0.6) / 0.4;
         }
+        if (h.hidden) sc = 0;
         _e.set(rx + h.tilt, h._yaw, rz, 'YXZ');
         _q.setFromEuler(_e);
         _pos.set(h.pos.x, h.pos.y + lift, h.pos.z);
         _scl.set(sc * sxz, sc * sy, sc * sxz);
         _mat.compose(_pos, _q, _scl);
         _mat.toArray(inst, i * 16);
+        if (h.matrix) h.matrix.copy(_mat);
 
         // ---- per-instance channels
         const o = i * 4;
@@ -311,6 +340,9 @@ export class CreatureRenderer {
         if (h.accent) { acc[o] = h.accent[0]; acc[o + 1] = h.accent[1]; acc[o + 2] = h.accent[2]; acc[o + 3] = h.accent[3]; }
         else acc[o + 3] = 0;
         misc[o] = h.elite ? 1 : 0;
+        // status looks: h.stat = [burn 0..1, cold 0..1 (1 = frozen), shock 0..1] or null
+        const st = h.dying > 0 ? null : h.stat;
+        misc[o + 1] = st ? st[0] : 0; misc[o + 2] = st ? st[1] : 0; misc[o + 3] = st ? st[2] : 0;
         const c = h.color;
         const dk = h.dying > 0 ? 1 - 0.35 * Math.min(1, h.dying / (h.def.spec.deathTime ?? DEATH_TIME)) : 1;
         col[i * 3] = c[0] * dk; col[i * 3 + 1] = c[1] * dk; col[i * 3 + 2] = c[2] * dk;

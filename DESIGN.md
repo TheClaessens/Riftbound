@@ -1,4 +1,4 @@
-# RIFTBOUND — Game Design v2.1 (v2 = vibrant world + creatures; v2.1 = playtest fixes: Pyromancer starter, Rift Primer, shake, Rift Crystals)
+# RIFTBOUND — Game Design v4 (v2 = vibrant world + creatures; v2.1 = playtest fixes; v3 = Crownforge UI; v4 = heroes on the creature rig + world-grounded spell VFX)
 
 > An isometric horde-survival ARPG in three acts. Pick a class, weave elements into reactions, bend your build with relics, and dash through the telegraphs. Descend through the Rift and shatter its Heart.
 
@@ -296,7 +296,14 @@ Archetype (behaviour + model) × faction (palette, name, resist).
   * A late-game fight used to shake hard on ~20% of frames. With the two channels it's ~2%, and average shake is ~8× lower.
   * Reaction hit-stop only plays at Chain ≤ 3, so high Chains don't stutter.
   * Title-screen setting: Shake Full / Reduced / Off (`meta.shake`).
-* **Class models** with distinct silhouettes (Pass 9). The staff orb glows with the last-cast element.
+* **Heroes (v4)** are creature-rig characters, one order of Vael per class (full spec `design/research/09-hero-bible.md`, contract `design/HEROES.md`):
+  * Pyromancer = **Cinderwright** forge-priest: squat, with a bronze brazier-gauntlet, a kiln pack and a chimney.
+  * Cryomancer = **Stillwater Warden**: a white fur A-frame with a hex-crystal crook and Frost Armor shards orbiting.
+  * Stormcaller = **Tempest Rider**: a dark hat disc, a lemon scarf and swallow-tails, and a forked conductor's rod.
+  * Arcanist = **Loomwarden**: a floating broken crown-halo, a floating tome and orbiting glyph-stars.
+  * Each wears the Crownshard clasp. The body faces the aim while casting and the legs follow the movement (strafe and backpedal).
+  * The focus glows with the last-cast element. The element shows at rest, tied to the class meter (embers / armor shards / tine arcs / halo spin).
+* **Spell VFX (v4)**: every ability is drawn as a real phenomenon of the world. Fire is forge billows with soot; frost is a squall, rime and spikes; storm is slate thunderheads and forked bolts; arcane is rune circles, void and starlight. Zone edges are physical features at the exact gameplay radius, never flat circles. See `design/VFX.md` and `design/research/10-ability-vfx-bible.md`.
 * **HUD** (v3 "Crownforge", full spec in `design/UI.md`, rationale in `design/UI_PASSES.md`):
   * top centre: act timeline (act gems, 0:00–3:00 track with Elite Surge / Swarm / Boss markers, timer) + a beat ribbon ("Elite Surge in 0:08"); in boss fights a crowned boss nameplate bar with a 50% phase notch and the Prism Ward badge (element gem + countdown)
   * bottom centre: one compact action bar: level, HP (shield hatch, damage ghost), XP line, dash socket with charge pips, 5 skill sockets with cooldown sweeps and rank pips, auto-skill gems, auto-cast toggle, buffs with radial timers
@@ -336,7 +343,7 @@ While the primer runs it **holds the act clock** at 0:00, at most 150 s. The shr
   * Act III (Prism Wards, any reaction breaks them)
 
 ## 12. Meta (Sanctum)
-* **Rift Shards per run** = `floor(kills/30) + 15·actsReached + 40·bossesKilled + floor(maxChain/10)`, × (1 + 0.25·tier).
+* **Rift Shards per run** = `floor(kills/30) + 15·actsReached + 40·bossesKilled + floor(min(maxChain, 300)/10)`, × (1 + 0.25·tier). The Chain term caps at 30 shards.
 * **Attunements** (cost = 20 × next rank). Each lists the bonus per rank, then the maximum rank:
 
   | Attunement | Per rank | Max rank |

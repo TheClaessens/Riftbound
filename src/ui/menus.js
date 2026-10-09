@@ -123,6 +123,7 @@ export class Menus {
     this._renderTitle();
     this.titleEl.classList.add('mn-open');
     this.titleOpen = true;
+    this.game.showcase?.(this.selClass);   // the selected hero stands in the world behind the menus
   }
 
   hideTitle() {
@@ -503,6 +504,7 @@ export class Menus {
     const changed = id !== this.selClass;
     this.selClass = id;
     this._renderClasses();
+    this.game.showcase?.(id);
     if (changed) this.refs.detail.classList.remove('is-swap'), void this.refs.detail.offsetWidth, this.refs.detail.classList.add('is-swap');
     this.refs.classes.querySelector(`[data-id="${id}"]`)?.focus?.({ preventScroll: true, focusVisible: false });
   }
@@ -649,7 +651,7 @@ export class Menus {
           </section>
           <section class="cf-frame mn-end-card">
             <h3 class="mn-card-h">Fusions forged</h3>
-            ${fusions ? `<ul class="mn-things">${fusions}</ul>` : none('None forged.', 'Raise two skills to rank 3 and the Rift offers a fusion.')}
+            ${fusions ? `<ul class="mn-things">${fusions}</ul>` : none('None forged.', 'Each fusion needs a specific pair of skills, both at rank 3. Card hints name the partner.')}
             <h3 class="mn-card-h mn-card-h2">Relics bound</h3>
             ${relics ? `<ul class="mn-things${compact ? ' is-compact' : ''}">${relics}</ul>` : none('None bound.', 'The gold-marked Relic Bearer of each Elite Surge carries a chest.')}
           </section>

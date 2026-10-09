@@ -1,16 +1,14 @@
 import * as THREE from 'three';
-import { GEO, randRange } from '../../core/utils.js';
-import { blendAddMaterial } from '../fx.js';
 import { damageArea } from './common.js';
+import { frostParticle } from '../vfx/elements/frost.js';
 
-// BLIZZARD (frost, active). A frost zone at the cursor: frost ticks every 0.33 s,
-// falling snow, and at rank 5 a gentle inward pull.
+// BLIZZARD (frost, active). A frost zone at the cursor: frost ticks every 0.33 s, and at rank 5 a
+// gentle inward pull. Look (vfx/elements/frost.js 'frostBlizzard'): an actual squall parks over the
+// zone: cloud lid, wind-driven snow, snow whipping round a drift ridge + ice spikes AT the radius.
 const TICK = 0.33;
 const RANGE = 14;           // cast clamp
 
 const _buf = [];            // reused query buffer (queryEnemies clears it)
-const _sp = { x: 0, y: 0, z: 0 };
-const _sv = { x: 0, y: 0, z: 0 };
 
 export const blizzard = {
   id: 'blizzard',
@@ -47,55 +45,23 @@ class FrostZone {
     this.pull = rank >= 5;
     this.t = 0;
     this.tickAcc = 0;
-    this.snowAcc = 0;
-
-    this.discMat = new THREE.MeshBasicMaterial({ color: 0x3f8fc8, transparent: true, opacity: 0.22, depthWrite: false });
-    this.edgeMat = blendAddMaterial(0x9fe9ff, { hdr: 1.3, opacity: 0.6, occ: 0.45, side: THREE.DoubleSide, depthTest: false });
-
-    const disc = new THREE.Mesh(GEO.disc, this.discMat);
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.y = 0.04;
-    disc.scale.setScalar(this.radius);
-    const edge = new THREE.Mesh(GEO.ring, this.edgeMat);
-    edge.rotation.x = -Math.PI / 2;
-    edge.position.y = 0.06;
-    edge.scale.setScalar(this.radius);
-
-    this.group = new THREE.Group();
-    this.group.position.set(this.pos.x, 0, this.pos.z);
-    this.group.add(disc, edge);
-    game.scene.add(this.group);
-
-    game.fx.ring(this.pos, { color: 0x9fe9ff, radius: this.radius, from: this.radius * 0.3, life: 0.35 });
-    game.fx.burst(this.pos, { color: 0xdff6ff, count: 14, speed: 3, life: 0.5, size: 0.3, up: 0.3 });
+    this.breathN = 0;
+    this.fxh = game.vfx.zone('frostBlizzard', this.pos, { radius: this.radius, life: this.life, rank });
   }
 
   update(dt, game) {
     this.t += dt;
-    const fade = Math.min(1, this.t / 0.3, (this.life - this.t) / 0.5);
-    this.discMat.opacity = 0.22 * fade;
-    this.edgeMat.opacity = (0.55 + 0.2 * Math.sin(this.t * 5)) * fade;
-
-    // Falling snow: sparks drifting down through the zone.
-    this.snowAcc += dt * 28 * fade;
-    while (this.snowAcc >= 1) {
-      this.snowAcc -= 1;
-      const a = Math.random() * Math.PI * 2;
-      const rr = Math.sqrt(Math.random()) * this.radius;
-      _sp.x = this.pos.x + Math.cos(a) * rr;
-      _sp.y = randRange(1, 3.5);
-      _sp.z = this.pos.z + Math.sin(a) * rr;
-      _sv.x = 0.4;                                  // slight drift
-      _sv.y = -(1.8 + Math.random() * 1.2);         // falling
-      _sv.z = 0.2;
-      game.fx.spark(_sp, _sv, { color: 0xe8f8ff, size: 0.14, life: 0.9 });
-    }
 
     // Frost damage every 0.33 s to everything inside.
     this.tickAcc += dt;
     if (this.tickAcc >= TICK) {
       this.tickAcc -= TICK;
-      damageArea(game, this.pos, this.radius, this.dmg, { element: 'frost', statusPower: 1 });
+      const hits = damageArea(game, this.pos, this.radius, this.dmg, { element: 'frost', statusPower: 1 });
+      // visual only: frost-breath puffs from every 3rd foe caught in the squall
+      for (let i = this.breathN++ % 3; i < hits.length; i += 3) {
+        const e = hits[i];
+        frostParticle(game.vfx, 'frostPuff', e.pos.x, 1.1, e.pos.z, 0, 0.4, 0, 0.42);
+      }
     }
 
     // Rank 5: gently pull foes toward the centre (not bosses or inert objects).
@@ -110,10 +76,9 @@ class FrostZone {
     return this.t < this.life;
   }
 
-  dispose(game) {
-    game.scene.remove(this.group);
-    this.discMat.dispose();
-    this.edgeMat.dispose();
+  // The squall dissolves on its own (snow thins, cloud boils away, spikes crumble, rime recedes).
+  dispose() {
+    this.fxh.end();
   }
 }
 

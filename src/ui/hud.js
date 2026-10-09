@@ -22,7 +22,7 @@ import { icon, ICON } from './icons/index.js';
 import { HUDFx } from './hud-fx.js';
 import {
   setText, setHTML, setCss, setVar, setCls, setAttr, setScaleX, setOpacity, flash,
-  clamp01, q, fmtTime, lerp3, rgbHex, setPips, snap, Meter,
+  clamp01, q, fmtTime, fmtCount, lerp3, rgbHex, setPips, snap, Meter,
 } from './hud-util.js';
 
 // Kept for ui.js (pause build view); the HUD itself draws dash icons with icon().
@@ -40,7 +40,7 @@ const BEAT_ICON = { surge: ['surge', '♛'], swarm: ['swarm', '◎'], boss: ['bo
 const CHAIN_WHITE = [255, 255, 255], CHAIN_AMBER = [224, 160, 48];
 const RIBBON_LEAD = 10;      // seconds of "Elite Surge in 0:08" before a beat
 const RIBBON_HOLD = 3;       // seconds the beat name stays after it lands
-const MARKERS = 4;           // pooled edge markers (shrine + bearer + 2 chests)
+const MARKERS = 5;           // pooled edge markers (boss + shrine + bearer + 2 chests)
 
 const _v = new THREE.Vector3();
 const _m = new THREE.Vector3();
@@ -409,7 +409,7 @@ export class HUD {
     const E = this.el;
     const n = g.chain | 0;
     if (n >= 2) {
-      const s = '×' + n;
+      const s = '×' + fmtCount(n);
       setText(E.chainBase, s);
       setText(E.chainPrism, s);
       setCls(E.chain, 'prism', n >= 25);
@@ -509,6 +509,8 @@ export class HUD {
   _updateMarkers(g, p, dt) {
     const cam = g.camera;
     const targets = [];
+    // the act boss: edge arrow only while off screen (the boss bar covers the rest)
+    if (g.boss && !g.boss.dead) targets.push({ kind: 'boss', pos: g.boss.pos, y: 2, color: '#e04a3a' });
     const s = g.world?.shrine;
     if (s?.pos) targets.push({ kind: 'shrine', pos: s.pos, y: 1.6, color: s.color ?? '#c08cff', prog: clamp01(s.progress), onScreen: true });
 
@@ -533,7 +535,7 @@ export class HUD {
       if (!t) { setCls(M.root, 'on', false); continue; }
       if (M.kind !== t.kind) {
         M.kind = t.kind;
-        const [ui, fb] = t.kind === 'shrine' ? ['shrine', '⛩'] : t.kind === 'bearer' ? ['chest', '♛'] : ['chest', '▣'];
+        const [ui, fb] = t.kind === 'boss' ? ['boss', '☠'] : t.kind === 'shrine' ? ['shrine', '⛩'] : t.kind === 'bearer' ? ['chest', '♛'] : ['chest', '▣'];
         M.ico.innerHTML = icon(ICON.ui(ui), { fallback: fb });
         M.root.dataset.kind = t.kind;
       }

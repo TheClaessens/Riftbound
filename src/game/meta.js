@@ -78,9 +78,14 @@ export function buyAttunement(meta, id) {
   return true;
 }
 
+// Chain pays up to CHAIN_SHARD_CAP / 10 shards: uncapped, dense hordes held the Chain for
+// thousands of reactions and it became ~46% of a run's shards (playtest round 1).
+export const CHAIN_SHARD_CAP = 300;
+
 // runStats: { kills, actsReached (1..3), bossesKilled, maxChain, victory, tier }
 export function computeShards(rs) {
-  const base = Math.floor(rs.kills / 30) + 15 * rs.actsReached + 40 * rs.bossesKilled + Math.floor(rs.maxChain / 10);
+  const chain = Math.min(rs.maxChain, CHAIN_SHARD_CAP);
+  const base = Math.floor(rs.kills / 30) + 15 * rs.actsReached + 40 * rs.bossesKilled + Math.floor(chain / 10);
   return Math.round(base * (1 + 0.25 * (rs.tier ?? 0)));
 }
 

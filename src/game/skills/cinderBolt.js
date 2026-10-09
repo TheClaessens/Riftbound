@@ -1,7 +1,11 @@
 import { Projectile, fanDirections } from './common.js';
 import { randRange, rotateXZ } from '../../core/utils.js';
+import { cinderTrail, cinderHit, cinderDrop } from '../vfx/elements/fire.js';
 
 // Pyromancer starter (fire). Fast ember bolts that set foes Burning.
+// Look (bible 10 §4.1): a coal flicked off the forge. White-hot coal + toon flame tongue trailing
+// back, rising ember streaks and a soot thread that hangs in the air; momentum ember splash on hit,
+// the coal drops and gutters out at max range. Muzzle flick = HERO_FX castFlash (vfx/hero/fire.js).
 export const cinderBolt = {
   id: 'cinderBolt',
   name: 'Cinder Bolt',
@@ -27,16 +31,17 @@ export const cinderBolt = {
     const dmg = 8 * (r >= 3 ? 1.25 : 1);
     const pierce = r >= 5 ? 1 : 0;
     const statusPower = r >= 5 ? 1.5 : 1;
+    const look = { rank: r, scale: count >= 3 ? 0.85 : 1 };
     for (const d of fanDirections(ctx.dir, count, 0.1 * (count - 1))) {
       rotateXZ(d, randRange(-0.06, 0.06), d); // small aim jitter per bolt (in place)
       game.addActor(new Projectile(game, {
         pos: ctx.origin, dir: d, speed: 22, range: 14,
         radius: 0.4, damage: dmg, element: 'fire', pierce, statusPower, knockback: 0.6,
-        size: 0.18, color: 0xff5a2a,
-        trail: { rate: 60, color: 0xff7a33, size: 0.24, life: 0.22 },
-        onHit: (g, e, p) => g.fx.burst(p.pos, { color: 0xff7a33, count: 5, speed: 3, life: 0.25, size: 0.22 }),
+        size: 0.18, color: 0xff5a2a, mesh: null,
+        onUpdate: (g, p, dt) => cinderTrail(g, p, dt, look),
+        onHit: (g, e, p) => cinderHit(g, p, look, e, p.pierce > 0),
+        onExpire: (g, p) => { if (p.travelled >= p.range) cinderDrop(g, p); },
       }));
     }
-    game.fx.burst({ x: ctx.origin.x + ctx.dir.x * 0.8, y: 0.4, z: ctx.origin.z + ctx.dir.z * 0.8 }, { color: 0xff7a33, count: 3, speed: 2, life: 0.2, size: 0.3 });
   },
 };

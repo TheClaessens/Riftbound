@@ -16,7 +16,7 @@ import {
 //  far edge. Saturated rust / red strata live only on the outcrops, mesas, buttes and hoodoos
 //  from r 56 outward, which form a canyon wall on the rim and a badlands backdrop beyond.
 //  Dust devils (shader-only) wander the outskirts. Layout is authored in SCREEN space (S(right, up)).
-//  Hazard note: the Act II fissure geysers are dark cracks with yellow-white seams, so the ground
+//  Hazard note: the Act II fissure geysers are dark cracks with red-orange seams inside a red telegraph ring, so the ground
 //  only has plain, low-contrast Voronoi cracks and the salt-pan crust is raised and pale.
 // =====================================================================================
 

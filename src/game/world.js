@@ -242,7 +242,9 @@ function shrineGeometry() {
   return _shrineGeo;
 }
 
-// Fissure geyser decal (Act II hazard): dark branching cracks with yellow-white seams.
+// Fissure geyser decal (Act II hazard): dark branching cracks with red-orange seams while the
+// telegraph runs (SEAM_HOT), cooling to ember (SEAM_COOL) after the eruption.
+const SEAM_HOT = new THREE.Color(0xff4a1c), SEAM_COOL = new THREE.Color(0x4a1c0c);
 function makeCrackTexture() {
   const S = 256, c = makeCanvas(S, S), g = c.getContext('2d');
   const rng = mulberry32(99);
@@ -973,16 +975,21 @@ export class World {
       if (!f.active) continue;
       f.t += dt;
       const u = f.u;
+      // Seams glow in the threat palette only while the telegraph is live, then cool to a dull
+      // ember: pale cream cracks lingering after the eruption read as an unmarked hazard
+      // (playtest round 1, issue #11).
       if (f.phase === 0) {          // cracks spread while the telegraph fills
         const k = Math.min(1, f.t / f.dur);
+        u.uSeam.value.copy(SEAM_HOT);
         u.uGrow.value = 0.15 + 0.85 * k;
-        u.uGlow.value = 0.4 + 1.4 * k * k + 0.3 * Math.sin(f.t * 30) * k;
+        u.uGlow.value = 0.6 + 1.4 * k * k + 0.45 * Math.sin(f.t * 30) * k;
         u.uFade.value = 1;
         if (f.t > f.dur + 0.6) f.phase = 1;    // telegraph cancelled / never erupted: fade out
       } else {                      // erupted: flare, then cool and fade
-        const k = Math.min(1, f.t / 1.4);
+        const k = Math.min(1, f.t / 1.0);
+        u.uSeam.value.copy(SEAM_HOT).lerp(SEAM_COOL, Math.min(1, k * 3));
         u.uGrow.value = 1;
-        u.uGlow.value = 2.2 * (1 - k) + 0.2;
+        u.uGlow.value = 1.6 * (1 - k) + 0.2;
         u.uFade.value = 1 - k * k;
         if (k >= 1) { f.active = false; f.mesh.visible = false; }
       }

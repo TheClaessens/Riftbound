@@ -1,7 +1,15 @@
 import * as THREE from 'three';
 import { Engine } from '../core/engine.js';
 import { CreatureRenderer } from '../game/creatures/renderer.js';
-import { buildPlayerModel } from '../game/models.js';
+import { HEROES } from '../game/heroes/index.js';
+import { newHeroState } from '../game/heroes/hero.js';
+import { upload } from './shot.js';
+
+// A hidden browser pane reports a 0×0 window: pin a real size so frames (and shot()) work.
+if (!innerWidth || !innerHeight) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, get: () => 1280 });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => 720 });
+}
 
 // =====================================================================================
 //  Creature viewer (dev only): /dev/creatures.html?set=greenskins&poses=idle,walk:0,walk:1.6,attack:0.5
@@ -17,6 +25,11 @@ import { buildPlayerModel } from '../game/models.js';
 //    rim    : elite | none                                                            default none
 //    ward   : fire | frost | storm | arcane (accent recolour)
 //    layout : cols | rows (rows = poses side by side; default when > 3 poses)
+//    ref    : reference hero left of the lineup: pyromancer (default) | arcanist | cryomancer | stormcaller | none
+//    el     : fire | frost | storm | arcane → accent colour (heroes: the focus takes the last-cast element)
+//    aim / meter / armor / dashN / shotN / fidgetN : hero channels (see heroPose below; shotN=1 = odd shot)
+//  Heroes: set=../heroes/pyromancer · poses: idle walk:φ run:φ strafe:φ diag:φ back:φ hold shot:k throw:k heavy:k nova:k channel:k dash:k arrive:k death:k victory:k fidget:k
+//  window.shot('name') saves dev/shots/name.png when served from the shots server (port 8097).
 //  window.view({ ...params }) re-renders without reloading.
 // =====================================================================================
 
@@ -28,9 +41,6 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshS
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
-const ref = buildPlayerModel('arcanist');
-scene.add(ref.root);
-ref.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
 const labels = document.getElementById('labels');
 const info = document.getElementById('info');
@@ -51,6 +61,37 @@ function parsePoses(str) {
     if (name === 'hit') return { label: 'hit', move: 0, walk: 0, action: null, k: 0, dying: 0, hit: 1 };
     return { label: `${name} ${val ?? 0.5}`, move: 0, walk: 0, action: name, k: val ?? 0.5, dying: 0 };
   });
+}
+
+// Hero channels from a pose token (see heroes/hero.js): shot:k (stance, recoil 1-k), hold, heavy:k, throw:k,
+// nova:k, channel:k, dash:k, arrive:k, death:k, victory:k, fidget:k, strafe:phase, back:phase, diag:phase,
+// walk:phase / run:phase. URL params: aim=<rad> (aim vs root), meter=0..1, armor=0..3, dashN=<n>.
+function heroPose(h, ps, P) {
+  const H = h.hero = newHeroState();
+  H.aimRel = parseFloat(P.aim ?? '0');
+  H.meter = parseFloat(P.meter ?? '0');
+  H.armor = parseFloat(P.armor ?? '0');
+  H.dashN = parseInt(P.dashN ?? '0', 10);
+  H.shotN = parseInt(P.shotN ?? '0', 10);
+  H.fidgetN = parseInt(P.fidgetN ?? '0', 10);
+  const a = ps.action, k = ps.k;
+  const move = (rel, phase, sp = 1) => {
+    h.move = 1; h.walk = phase; h.speed = 6.5 * sp; h.action = null;
+    H.moving = 1; H.sp = sp; H.standing = 0; H.moveRel = rel;
+    H.back = Math.abs(rel) > 1.92;
+    H.psi = Math.max(-0.7, Math.min(0.7, H.back ? rel - Math.PI * Math.sign(rel || 1) : rel));
+    H.mu = rel - H.psi;
+  };
+  if (ps.move) move(0, ps.walk, ps.speed ? Math.min(1, ps.speed / 6.5) : 0.46);
+  if (a === 'strafe') move(Math.PI / 2, k);
+  else if (a === 'diag') move(Math.PI / 4, k);
+  else if (a === 'back') move(Math.PI, k);
+  else if (a === 'shot') { H.hold = 1; H.shot = 1 - k; H.casting = true; }
+  else if (a === 'hold') { H.hold = 1; H.casting = true; }
+  else if (a === 'fidget') H.fidget = k;
+  else if (a) { H.act = a; H.k = k; H.casting = a !== 'dash' && a !== 'death' && a !== 'victory' && a !== 'arrive'; }
+  h.action = null;
+  if (a === 'death' && k > 0.75) h.tint = 0xefe9ff;
 }
 
 async function view(params = {}) {
@@ -109,12 +150,17 @@ async function view(params = {}) {
     if (P.rim === 'elite') { h.rim = [1.0, 0.7, 0.16, 1.5]; h.elite = true; }
     if (P.ward) h.accent = { fire: [1, 0.42, 0.12, 0.7], frost: [0.4, 0.85, 1, 0.7], storm: [1, 0.88, 0.29, 0.7], arcane: [0.71, 0.49, 1, 0.7] }[P.ward] ?? null;
     h.color = [1, 1, 1];
+    if (c.def.isHero) heroPose(h, ps, P);
+    if (P.el) { const c = new THREE.Color({ fire: 0xff6a1f, frost: 0x66d9ff, storm: 0xffe14a, arcane: 0xb67cff }[P.el] ?? 0xffffff); h.accent = [c.r, c.g, c.b, 1]; }
     if (ps.dying) { h.dying = ps.dying * 0.55; h._fall = 0.6; }
     handles.push({ h, label: c.first ? c.name : '', pose: ps.label });
   }
-  // reference mage, left of the lineup
-  ref.root.position.copy(right.clone().multiplyScalar(-total / 2 - 1.2));
-  ref.body.rotation.y = yaw;
+  // reference hero (size check), left of the lineup: &ref=pyromancer (default) | arcanist | cryomancer | stormcaller | none
+  const refDef = HEROES[P.ref ?? 'pyromancer'];
+  if (refDef && (P.ref || !P.set.includes('heroes'))) {
+    const rh = creatures.add(refDef, { pos: right.clone().multiplyScalar(-total / 2 - 1.2), yaw, seed: 0.37 });
+    rh._yaw = yaw; rh.color = [1, 1, 1];
+  }
 
   // snap camera
   engine.targetZoom = engine.zoom = parseFloat(P.zoom);
@@ -122,7 +168,6 @@ async function view(params = {}) {
   engine.camera.updateProjectionMatrix();
   for (let i = 0; i < 30; i++) engine.follow(new THREE.Vector3(0, 0, 0), 1);
   creatures.update(0, t);
-  ref.update(0.016, { time: t, moving: false });
   engine.update(0.016, null);
   engine.render();
 
@@ -141,5 +186,7 @@ async function view(params = {}) {
 }
 
 window.view = view;
+// window.shot('name') → renders and saves dev/shots/name.png (page must be served by the shots server, port 8097)
+window.shot = async (name) => { engine.render(); return upload(engine.renderer.domElement, name); };
 window.engine = engine;
 view().then(() => view()).catch((e) => { info.textContent = 'ERROR: ' + e.message; console.error(e); });

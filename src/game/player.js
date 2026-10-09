@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { ELEMENT_COLOR, dirXZ, clamp } from '../core/utils.js';
+import { dirXZ, clamp } from '../core/utils.js';
 import { BASE_STATS, PASSIVES, SKILLS } from './skills/registry.js';
 import { CLASSES } from './classes.js';
 import { applyAttunements } from './meta.js';
 import { damageEnemy, reactionBase } from './combat.js';
-import { buildPlayerModel } from './models.js';
+import { HeroModel } from './heroes/index.js';
+import { HERO_FX } from './vfx/heroFx.js';
 
 // Slot index -> how it's triggered. Slot 0 is the class starter (fixed).
 export const SLOT_KEYS = [
@@ -16,7 +17,6 @@ export const SLOT_KEYS = [
 ];
 export const MAX_AUTOS = 2;
 
-const _v = new THREE.Vector3();
 const _hits = [];
 
 export class Player {
@@ -63,10 +63,7 @@ export class Player {
     this.recalcStats();
     this.hp = this.stats.maxHp;
 
-    this.model = buildPlayerModel(this.classId);
-    this.mesh = this.model.root;
-    this.body = this.model.body;
-    game.scene.add(this.mesh);
+    this.model = new HeroModel(game, this.classId);   // rig body on game.heroes + ground ring (root)
 
     this._initTrait();
     this.learnSkill(SKILLS[this.cls.starter], 0);
@@ -171,7 +168,7 @@ export class Player {
         if (this._armorCd > 0 || this.frostArmor >= 3) return;
         this.frostArmor++;
         this._armorCd = 1.2;
-        this.game.fx.ring(this.pos, { color: ELEMENT_COLOR.frost, radius: 1.2, life: 0.3 });
+        HERO_FX.armorGain(this.game, this, this.frostArmor);
       }));
     }
   }
@@ -194,8 +191,7 @@ export class Player {
         while (this._wildfire.length && n++ < 6) {
           const pos = this._wildfire.shift();
           const r = 2.2 * this.stats.area;
-          game.fx.flashDisc(pos, { color: 0xff6a1f, radius: r, life: 0.22 });
-          game.fx.burst(pos, { color: 0xff8a2a, count: 10, speed: 5, life: 0.45, size: 0.4, up: 1.5 });
+          HERO_FX.wildfire(game, pos, r);
           const dmg = reactionBase(game) * 0.5;
           for (const e of game.queryEnemies(pos, r, _hits).slice()) damageEnemy(game, e, dmg, { element: 'fire', raw: true, noCrit: true, silent: e.hp > dmg * 3 });
         }
@@ -234,7 +230,7 @@ export class Player {
     if (this.frostArmor > 0) {
       this.frostArmor--;
       this.invuln = 0.3;
-      game.fx.burst(this.pos, { color: ELEMENT_COLOR.frost, count: 14, speed: 5, life: 0.4, size: 0.3, up: 1 });
+      HERO_FX.armorBreak(game, this);
       game.fx.text(this.pos, 'ARMOR', '#7fe0ff');
       return;
     }
@@ -242,11 +238,12 @@ export class Player {
     if (this.shield > 0) {
       const a = Math.min(this.shield, dmg);
       this.shield -= a; dmg -= a;
-      if (dmg <= 0) { this.invuln = 0.25; game.fx.ring(this.pos, { color: 0xffe9a0, radius: 1.3, life: 0.25 }); return; }
+      if (dmg <= 0) { this.invuln = 0.25; HERO_FX.shieldBlock(game, this); return; }
     }
     this.hp -= dmg;
     this.invuln = 0.45;
     game.fx.number(this.pos, dmg, { color: '#ff4d5e' });
+    this.model.hit();
     game.fx.shake(0.25, 'threat');
     game.engine.pulse?.('hit');
     game.events.emit('playerHit', { amount: dmg, source });
@@ -260,7 +257,7 @@ export class Player {
       }
       this.hp = 0;
       this.dead = true;
-      game.fx.burst(this.pos, { color: this.cls.hex, count: 60, speed: 8, life: 1, size: 0.5, up: 1.5, gravity: 4 });
+      HERO_FX.death(game, this);
       game.events.emit('playerDied', {});
     }
   }
@@ -276,8 +273,8 @@ export class Player {
     game.hitStop(0.09);
     game.engine.pulse?.('perfect');
     // the HUD stamps PERFECT above the character (hud-fx.js); no world text here
-    game.fx.ring(this.pos, { color: 0x9dffb0, radius: 3.5, life: 0.4 });
-    game.fx.burst(this.pos, { color: 0x9dffb0, count: 20, speed: 6, life: 0.5, size: 0.35, up: 1 });
+    HERO_FX.perfectDodge(game, this);
+    this.model.perfect();
     game.events.emit('perfectDodge', { source });
   }
 
@@ -292,24 +289,22 @@ export class Player {
     d.perfectUsed = false;
     d.hit.clear();
     d.trailT = 0;
-    const color = this.cls.hex;
-    game.fx.burst(this.pos, { color, count: 12, speed: 4, life: 0.35, size: 0.35, up: 0.8 });
+    const from = this.pos.clone();
+    this.model.dashStart(def.kind);
     game.events.emit('dash', { kind: def.kind });
 
     if (def.kind === 'blink') {
-      const from = this.pos.clone();
       this.pos.addScaledVector(d.dir, def.dist);
       game.world.collide(this.pos, this.radius);
       this.vel.set(0, 0, 0);
       d.t = def.dur;
       this.invuln = Math.max(this.invuln, def.dur + 0.1);
-      game.fx.lightning({ x: from.x, y: 1, z: from.z }, { x: this.pos.x, y: 1, z: this.pos.z }, { color, strands: 1, jag: 0.2, life: 0.15 });
-      game.fx.ring(this.pos, { color, radius: 2, life: 0.3 });
-      game.fx.burst(this.pos, { color, count: 16, speed: 5, life: 0.4, size: 0.35 });
+      HERO_FX.dashStart(game, this, def.kind, from);
       for (const e of game.queryEnemies(this.pos, 2 * this.stats.area, _hits).slice()) damageEnemy(game, e, 10, { element: 'arcane', knockback: 4 });
     } else {
       d.t = def.dur;
       d.speed = def.dist / def.dur;
+      HERO_FX.dashStart(game, this, def.kind, from);
       this.invuln = Math.max(this.invuln, def.dur + 0.1);
     }
   }
@@ -333,7 +328,7 @@ export class Player {
     d.trailT -= dt;
     if (d.trailT <= 0) {
       d.trailT = 0.03;
-      game.fx.burst(this.pos, { color: this.cls.hex, count: 3, speed: 1, life: 0.3, size: 0.4, up: 0.5 });
+      HERO_FX.dashTrail(game, this, def.kind, d.dir);
     }
     const area = this.stats.area;
     if (def.kind === 'flame') {
@@ -347,7 +342,8 @@ export class Player {
         if (d.hit.has(e)) continue;
         d.hit.add(e);
         if (def.kind === 'frost') damageEnemy(game, e, 6, { element: 'frost', statusPower: 2 });
-        else { damageEnemy(game, e, 8, { element: 'storm' }); game.fx.lightning({ x: this.pos.x, y: 1, z: this.pos.z }, e.pos, { color: ELEMENT_COLOR.storm, strands: 1, life: 0.12 }); }
+        else damageEnemy(game, e, 8, { element: 'storm' });
+        HERO_FX.dashHit(game, this, def.kind, e);
       }
     }
     return true;
@@ -399,7 +395,6 @@ export class Player {
       if (s.cd > 0) s.cd -= dt;
       s.def.update?.(game, dt, s.state, s.rank);
     }
-    let castDir = null;
     const cdMult = 1 - clamp(this.stats.cdr + this.traitCdr, 0, 0.6);
     for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i];
@@ -417,31 +412,32 @@ export class Player {
       const dir = dirXZ(this.pos, target, new THREE.Vector3());
       const ctx = { rank: s.rank, origin: this.pos.clone(), dir, target, player: this, state: s.state };
       s.def.cast(game, ctx);
+      this.model.cast(s.def, i);
+      HERO_FX.cast(game, this, s.def, i);
       s.cd = s.def.cooldown(s.rank) * cdMult;
       this.castPulse = 1;
       this.lastElement = s.def.element ?? 'arcane';
-      castDir = dir;
       game.events.emit('cast', { def: s.def, rank: s.rank, slot: i, echo: false });
       if (this.stats.echo > 0 && Math.random() < this.stats.echo) this._echoCast(s, ctx);
     }
 
-    // visuals
-    const face = castDir ?? (moving ? _v.set(this.vel.x, 0, this.vel.z) : this.facing);
-    const targetYaw = Math.atan2(face.x, face.z);
-    let dy = targetYaw - this.body.rotation.y;
-    while (dy > Math.PI) dy -= Math.PI * 2;
-    while (dy < -Math.PI) dy += Math.PI * 2;
-    this.body.rotation.y += dy * (1 - Math.exp(-18 * dt));
-    this.walkT += dt * (moving ? 12 : 3);
-    this.body.position.y = moving ? Math.abs(Math.sin(this.walkT)) * 0.08 : Math.sin(this.walkT) * 0.03;
-    this.body.rotation.z = moving ? Math.sin(this.walkT) * 0.04 : 0;
+    // visuals: the hero rig reads facing / velocity / dash / invuln (heroes/index.js)
     this.castPulse = Math.max(0, this.castPulse - dt * 5);
-    this.model.orb.scale.setScalar(0.12 + this.castPulse * 0.1);
-    this.model.orbMat.color.set(ELEMENT_COLOR[this.lastElement] ?? ELEMENT_COLOR.arcane).multiplyScalar(4 + this.castPulse * 4);
-    this.model.update?.(dt, { moving, castPulse: this.castPulse, dashing, time: game.time, player: this });
-    this.mesh.position.copy(this.pos);
-    this.body.visible = this.invuln > 0 && !dashing && this.dash.window <= 0 ? Math.floor(this.invuln * 20) % 2 === 0 : true;
+    const sh = game.world.shrine;
+    this.model.channel(game.state === 'shift' || !!(sh && sh.progress > 0 && sh.progress < 1 && Math.hypot(sh.pos.x - this.pos.x, sh.pos.z - this.pos.z) < 2.4));
+    this.model.update(dt, { player: this, moving, dashing });
+    HERO_FX.update(game, this, dt);
   }
+
+  // Death / victory pose after the run ended (game.js keeps calling this behind the end screen).
+  updateEnd(dt) {
+    this.vel.multiplyScalar(Math.exp(-8 * dt));
+    this.model.update(dt, { player: this, moving: false, dashing: false });
+  }
+
+  // World points on the hero for spell visuals: the focus head (staff orb, brazier…) and the casting palm.
+  muzzle(out) { return this.model.muzzle(out); }
+  hand(out) { return this.model.hand(out); }
 
   _echoCast(s, ctx) {
     const game = this.game;
@@ -462,27 +458,26 @@ export class Player {
     for (const off of this._offs) off();
     for (const { cleanup } of this._relicState.values()) cleanup?.();
     for (const s of this.skills) s.def.dispose?.(this.game, s.state);
-    this.game.scene.remove(this.mesh);
+    this.model.dispose();
   }
 }
 
-// Burning ground left by Flame Dash.
+// Burning ground left by Flame Dash (gameplay; the look is HERO_FX.firePatch*).
 class FirePatch {
   constructor(game, pos, r, life) {
-    this.pos = pos.clone(); this.r = r; this.life = life; this.tick = 0; this.p = 0;
+    this.pos = pos.clone(); this.r = r; this.life = life; this.maxLife = life; this.tick = 0;
+    HERO_FX.firePatchStart(game, this);
   }
   update(dt, game) {
-    this.life -= dt; this.tick -= dt; this.p -= dt;
-    if (this.p <= 0) {
-      this.p = 0.12;
-      game.fx.burst({ x: this.pos.x + (Math.random() - 0.5) * this.r, y: 0.2, z: this.pos.z + (Math.random() - 0.5) * this.r }, { color: 0xff6a1f, count: 1, speed: 0.5, life: 0.5, size: 0.55, up: 2, gravity: -2, occ: 0.45 });
-    }
+    this.life -= dt; this.tick -= dt;
+    HERO_FX.firePatchUpdate(game, this, dt);
     if (this.tick <= 0) {
       this.tick = 0.4;
       for (const e of game.queryEnemies(this.pos, this.r, _hits).slice()) damageEnemy(game, e, 4, { element: 'fire', silent: true });
     }
     return this.life > 0;
   }
+  dispose(game) { HERO_FX.firePatchEnd(game, this); }
 }
 
 // Fitted to DESIGN §13: ~L5 at 1:00, L10 at the Act I boss, L18 by Act II's end, L27 at the Heart.

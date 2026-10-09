@@ -25,7 +25,7 @@ export const frostNova = {
     const statusPower = rank >= 4 ? 3 : 2;
     const expandDuration = 0.35;
 
-    createNovaWave(game, ctx.origin, dmg, maxRadius, statusPower, expandDuration, new Set());
+    createNovaWave(game, ctx.origin, dmg, maxRadius, statusPower, expandDuration, new Set(), rank, false);
 
     // Rank 5: second pulse
     if (rank >= 5) {
@@ -35,7 +35,7 @@ export const frostNova = {
           this.t += dt;
           if (this.t >= 0.5) {
             const hit2 = new Set();
-            createNovaWave(game, ctx.origin, dmg, maxRadius, statusPower, expandDuration, hit2);
+            createNovaWave(game, ctx.origin, dmg, maxRadius, statusPower, expandDuration, hit2, rank, true);
             return false;
           }
           return true;
@@ -46,9 +46,10 @@ export const frostNova = {
   },
 };
 
-function createNovaWave(game, origin, dmg, maxRadius, statusPower, expandDuration, hitSet) {
-  // Expanding ring on the ground
-  game.fx.ring(origin, { color: 0x66d9ff, radius: maxRadius, life: expandDuration, from: 0.2 });
+function createNovaWave(game, origin, dmg, maxRadius, statusPower, expandDuration, hitSet, rank, second) {
+  // Look (vfx/elements/frost.js 'frostNova'): the ground flash-freezes outward with the damage front, a low
+  // snow wave rides it, and a ring of ice spikes erupts exactly at the radius, holds, cracks and shatters.
+  game.vfx.zone('frostNova', origin, { radius: maxRadius, dur: expandDuration, rank, second });
 
   // Hit enemies as the ring expands
   let expandTime = 0;
@@ -77,7 +78,4 @@ function createNovaWave(game, origin, dmg, maxRadius, statusPower, expandDuratio
     },
     dispose() {},
   });
-
-  // Ice shard burst
-  game.fx.burst(origin, { color: 0x66d9ff, count: 12, speed: 5, life: 0.6, size: 0.28, gravity: 8 });
 }

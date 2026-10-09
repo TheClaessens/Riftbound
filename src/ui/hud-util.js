@@ -105,6 +105,14 @@ export function fmtTime(sec) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+// Compact counts for tight HUD slots: 999, 1.2k, 15k.
+export function fmtCount(n) {
+  n = Math.max(0, Math.floor(n || 0));
+  if (n < 1000) return String(n);
+  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return Math.round(n / 1000) + 'k';
+}
+
 // Linear blend of two [r, g, b] triples.
 export function lerp3(a, b, t) {
   const k = clamp01(t);

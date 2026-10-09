@@ -10,7 +10,7 @@ import { ACTS } from '../game/acts.js';
 import { RELICS, RELIC_TAG_COLOR } from '../game/relics.js';
 import { FUSIONS, SKILLS } from '../game/skills/registry.js';
 import { icon, ICON, hasIcon } from './icons/index.js';
-import { flash, reducedMotion } from './hud-util.js';
+import { flash, reducedMotion, fmtCount } from './hud-util.js';
 
 const TOAST_MS = 3400;
 const TOASTS_MAX = 2;
@@ -55,6 +55,7 @@ export class HUDFx {
     this._queue = [];
     this._toasts = [];
     this.feed = new Map();   // reaction type -> { n, t, row, nEl }
+    this._fading = [];       // { row, t }: expired rows, removed on game time (not onfinish)
 
     root.insertAdjacentHTML('beforeend', FX_HTML);
     const E = this.el = {};
@@ -79,6 +80,8 @@ export class HUDFx {
   reset() {
     for (const e of this.feed.values()) e.row.remove();
     this.feed.clear();
+    for (const f of this._fading) f.row.remove();
+    this._fading.length = 0;
     this._queue.length = 0;
     for (const t of this._toasts) { clearTimeout(t.timer); t.node.remove(); }
     this._toasts.length = 0;
@@ -86,14 +89,20 @@ export class HUDFx {
   }
 
   update(dt) {
+    // expired rows leave the DOM on game time: an onfinish that never fires (throttled or
+    // hidden tab) used to pile stale duplicate chips down the right edge
+    for (let i = this._fading.length - 1; i >= 0; i--) {
+      const f = this._fading[i];
+      if ((f.t -= dt) <= 0) { f.row.remove(); this._fading.splice(i, 1); }
+    }
     if (!this.feed.size) return;
     for (const [k, e] of this.feed) {
       e.t -= dt;
       if (e.t <= 0) {
         this.feed.delete(k);
         const row = e.row;
-        const a = row.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateX(12px)' }], { duration: 220, easing: RIFT });
-        a.onfinish = () => row.remove();
+        row.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateX(12px)' }], { duration: 220, easing: RIFT, fill: 'forwards' });
+        this._fading.push({ row, t: 0.25 });
       }
     }
   }
@@ -212,7 +221,7 @@ export class HUDFx {
     }
     e.n++;
     e.t = FEED_S;
-    e.nEl.textContent = `×${e.n}`;
+    e.nEl.textContent = `×${fmtCount(e.n)}`;
     if (e.n > 1) flash(e.nEl, [{ transform: 'scale(1.25)' }, { transform: 'none' }], { duration: 120 }, 120);
   }
 

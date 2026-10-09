@@ -10,8 +10,16 @@ import { meteor } from './meteor.js';
 import { blizzard } from './blizzard.js';
 import { staticField } from './staticField.js';
 import { singularity } from './singularity.js';
-import { frostfireComet, plasmaOrb, stormHalo, arcaneBarrage } from './fusions.js';
-import { absoluteZero, cataclysm, thunderhead, starfall, hailstorm, tempest } from './fusions2.js';
+import { frostfireComet } from './fusions/frostfireComet.js';
+import { plasmaOrb } from './fusions/plasmaOrb.js';
+import { stormHalo } from './fusions/stormHalo.js';
+import { arcaneBarrage } from './fusions/arcaneBarrage.js';
+import { absoluteZero } from './fusions/absoluteZero.js';
+import { cataclysm } from './fusions/cataclysm.js';
+import { thunderhead } from './fusions/thunderhead.js';
+import { starfall } from './fusions/starfall.js';
+import { hailstorm } from './fusions/hailstorm.js';
+import { tempest } from './fusions/tempest.js';
 
 // Class starters: only offered to / owned by their class.
 arcaneBolt.classOnly = 'arcanist';

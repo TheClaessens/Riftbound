@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ELEMENT_COLOR, ELEMENT_CSS, dirXZ, randRange } from '../core/utils.js';
+import { REACTION_FX, frozenFx, burnTickFx, wardBreakFx, barrierBreakFx, killFx } from './vfx/reactions.js';
 
 // =====================================================================================
 //  Damage, elemental statuses and REACTIONS — the combo engine.
@@ -26,7 +27,7 @@ export const REACTIONS = {
   overload: { id: 'overload', name: 'OVERLOAD', color: '#ff9d3d', hex: 0xff8a2a, elements: ['fire', 'storm'], desc: 'Fire + Storm: big explosion with heavy knockback.' },
   superconduct: { id: 'superconduct', name: 'SUPERCONDUCT', color: '#9ff3ff', hex: 0x9ff3ff, elements: ['frost', 'storm'], desc: 'Frost + Storm: lightning arcs to nearby foes and chills them.' },
   shatter: { id: 'shatter', name: 'SHATTER', color: '#e0c4ff', hex: 0xd8b8ff, elements: ['arcane', 'frost'], desc: 'Arcane on a Frozen foe: x2.5 damage and ice shards.' },
-  combust: { id: 'combust', name: 'COMBUST', color: '#ff7ab8', hex: 0xff5aa0, elements: ['arcane', 'fire'], desc: 'Arcane on a Burning foe: detonates the burn instantly and spreads it.' },
+  combust: { id: 'combust', name: 'COMBUST', color: '#ffb070', hex: 0xff9a3c, elements: ['arcane', 'fire'], desc: 'Arcane on a Burning foe: detonates the burn instantly and spreads it.' },
   arcflash: { id: 'arcflash', name: 'ARC FLASH', color: '#f4e8ff', hex: 0xe8d8ff, elements: ['arcane', 'storm'], desc: 'Arcane on a Shocked foe: stuns everything nearby.' },
 };
 
@@ -77,7 +78,7 @@ export function applyStatus(game, enemy, element, power = 1) {
       if (s.chill >= st.freezeAt) {
         s.frozen = (enemy.boss ? 0.6 : 1.6) * res;
         s.chill = 0;
-        game.fx.burst(enemy.pos, { color: ELEMENT_COLOR.frost, count: 8, speed: 3, life: 0.4, size: 0.3 });
+        frozenFx(game, enemy);
         game.events.emit('enemyFrozen', { enemy });
       }
       break;
@@ -129,7 +130,9 @@ export function damageEnemy(game, enemy, amount, opts = {}) {
     if (reacted === 'shatter') dmg *= 2.5;
     triggerReaction(game, enemy, reacted, opts);
     if (enemy.ward) breakWard(game, enemy);
-    if (st.reactionEcho > 0 && Math.random() < st.reactionEcho) {
+    // only reactions the player caused directly echo: an echoed Superconduct used to set off
+    // reactions that echoed again (the Prism Lens chain engine, playtest round 1)
+    if (st.reactionEcho > 0 && reactionDepth === 0 && Math.random() < st.reactionEcho) {
       game.fx.text({ x: enemy.pos.x, y: 0.8, z: enemy.pos.z }, 'ECHO', '#ffffff');
       triggerReaction(game, enemy, reacted, opts, true);
     }
@@ -142,7 +145,7 @@ export function damageEnemy(game, enemy, amount, opts = {}) {
     const absorbed = Math.min(enemy.barrier, dmg);
     enemy.barrier -= absorbed;
     dmg -= absorbed;
-    if (enemy.barrier <= 0) game.fx.burst(enemy.pos, { color: 0xbfa8ff, count: 10, speed: 4, life: 0.35, size: 0.3 });
+    if (enemy.barrier <= 0) barrierBreakFx(game, enemy);
   }
 
   enemy.hp -= dmg;
@@ -163,8 +166,7 @@ export function damageEnemy(game, enemy, amount, opts = {}) {
 export function breakWard(game, enemy) {
   const el = enemy.ward;
   enemy.ward = null;
-  game.fx.burst(enemy.pos, { color: ELEMENT_COLOR[el] ?? 0xffffff, count: 24, speed: 7, life: 0.5, size: 0.35, up: 1 });
-  game.fx.ring(enemy.pos, { color: ELEMENT_COLOR[el] ?? 0xffffff, radius: 2.5, life: 0.3 });
+  wardBreakFx(game, enemy, el);
   game.fx.text(enemy.pos, 'WARD BROKEN', '#ffffff');
   game.events.emit('wardBroken', { enemy, element: el });
 }
@@ -184,7 +186,7 @@ export function killEnemy(game, enemy) {
   if (chest) game.pickups.spawn('chest', enemy.pos);
   if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.25 : 0.01)) game.pickups.spawn('health', { x: enemy.pos.x + 1, z: enemy.pos.z });
   if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.12 : 0.0025)) game.pickups.spawn('magnet', { x: enemy.pos.x - 1, z: enemy.pos.z });
-  game.fx.burst(enemy.pos, { color: enemy.deathColor ?? 0x9a7cff, count: enemy.boss ? 80 : 10, speed: enemy.boss ? 10 : 4, life: 0.6, size: enemy.boss ? 0.5 : 0.38, gravity: 6, up: 1.2, occ: 0.75, hdr: 1 });
+  killFx(game, enemy);
   enemy.onDeath?.(game);
   game.events.emit('enemyKilled', { enemy });
 }
@@ -213,11 +215,7 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
       case 'steam': {
         s.burn = 0; s.chill = 0; s.frozen = 0;
         const r = 2.8 * area;
-        game.fx.ring(pos, { color: R.hex, radius: r, life: 0.35 });
-        game.fx.flashDisc(pos, { color: 0xffd0b0, radius: r * 0.8, life: 0.25 });
-        game.fx.burst(pos, { color: 0xffd8c8, count: 14, speed: 6, life: 0.6, size: 0.5, up: 1.5, drag: 3, hdr: 0.8 });
-        game.fx.light(pos, 0xffaa77, 40, 0.3);
-        game.fx.shake(0.18);
+        REACTION_FX.steam(game, pos, { r, enemy, isEcho });
         for (const e of game.queryEnemies(pos, r, _tmp).slice()) {
           if (e !== enemy) damageEnemy(game, e, base, { element: 'physical', raw: true, noReaction: true, noCrit: true });
         }
@@ -227,12 +225,7 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
       case 'overload': {
         s.burn = 0; s.shock = 0;
         const r = 3.2 * area * st.overloadRadius;
-        game.fx.ring(pos, { color: R.hex, radius: r, life: 0.4, width: 0.3 });
-        game.fx.flashDisc(pos, { color: 0xff7a2a, radius: r, life: 0.3, hdr: 2.2 });
-        game.fx.burst(pos, { color: 0xff8a2a, count: 30, speed: 9, life: 0.6, size: 0.45, gravity: 5, up: 1.2 });
-        game.fx.burst(pos, { color: 0xffe14a, count: 12, speed: 12, life: 0.3, size: 0.25 });
-        game.fx.light(pos, 0xff7a2a, 60, 0.35);
-        game.fx.shake(0.3);
+        REACTION_FX.overload(game, pos, { r, enemy, isEcho });
         reactionHitStop(game);
         for (const e of game.queryEnemies(pos, r, _tmp).slice()) {
           if (st.overloadStun > 0) stunEnemy(e, st.overloadStun);
@@ -246,11 +239,8 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
           .filter((e) => e !== enemy && !e.inert)
           .sort((a, b) => a.pos.distanceToSquared(pos) - b.pos.distanceToSquared(pos))
           .slice(0, 4);
-        game.fx.ring(pos, { color: R.hex, radius: 2, life: 0.3 });
-        game.fx.light(pos, 0x9ff3ff, 30, 0.25);
-        game.fx.shake(0.12);
+        REACTION_FX.superconduct(game, pos, { targets, enemy, isEcho });
         for (const t of targets) {
-          game.fx.lightning(pos, t.pos, { color: R.hex, life: 0.22 });
           damageEnemy(game, t, base * 0.6, { element: 'frost', raw: true, noCrit: true, statusPower: 2 });
         }
         applyStatus(game, enemy, 'frost', 2);
@@ -258,10 +248,7 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
       }
       case 'shatter': {
         s.frozen = 0; s.chill = 0;
-        game.fx.burst(pos, { color: 0xbfefff, count: 24, speed: 8, life: 0.5, size: 0.3, gravity: 10, up: 1 });
-        game.fx.burst(pos, { color: 0xc08cff, count: 10, speed: 4, life: 0.4, size: 0.5 });
-        game.fx.ring(pos, { color: 0xd8b8ff, radius: 1.8, life: 0.25 });
-        game.fx.shake(0.1);
+        REACTION_FX.shatter(game, pos, { r: 2.2 * area, enemy, isEcho });
         reactionHitStop(game);
         for (const e of game.queryEnemies(pos, 2.2 * area, _tmp).slice()) {
           if (e !== enemy) damageEnemy(game, e, base * 0.4, { element: 'frost', raw: true, noReaction: true, noCrit: true });
@@ -273,12 +260,6 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
         const dmg = Math.max(base * 0.8, remaining * 3);
         s.burn = 0; s.burnDps = 0;
         const r = 2.2 * area;
-        game.fx.flashDisc(pos, { color: 0xff5aa0, radius: r, life: 0.28, hdr: 2 });
-        game.fx.ring(pos, { color: R.hex, radius: r * 1.2, life: 0.3, width: 0.25 });
-        game.fx.burst(pos, { color: 0xff6a1f, count: 22, speed: 8, life: 0.5, size: 0.45, up: 2, gravity: 4 });
-        game.fx.burst(pos, { color: 0xff5aa0, count: 10, speed: 5, life: 0.4, size: 0.4 });
-        game.fx.light(pos, 0xff5aa0, 45, 0.3);
-        game.fx.shake(0.2);
         reactionHitStop(game);
         damageEnemy(game, enemy, dmg, { element: 'physical', raw: true, noReaction: true, noCrit: true });
         const near = game.queryEnemies(pos, Math.max(r, 4), _tmp).filter((e) => e !== enemy && !e.inert).slice();
@@ -286,21 +267,19 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
         for (const e of near) {
           if (e.pos.distanceTo(pos) <= r) damageEnemy(game, e, dmg * 0.5, { element: 'physical', raw: true, noReaction: true, noCrit: true });
         }
+        const spread = [];
         for (const e of near.slice(0, 3)) {
           if (e.dead) continue;
           applyStatus(game, e, 'fire', 1);
-          game.fx.lightning(pos, e.pos, { color: 0xff6a1f, life: 0.18, strands: 1, jag: 0.25 });
+          spread.push(e);
         }
+        REACTION_FX.combust(game, pos, { r, spread, enemy, isEcho });
         break;
       }
       case 'arcflash': {
         s.shock = 0;
         const r = 3 * area;
-        game.fx.flashDisc(pos, { color: 0xffffff, radius: r, life: 0.18, hdr: 3 });
-        game.fx.ring(pos, { color: R.hex, radius: r, life: 0.3, width: 0.12 });
-        game.fx.burst(pos, { color: 0xffe14a, count: 14, speed: 9, life: 0.3, size: 0.25 });
-        game.fx.light(pos, 0xffffff, 50, 0.2);
-        game.fx.shake(0.12);
+        REACTION_FX.arcflash(game, pos, { r, enemy, isEcho });
         for (const e of game.queryEnemies(pos, r, _tmp).slice()) {
           stunEnemy(e, 1.2);
           damageEnemy(game, e, base * 0.5, { element: 'physical', raw: true, noReaction: true, noCrit: true });
@@ -323,7 +302,7 @@ export function updateStatuses(game, enemy, dt) {
     if (s.burnTick <= 0) {
       s.burnTick = 0.5;
       damageEnemy(game, enemy, s.burnDps * 0.5, { element: 'fire', raw: true, noReaction: true, noStatus: true, noCrit: true });
-      if (Math.random() < 0.8) game.fx.burst(enemy.pos, { color: ELEMENT_COLOR.fire, count: 2, speed: 1, life: 0.5, size: 0.3, up: 2.5, gravity: -2 });
+      burnTickFx(game, enemy);
     }
     if (s.burn <= 0) s.burnDps = 0;
   }
@@ -337,17 +316,20 @@ export function updateStatuses(game, enemy, dt) {
   return 1 - 0.12 * Math.min(5, s.chill);
 }
 
-// Tint helper for enemy meshes: returns a hex color describing the dominant status (or null).
+// Emissive wash for statuses the rig shader doesn't draw itself (stun only now; burn / chill /
+// frozen / shock are drawn by the rig's status channel, see statusLook, and vfx/status.js overlays).
 export function statusTint(enemy) {
-  const s = enemy.status;
-  if (s.frozen > 0) return 0x58c8ff;
-  if (s.stun > 0) return 0xf4e8ff;
-  if (s.burn > 0) return 0xff5a1a;
-  if (s.shock > 0) return 0xffe14a;
-  if (s.chill > 0) return 0x5fb8ff;
-  return null;
+  return enemy.status.stun > 0 ? 0xf4e8ff : null;
 }
 
+// Rig status channel: writes [burn 0/1, cold (chill / freezeAt × 0.95, frozen = 1), shock 0/1] into out.
+export function statusLook(enemy, out, freezeAt = 5) {
+  const s = enemy.status;
+  out[0] = s.burn > 0 ? 1 : 0;
+  out[1] = s.frozen > 0 ? 1 : Math.min(0.95, 0.95 * s.chill / Math.max(1, freezeAt));
+  out[2] = s.shock > 0 ? 1 : 0;
+  return out;
+}
 // True while the reaction engine is resolving (used for "killed by reaction").
 export const inReaction = () => reactionDepth > 0;
 

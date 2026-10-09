@@ -15,7 +15,7 @@ export function rollCards(game, n = 3) {
   const fusions = availableFusions(p).filter((r) => !banned.has(r.def.id)).map((recipe) => ({
     type: 'fusion', id: recipe.def.id, name: recipe.def.name, icon: recipe.def.icon, element: recipe.def.element,
     rank: 1, desc: recipe.def.desc(1), recipe,
-    hint: `Fuses ${SKILLS[recipe.a].name} + ${SKILLS[recipe.b].name}`,
+    hint: `Fuses ${SKILLS[recipe.a].name} + ${SKILLS[recipe.b].name} · replaces both`,
   }));
 
   const hasFree = p.freeSlot() >= 0;
@@ -79,7 +79,7 @@ function fusionPartnerOwned(p, id) {
 function synergyHint(p, def) {
   for (const f of FUSIONS) {
     const other = f.a === def.id ? f.b : f.b === def.id ? f.a : null;
-    if (other && p.getSkill(other)) return `Fusion path: + ${SKILLS[other].name} → ${f.def.name}`;
+    if (other && p.getSkill(other)) return `Fusion path: + ${SKILLS[other].name}, both rank ${FUSION_RANK} → ${f.def.name}`;
   }
   for (const r of Object.values(REACTIONS)) {
     if (!r.elements.includes(def.element)) continue;
@@ -93,8 +93,9 @@ function rankHint(p, s) {
   if (s.rank + 1 === FUSION_RANK) {
     for (const f of FUSIONS) {
       const other = f.a === s.def.id ? f.b : f.b === s.def.id ? f.a : null;
-      if (other && p.skillRank(other) >= FUSION_RANK) return `Unlocks FUSION: ${f.def.name}!`;
-      if (other && p.getSkill(other)) return `Fusion path → ${f.def.name}`;
+      // name the partner and its rank: players read "Fusion path" as "any two skills at rank 3"
+      if (other && p.skillRank(other) >= FUSION_RANK) return `Unlocks FUSION: ${f.def.name} at your next level-up!`;
+      if (other && p.getSkill(other)) return `Fusion path: ${SKILLS[other].name} r${p.skillRank(other)}/${FUSION_RANK} → ${f.def.name}`;
     }
   }
   return '';

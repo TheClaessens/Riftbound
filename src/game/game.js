@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { Events } from '../core/events.js';
 import { SpatialHash } from './spatial.js';
 import { FX } from './fx.js';
+import { VFX } from './vfx/index.js';
 import { CreatureRenderer } from './creatures/renderer.js';
+import { heroRenderer, HeroModel, HERO_ELEMENT } from './heroes/index.js';
 import { Player } from './player.js';
 import { Pickups } from './pickups.js';
 import { World } from './world.js';
@@ -50,8 +52,10 @@ export class Game {
     this.stats = freshStats();
     this.run = freshRun(this.meta);
 
-    this.creatures = new CreatureRenderer(this.scene, this.camera);
+    this.creatures = new CreatureRenderer(this.scene, this.camera, { renderOrder: 3 });   // after ground decals (1)
+    this.heroes = heroRenderer(this.scene, this.camera);   // the player's rig (own renderer: survives creatures.clear())
     this.fx = new FX(this);
+    this.vfx = new VFX(this);   // world-grounded spell VFX (src/game/vfx/): particles, debris, shells, decals, ribbons, clouds, status overlays
     this.world = new World(this);
     this.pickups = new Pickups(this);
     this.player = null;
@@ -73,6 +77,7 @@ export class Game {
 
     // idle title-screen camera position
     this.engine.follow(new THREE.Vector3(), 1);
+    this.vfx.warmup();
   }
 
   get actDef() { return ACTS[this.act]; }
@@ -82,6 +87,7 @@ export class Game {
   // opts: { classId, tier, player } (player: started from the menus by a person; scripted starts
   // such as sims and the promo renderer leave it off, which keeps the Rift Primer out of them)
   start(opts = {}) {
+    this.hideShowcase();
     const classId = opts.classId ?? this.meta.lastClass ?? 'pyromancer';
     this.tier = Math.min(opts.tier ?? 0, maxTierOf(this.meta));
     this.meta.lastClass = classId; this.meta.lastTier = this.tier; saveMeta(this.meta);
@@ -91,6 +97,7 @@ export class Game {
     this.enemies.length = 0;
     this.actors.length = 0;
     this.fx.clear();
+    this.vfx.clear();
     this.creatures.clear();
     this.pickups.reset();
     this.player?.dispose();
@@ -119,6 +126,7 @@ export class Game {
   _end(state) {
     if (this.state === 'dead' || this.state === 'victory') return;
     this.state = state;
+    if (state === 'dead') this.player.model.die(); else this.player.model.victory();
     const s = this.stats;
     s.level = this.player.level;
     s.time = this.time;
@@ -138,11 +146,37 @@ export class Game {
     else this.ui.showVictory(s);
   }
 
+  // Title screen: the selected class stands in the world behind the menus (victory → calm loop),
+  // turned three-quarters toward the camera, with the camera zoomed in a little.
+  showcase(classId) {
+    if (this.state !== 'title' || !HERO_ELEMENT[classId]) return;
+    if (this._show?.classId === classId) return;
+    this._show?.model.dispose();
+    const toCam = new THREE.Vector3(this.engine.isoOffset.x, 0, this.engine.isoOffset.z).normalize();
+    const stub = {
+      pos: new THREE.Vector3(), vel: new THREE.Vector3(), facing: toCam.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.45),
+      slots: [], dash: { window: 0, dir: null, def: { dur: 0.1 } }, invuln: 0, game: this,
+      frostArmor: 3, charge: 100, lastElement: HERO_ELEMENT[classId],
+    };
+    const model = new HeroModel(this, classId);
+    model.hideRing = true;
+    model.victory();
+    this._show = { classId, model, stub, zoom: this._show?.zoom ?? this.engine.targetZoom };
+    this.engine.targetZoom = 2.1;
+  }
+
+  hideShowcase() {
+    if (!this._show) return;
+    this._show.model.dispose();
+    this.engine.targetZoom = this._show.zoom;
+    this._show = null;
+  }
+
   quitToTitle() {
     for (const e of this.enemies) e.dispose(this);
     for (const a of this.actors) a.dispose?.(this);
     this.enemies.length = 0; this.actors.length = 0;
-    this.fx.clear(); this.pickups.reset();
+    this.fx.clear(); this.vfx.clear(); this.pickups.reset();
     this.creatures.clear();
     this.player?.dispose(); this.player = null;
     this.boss = null;
@@ -298,7 +332,9 @@ export class Game {
       this.pickups.update(dt);
       this.world.update?.(dt, this.time);
       this.fx.update(dt);
+      this.vfx.update(dt);
       this.creatures.update(dt, this.time);
+      this.heroes.update(dt, this.time);
 
       if (this.state === 'playing') {
         if (this.pendingLevelUps > 0) this._openLevelUp();
@@ -307,10 +343,16 @@ export class Game {
     } else if (active) {
       // hit-stop: freeze the simulation but keep texts / camera alive
       this.creatures.update(0, this.time);
+      this.heroes.update(0, this.time);
       this.fx.updateTexts(0);
     } else {
       this.world.update?.(realDt * 0.3, this.time);
       this.creatures.update(0, this.time);
+      // the hero keeps playing its death / victory pose behind the end screen
+      const ending = this.player && (this.state === 'dead' || this.state === 'victory');
+      if (ending) this.player.updateEnd(realDt);
+      if (this._show && this.state === 'title') this._show.model.update(realDt, { player: this._show.stub, moving: false, dashing: false });
+      this.heroes.update(ending || this._show ? realDt : 0, this.time);
       this.fx.updateTexts(0);
     }
 

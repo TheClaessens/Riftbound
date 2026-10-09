@@ -11,7 +11,7 @@ import { SKILLS, PASSIVES, FUSIONS, FUSION_RANK, ALL_DEFS } from '../game/skills
 import { REACTIONS } from '../game/combat.js';
 import { RELICS, RELIC_TAG_COLOR } from '../game/relics.js';
 import { SLOT_KEYS, MAX_AUTOS } from '../game/player.js';
-import { saveMeta } from '../game/meta.js';
+import { saveMeta, computeShards } from '../game/meta.js';
 
 const LEVELUP_IGNORE_MS = 300;    // a held click from combat can never pick a card
 const RELIC_IGNORE_MS = 350;
@@ -888,11 +888,15 @@ export class UI {
     else if (e.code === 'Tab') { e.preventDefault(); this._setPauseTab(this._pzTab === 'build' ? 'codex' : 'build'); }
   }
 
-  // Abandon needs a second click within 3 s, so it is never hit by accident.
+  // Abandon needs a second click within 3 s, so it is never hit by accident. The armed label
+  // names the shards an abandoned run forfeits: quitting pays nothing (playtest round 1, #14).
   _onAbandonClick() {
     if (!this._abandonArmed) {
       this._abandonArmed = true;
-      this.pzAbandon.textContent = 'Confirm abandon?';
+      const g = this.game, s = g.stats;
+      const shards = computeShards({ kills: s.kills, actsReached: g.act + 1, bossesKilled: s.bossesKilled, maxChain: s.maxChain, tier: g.tier });
+      this.pzAbandon.textContent = shards > 0 ? `Forfeit ${shards} shards?` : 'Confirm abandon?';
+      this.pzAbandon.title = 'An abandoned run pays no shards and does not count toward unlocks.';
       this.pzAbandon.classList.add('danger', 'is-armed');
       clearTimeout(this._armT);
       this._armT = setTimeout(() => this._disarmAbandon(), 3000);
@@ -907,6 +911,7 @@ export class UI {
     clearTimeout(this._armT);
     if (this.pzAbandon) {
       this.pzAbandon.textContent = 'Abandon run';
+      this.pzAbandon.title = '';
       this.pzAbandon.classList.remove('danger', 'is-armed');
     }
   }
@@ -1012,7 +1017,7 @@ export class UI {
           <h3 class="md-sec"><span>Reactions</span><b class="num">${found.size}/${Object.keys(REACTIONS).length}</b></h3>
           ${squareHTML(found, 'is-build')}
           <h3 class="md-sec"><span>Fusions in reach</span></h3>
-          <div class="md-fzs">${reachRows || `<p class="md-empty">Raise two matching skills to rank ${FUSION_RANK} to forge a fusion.</p>`}${more}</div>
+          <div class="md-fzs">${reachRows || `<p class="md-empty">Each fusion needs a specific pair of skills, both at rank ${FUSION_RANK}. Learn one half of a recipe to see it here.</p>`}${more}</div>
         </section>
         <section class="md-col">
           <h3 class="md-sec"><span>Relics</span><b class="num">${p.relics.length}</b></h3>
@@ -1044,7 +1049,7 @@ export class UI {
       const a = SKILLS[f.a], b = SKILLS[f.b];
       const sock = (id, d, cls = '') => `<span class="cf-socket md-cx-sock${on ? '' : ' md-sil'} ${cls}" data-el="${d?.element ?? ''}">${icon(ICON.skill(id), { el: d?.element ?? '', fallback: d?.icon ?? '◆' })}</span>`;
       const tip = on ? `<b>${esc(f.def.name)}</b> <span class="cf-label">${isActive(f.def) ? 'active' : 'auto'}</span><br>${esc(a?.name)} + ${esc(b?.name)} at rank ${FUSION_RANK}<br>${hlNums(f.def.desc(1))}`
-        : `<b>Undiscovered fusion</b><br>Raise two matching skills to rank ${FUSION_RANK}.`;
+        : `<b>Undiscovered fusion</b><br>A specific pair of skills, both at rank ${FUSION_RANK}. The fusion replaces both.`;
       return `<div class="md-recipe${on ? ' is-found' : ''}" data-el="${f.def.element}"${T(tip)}>
         <div class="md-recipe-eq">${sock(f.a, a)}<i class="md-fz-op">+</i>${sock(f.b, b)}<i class="md-fz-op">=</i>
         ${on ? sock(f.def.id, f.def, 'is-result') : '<span class="cf-socket md-cx-sock is-result is-unknown"><b>?</b></span>'}</div>

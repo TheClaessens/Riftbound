@@ -30,7 +30,9 @@ const _va = new THREE.Vector3(), _vb = new THREE.Vector3(), _vc = new THREE.Vect
 // Common part options:
 //   bone   : bone name (default 'root')
 //   color  : hex colour (sRGB)
-//   emis   : emissive strength (0 = matte; 1.5–4 = glowing HDR part that blooms)
+//   emis   : emissive strength (0 = matte; 1.5–4 = glowing HDR part that blooms).
+//            NEGATIVE = fixed-colour glow at |emis|: ignores the accent override and the glow ramp
+//            (e.g. hero eyes that stay their colour while the focus takes the last-cast element).
 //   pos    : [x, y, z]      rot: [x, y, z] (radians, XYZ order)      scale: number | [x, y, z]
 //   flat   : true (default) = faceted low-poly normals; false = smooth normals
 export class PartBuilder {
@@ -171,7 +173,7 @@ export class PartBuilder {
       const pos = merged.attributes.position, col = merged.attributes.color, rig = merged.attributes.aRig;
       const y0 = merged.boundingBox.min.y, H = Math.max(0.01, merged.boundingBox.max.y - y0);
       for (let i = 0; i < pos.count; i++) {
-        if (rig.getY(i) > 0) continue;
+        if (rig.getY(i) !== 0) continue;
         const k = lo + (hi - lo) * Math.min(1, Math.max(0, (pos.getY(i) - y0) / H));
         col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k);
       }
@@ -273,7 +275,7 @@ export function defineCreature(spec) {
 // Per-vertex: aRig = (bone, emissive strength, trim flag).
 // Per-instance: iFx = (emissive rgb [flash / status tint], glow 0..1+)
 //               iRim = (rim rgb, strength)      iAcc = (accent override rgb, mix 0..1)
-//               iMisc = (elite 0/1, squash, -, -)
+//               iMisc = (elite 0/1, burn, cold [chill <1, frozen = 1], shock)  — status looks (h.stat)
 const VERT_HEAD = /* glsl */`
 uniform highp sampler2D boneTex;
 attribute vec3 aRig;
@@ -287,6 +289,12 @@ varying float vElite;
 varying vec4 vFx;
 varying vec4 vRim;
 varying vec4 vAcc;
+varying vec3 vStat;     // status looks: burn, cold (chill <1, frozen = 1), shock  (iMisc.yzw)
+varying float vUpN;     // world-space normal.y (frost dusting on up-facing facets)
+varying vec4 vRigY;     // status looks: x height / model height (0 feet .. 1 top), y height (m), z body-wrap coord (m), w instance seed
+varying float vZap;     // shock crack-line strobe on/off (per instance, ~2 frames per 0.2 s)
+uniform float rigTime;  // seconds (renderer.js RIG_TIME); unset (0) in the depth / hull variants
+uniform float rigHeight; // model height of this creature type (m); 0 = unset (falls back to 1.7)
 mat4 rigBone() {
   int x = int(aRig.x + 0.5) * 4;
   int y = gl_InstanceID;
@@ -299,6 +307,11 @@ float rigKeep() { return (aRig.z > 1.5 && iMisc.x < 0.5) ? 0.0 : 1.0; }
 
 const FRAG_HEAD = /* glsl */`
 uniform vec4 rigRim;
+uniform float rigTime;
+varying vec3 vStat;
+varying float vUpN;
+varying vec4 vRigY;
+varying float vZap;
 varying float vEmis;
 varying float vTrim;
 varying float vElite;
@@ -313,6 +326,8 @@ function patchColorMaterial(mat, uniforms) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.boneTex = uniforms.boneTex;
     sh.uniforms.rigRim = uniforms.rigRim;
+    sh.uniforms.rigTime = uniforms.rigTime;
+    sh.uniforms.rigHeight = uniforms.rigHeight ?? { value: 0 };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>\n${VERT_HEAD}`)
       .replace('#include <beginnormal_vertex>', /* glsl */`#include <beginnormal_vertex>
@@ -324,26 +339,89 @@ function patchColorMaterial(mat, uniforms) {
         vEmis = aRig.y;
         vTrim = (aRig.z > 0.5 && iMisc.x > 0.5) ? 1.0 : 0.0;
         vElite = iMisc.x;
-        vFx = iFx; vRim = iRim; vAcc = iAcc;`);
+        vFx = iFx; vRim = iRim; vAcc = iAcc;
+        vStat = iMisc.yzw;
+        { float rigSeed = fract(float(gl_InstanceID) * 0.618034 + 0.17);
+          vRigY = vec4(transformed.y / (rigHeight > 0.0 ? rigHeight : 1.7), transformed.y, transformed.x * 0.8 + transformed.z * 0.6, rigSeed);
+          // shock: crack-lines strobe on ~2 random frames per 0.2 s, de-synchronised per instance
+          vZap = step(0.64, fract(sin(floor(rigTime * 30.0 + rigSeed * 13.0) * 12.9898 + rigSeed * 78.233) * 43758.5453)); }
+        vUpN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal).y;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
       .replace('#include <color_fragment>', /* glsl */`#include <color_fragment>
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.7, 0.16), vTrim);`)
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.7, 0.16), vTrim);
+        // ---- status looks (cheap, always on; the overlays in vfx/status.js add shells and flames)
+        //      (bible 10 §4.7; masks combine: burn = top band, chill = bottom-up rime, shock = lines over both)
+        #define RIG_H(p) fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)
+        #define RIG_N(q) mix(mix(RIG_H(floor(q)), RIG_H(floor(q) + vec2(1.0, 0.0)), smoothstep(0.0, 1.0, fract(q.x))), mix(RIG_H(floor(q) + vec2(0.0, 1.0)), RIG_H(floor(q) + vec2(1.0)), smoothstep(0.0, 1.0, fract(q.x))), smoothstep(0.0, 1.0, fract(q.y)))
+        float rigFrozen = step(0.99, vStat.y);
+        float rigFlame = 0.0, rigHot = 0.0, rigZapL = 0.0;
+        float rigHn = vRigY.x, rigYm = vRigY.y, rigU = vRigY.z, rigSd = vRigY.w;
+        float rigLum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+        if (vStat.y > 0.001 && rigFrozen < 0.5) {
+          // CHILL: opaque rime climbing from the feet; its front = chill / freezeAt of the body (cold = 0.95 x that),
+          // so one stack short of Frozen it reaches the shoulders. Navy fringe line at the front.
+          vec2 rq = vec2(rigU * 4.0 + rigSd * 17.0, rigYm * 1.3);
+          float front = 0.05 + 0.8 * clamp(vStat.y / 0.95, 0.0, 1.0) + (RIG_N(rq) - 0.5) * 0.12;
+          float aa = fwidth(rigHn) + 1e-4;
+          float rime = 1.0 - smoothstep(front - aa, front + aa, rigHn);
+          float fringe = rime * smoothstep(front - 0.05 - aa, front - 0.05 + aa, rigHn);
+          vec2 fq = vec2(rigU * 11.0, rigYm * 11.0);
+          vec3 rimeCol = mix(vec3(0.52, 0.72, 0.88), vec3(0.72, 0.86, 0.95), step(0.5, RIG_N(fq)));   // painted, never blooms
+          diffuseColor.rgb = mix(diffuseColor.rgb, rimeCol, rime * 0.88);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.13, 0.34), fringe * 0.95);
+        }
+        if (rigFrozen > 0.5) {
+          // FROZEN: ice-blue body tint (#3FA8E0), rime on up-facing facets, white crack lines
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.07, 0.38, 0.72) * (0.8 + rigLum * 0.9), 0.62);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.8, 0.92), smoothstep(0.55, 0.85, vUpN) * 0.3);
+          vec2 cq = vec2(rigU * 3.2 + rigSd * 9.0, rigYm * 3.2);
+          float crack = 1.0 - smoothstep(0.0, 0.03 + fwidth(cq.y) * 0.5, abs(RIG_N(cq) - 0.5));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.8, 0.91, 0.97), crack * 0.75);
+        }
+        if (vStat.x > 0.5) {
+          // BURN: char at the base, toon flame band licking up the top 40% (world-y noise scrolling up, 10 Hz flicker)
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.042, 0.023, 0.016), 0.06 + 0.26 * (1.0 - smoothstep(0.05, 0.4, rigHn)));
+          float fk = step(0.5, fract(rigTime * 10.0 + rigSd * 3.0));
+          vec2 q1 = vec2(rigU * 2.6 + rigSd * 31.0, rigYm * 2.0 - rigTime * 3.2);
+          vec2 q2 = vec2(rigU * 5.5 - rigSd * 7.0, rigYm * 4.4 - rigTime * 5.1);
+          float n = RIG_N(q1) * 0.65 + RIG_N(q2) * 0.35;
+          float f = n * (0.25 + 1.1 * smoothstep(0.5, 0.86, rigHn)) - 0.5 - 0.04 * fk;
+          rigFlame = step(0.0, f);
+          rigHot = step(0.13, f);
+          diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(1.0, 0.22, 0.03), vec3(1.0, 0.62, 0.12), rigHot), rigFlame * 0.9);
+        }
+        if (vStat.z > 0.5 && vZap > 0.5) {
+          // SHOCK: crawling lemon crack-lines, re-rolled every strobe frame (never a steady edge like the elite rim)
+          float fi = floor(rigTime * 30.0);
+          vec2 zq = vec2(rigU * 3.0 + fi * 1.73 + rigSd * 5.0, rigYm * 3.0 - fi * 0.91);
+          rigZapL = 1.0 - smoothstep(0.0, 0.035 + fwidth(zq.y) * 0.6, abs(RIG_N(zq) - 0.5));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.8, 0.12), rigZapL * 0.85);
+        }
+        // ---- end status looks`)
       .replace('#include <emissivemap_fragment>', /* glsl */`#include <emissivemap_fragment>
       {
         vec3 rigV = isOrthographic ? vec3(0.0, 0.0, 1.0) : normalize(vViewPosition);
         // fresnel, masked to upward-facing facets (downward slants would wash out grey)
         float rigF = pow(1.0 - clamp(dot(normal, rigV), 0.0, 1.0), 3.0) * smoothstep(-0.3, 0.5, normal.y);
-        float matte = 1.0 - step(0.001, vEmis);
-        vec3 acc = mix(mix(vColor.rgb, vec3(1.0, 0.72, 0.2), 0.8 * vElite), vAcc.rgb, vAcc.a); // elites: gold accents; wards override
-        totalEmissiveRadiance += acc * vEmis * (0.35 + vFx.a * 1.6);
+        float rigEm = abs(vEmis);
+        float matte = 1.0 - step(0.001, rigEm);
+        // negative emis = fixed-colour glow: ignores the accent override and the glow ramp (hero eyes, embers)
+        float accMix = vEmis < 0.0 ? 0.0 : vAcc.a;
+        vec3 acc = mix(mix(vColor.rgb, vec3(1.0, 0.72, 0.2), 0.8 * vElite), vAcc.rgb, accMix); // elites: gold accents; wards override
+        totalEmissiveRadiance += acc * rigEm * (vEmis < 0.0 ? 1.0 : 0.35 + vFx.a * 1.6);
         totalEmissiveRadiance += vec3(1.0, 0.62, 0.12) * 0.3 * vTrim;
         totalEmissiveRadiance += vFx.rgb;
         totalEmissiveRadiance += rigRim.rgb * rigRim.a * rigF * matte;
         totalEmissiveRadiance += vRim.rgb * vRim.a * rigF;
+        // status: burn = glowing flame band (+ a faint ember underglow); shock = lemon crack-lines x1.8 on strobe
+        // frames; frozen = cold fresnel (kept low: status ice never blooms)
+        totalEmissiveRadiance += mix(vec3(1.0, 0.3, 0.04), vec3(1.0, 0.7, 0.22), rigHot) * rigFlame * 0.55 + vec3(0.5, 0.14, 0.02) * vStat.x * rigF * 0.5;
+        totalEmissiveRadiance += vec3(1.0, 0.82, 0.2) * rigZapL * 1.8 + vec3(1.0, 0.9, 0.35) * vStat.z * vZap * rigF * 0.35;
+        totalEmissiveRadiance += vec3(0.45, 0.8, 1.0) * rigF * 0.5 * rigFrozen;
       }`);
   };
-  mat.customProgramCacheKey = () => 'rig-color-v3';
+  mat.customProgramCacheKey = () => 'rig-color-v4';
 }
 
 function patchDepthMaterial(mat, uniforms) {

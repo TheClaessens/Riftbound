@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GEO, glowMaterial, ELEMENT_COLOR, distXZ, rotateXZ, randRange } from '../core/utils.js';
-import { makeStatus, updateStatuses, statusTint, damageEnemy, killEnemy } from './combat.js';
+import { makeStatus, updateStatuses, statusTint, statusLook, damageEnemy, killEnemy } from './combat.js';
 import { creatureFor } from './creatures/index.js';
 import { BLEND_ADD } from './fx.js';
 
@@ -575,7 +575,9 @@ function castBarrier(game, e) {
   e.castT = 0.6;
   const list = game.queryEnemies(e.pos, SUPPORT_RADIUS, _near).slice();
   for (const o of list) {
-    if (o === e || o.dead || o.inert) continue;
+    // never bosses: 30% of a boss bar, refreshed every cast, made Aurelith unkillable while
+    // Prism-Shamans lived (playtest round 1, issue #1)
+    if (o === e || o.dead || o.inert || o.boss) continue;
     o.barrier = Math.max(o.barrier || 0, BARRIER_FRAC * o.maxHp);
   }
   game.fx.ring(e.pos, { color: 0xa880ff, radius: SUPPORT_RADIUS, life: 0.45, width: 0.12, hdr: 1.5, occ: 0.55 });
@@ -734,6 +736,7 @@ function updateVisuals(game, e, dt) {
   h.k = k;
   h.glow = glow;
   h.frozen = e.status.frozen > 0;
+  h.stat = statusLook(e, h.stat ?? [0, 0, 0], game.player?.stats.freezeAt);
   const tint = statusTint(e);
   h.tint = tint !== null ? tint : e.barrier > 0 ? BARRIER_TINT : null;
   if (e.elite) {

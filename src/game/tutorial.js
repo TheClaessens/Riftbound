@@ -70,7 +70,7 @@ export class Tutorial {
     on('shrineSpawned', () => this.tip('shrine', 'A <b>Shrine</b> has appeared &mdash; follow the arrow.', 'Stand inside it for 2.5s to claim a powerful 25s blessing.'));
     on('bossSpawned', () => this.tip('boss', 'A <b>boss</b> approaches!', 'Every attack is telegraphed in <b style="color:#ff5a4a">red</b>. Step out, or dash through it.'));
     on('actStart', ({ act }) => {
-      if (act === 1) this.tip('act2', 'The orcs of the Barrens <b>resist Fire</b> (50%).', `Lean on reactions and other elements. Glowing ground cracks erupt as geysers.`, CARD_DELAY);
+      if (act === 1) this.tip('act2', 'The orcs of the Barrens <b>resist Fire</b> (50%).', `Lean on reactions and other elements. Red rings with glowing cracks erupt as geysers: step out.`, CARD_DELAY);
       if (act === 2) this.tip('act3', 'Some foes carry a <b>Prism Ward</b> &mdash; immune to one element.', 'Any reaction on a warded foe shatters its ward. Mind the lightning circles.', CARD_DELAY);
     });
   }

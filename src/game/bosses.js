@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GEO, glowMaterial, dirXZ, distXZ, ELEMENT_CSS } from '../core/utils.js';
-import { makeStatus, updateStatuses, statusTint } from './combat.js';
+import { makeStatus, updateStatuses, statusTint, statusLook } from './combat.js';
 import { createEnemy, EnemyBullet } from './enemies.js';
 import { ACTS, BOSS_HP, enemyHpMult, enemyDmgMult } from './acts.js';
 import { blendAddMaterial, HOSTILE_RED } from './fx.js';
@@ -792,6 +792,7 @@ class Boss {
     h.rage = this.phase === 2 ? 1 : 0;
     h.frozen = this.status.frozen > 0;
     h.tint = statusTint(this);
+    h.stat = statusLook(this, h.stat ?? [0, 0, 0], this.game.player?.stats.freezeAt);
     if (this.flapT >= 0) {
       this.flapT += adt;
       if (this.flapT >= 1.25 && !this.landed) { this.landed = true; this._landDust(); }
