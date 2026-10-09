@@ -15,3 +15,5 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #07080d; col
   -webkit-text-stroke: 4px #0c0a12;
   text-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(0, 0, 0, .35); }
 .ftext.label.big { font-size: 32px; -webkit-text-stroke-width: 5px; }
+/* Portal builds (src/platform.js sets html[data-platform]) hide links that leave the game: patch notes, GitHub feedback */
+html[data-platform="crazygames"] [data-external] { display: none !important; }

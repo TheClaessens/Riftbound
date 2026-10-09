@@ -1,8 +1,8 @@
 # Zero-dependency static file server for local development.
-# Usage:  powershell -ExecutionPolicy Bypass -File serve.ps1 [-Port 8080]
-param([int]$Port = 8080)
+# Usage:  powershell -ExecutionPolicy Bypass -File serve.ps1 [-Port 8080] [-Root dist/crazygames]
+param([int]$Port = 8080, [string]$Root = "")
 
-$root = [IO.Path]::GetFullPath($PSScriptRoot)
+$root = [IO.Path]::GetFullPath($(if ($Root) { Join-Path $PSScriptRoot $Root } else { $PSScriptRoot }))
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$Port/")
 $listener.Start()
@@ -18,6 +18,7 @@ $mime = @{
   '.svg'  = 'image/svg+xml'
   '.md'   = 'text/plain; charset=utf-8'
   '.ico'  = 'image/x-icon'
+  '.woff2' = 'font/woff2'
 }
 
 try {

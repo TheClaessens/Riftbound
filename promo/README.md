@@ -30,3 +30,20 @@ Keep the tab visible while rendering: a hidden tab freezes and the render stalls
 If you change the dodge shot's timing, re-measure `P.shot.perfectT` after `promo.still(9)` and update `PERFECT_T` in `titles.js`.
 
 `kit/` is a copy. When you improve it here, copy the change back to `.claude/skills/game-promo-video/kit/` (or the other way round) so the skill keeps up.
+
+## Store assets (CrazyGames)
+
+`store/` renders the portal assets from the same staging layer (`stage.js`, shared with `promo.js`): three covers and two 18 s silent preview videos (real-speed gameplay, opening and closing on the cover).
+
+| Output (`out/`) | Page | How |
+|---|---|---|
+| `riftbound-preview-landscape.mp4` (1920×1080) | `/promo/store/?w=1920&h=1080` | `promo.start({ name, bitrate: 12e6 })` |
+| `riftbound-cover-landscape-1920x1080.jpg` | same | `store.verify('riftbound-preview-landscape.mp4', '<cover>.jpg')`: frame 0 of the video |
+| `riftbound-preview-portrait.mp4` (1080×1920) | `/promo/store/?w=1080&h=1920` | `promo.start(...)`, then `store.verify(...)` |
+| `riftbound-cover-portrait-800x1200.jpg` | `/promo/store/?w=1600&h=2400` | `store.cover(name, { w: 800, h: 1200 })` |
+| `riftbound-cover-square-800x800.jpg` | `/promo/store/?w=1600&h=1600` | `store.cover(name, { w: 800, h: 800 })` |
+
+- **Reload before every final render or cover.** The game keeps some world state across runs (geodes, debris VFX), so only the first pass after a fresh page load is reproducible.
+- `store.verify()` checks a video without a `<video>` element (those never decode in a hidden browser pane): duration, size, track list (video only = silent), decoded frames → `<name>-check.jpg`.
+- Cover framing: `COVER` in `store/shots.js` (seed, join time, zoom, per-aspect camera). The wordmark is drawn on the canvas to match the title screen (`css/menus.css` `.mn-mark`).
+- The store page uses the vendored three.js and fonts and virtual timers.

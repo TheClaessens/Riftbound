@@ -19,7 +19,8 @@ export class Input {
       if (e.repeat) return;
       this.down.add(e.code);
       this.justPressed.add(e.code);
-      if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
+      // Keys that would scroll or move focus on a host page (the game runs in an iframe on portals)
+      if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     });
     addEventListener('keyup', (e) => this.down.delete(e.code));
     addEventListener('blur', () => { this.down.clear(); this.mouseButtons.clear(); });
