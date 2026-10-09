@@ -21,7 +21,7 @@
   z-index: 40;
 }
 .mn-screen.mn-open { display: block; }
-.mn-screen :is(button, label, input, .mn-pop) { pointer-events: auto; }
+.mn-screen :is(button, a, label, input, .mn-pop) { pointer-events: auto; }
 .mn-screen button { font: inherit; color: inherit; margin: 0; }
 .mn-screen h1, .mn-screen h2, .mn-screen h3, .mn-screen p, .mn-screen dl, .mn-screen dd, .mn-screen ul { margin: 0; padding: 0; }
 .mn-screen ul { list-style: none; }
