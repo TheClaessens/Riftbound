@@ -553,8 +553,8 @@ export class UI {
         </linearGradient></defs></svg>
       <div class="md-stage">
         <header class="md-head">
-          <h2 class="md-hero">The Rift offers…</h2>
-          <div class="md-head-rule"><span class="md-stamp"><span class="cf-label">level</span><b class="num" data-ref="level">1</b></span><span class="md-stamp md-stamp-multi" data-ref="multi" hidden><b class="num" data-ref="mi">1</b><span class="cf-label">of</span><b class="num" data-ref="mt">1</b></span></div>
+          <h2 class="md-hero" data-ref="title">The Rift offers…</h2>
+          <div class="md-head-rule"><span class="md-stamp" data-ref="lvstamp"><span class="cf-label">level</span><b class="num" data-ref="level">1</b></span><span class="md-stamp md-stamp-multi" data-ref="multi" hidden><b class="num" data-ref="mi">1</b><span class="cf-label">of</span><b class="num" data-ref="mt">1</b></span></div>
         </header>
         <div class="md-cards" data-ref="cards"></div>
         <p class="md-tip" data-ref="tip" aria-live="polite"></p>
@@ -566,7 +566,7 @@ export class UI {
       </div>`;
     this.luEl = el;
     const q = (ref) => el.querySelector(`[data-ref="${ref}"]`);
-    this.luRefs = { level: q('level'), multi: q('multi'), mi: q('mi'), mt: q('mt'), cards: q('cards'), tip: q('tip'), reroll: q('reroll'), banish: q('banish'), rr: q('rr'), bb: q('bb'), loadout: q('loadout') };
+    this.luRefs = { title: q("title"), lvstamp: q("lvstamp"), level: q("level"), multi: q('multi'), mi: q('mi'), mt: q('mt'), cards: q('cards'), tip: q('tip'), reroll: q('reroll'), banish: q('banish'), rr: q('rr'), bb: q('bb'), loadout: q('loadout') };
 
     const R = this.luRefs;
     R.cards.addEventListener('click', (e) => {
@@ -590,7 +590,7 @@ export class UI {
   // the modal is already open (multi-pick) is swapped in place: no close / reopen.
   showLevelUp(cards, onPick, ctl, extra) {
     const wasOpen = !!this._lu && this.luEl.classList.contains('is-open');
-    if (!extra && wasOpen) extra = { index: this._lu.index, total: this._lu.total };   // a re-offer of the same hand (reroll / banish)
+    if (!extra && wasOpen) extra = { index: this._lu.index, total: this._lu.total, title: this._lu.title };   // a re-offer of the same hand (reroll / banish)
     const total = Math.max(1, extra?.total ?? 1);
     const index = Math.min(total, Math.max(1, extra?.index ?? 1));
     this._lu = {
@@ -601,12 +601,14 @@ export class UI {
       focus: -1,
       held: this._heldNow(),
       ignoreUntil: performance.now() + (wasOpen ? LEVELUP_SWAP_IGNORE_MS : LEVELUP_IGNORE_MS),
-      index, total,
+      index, total, title: extra?.title,
     };
     const R = this.luRefs;
     // the burst grants consecutive levels; the player is already at the last one
     const lvl = (this.game.player?.level ?? 0) - (total - index);
     R.level.textContent = String(lvl > 0 ? lvl : '');
+    R.title.textContent = extra?.title ?? 'The Rift offers…';   // Wrath Cache etc. replace the header
+    R.lvstamp.hidden = !!extra?.title;
     const multi = total > 1;
     R.multi.hidden = !multi;
     this.luEl.classList.toggle('is-multi', multi);

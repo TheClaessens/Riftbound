@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { createEnemy } from './enemies.js';
-import { createBoss } from './bosses.js';
 import { ACTS, ACT_LENGTH, enemyHpMult, enemyDmgMult, spawnRate } from './acts.js';
 import { randRange, GEO, glowMaterial } from '../core/utils.js';
 
@@ -20,13 +19,7 @@ const SWARM_COUNT = 24;
 const SWARM_RADIUS = 22;
 const ELITE_AFTER = 45;       // elites roll only after this many seconds of an act
 const ELITE_CHANCE = 0.01;      // per spawn, after ELITE_AFTER
-const BUSY_BOSS_MULT = 0.35;  // horde spawn rate while a boss lives
 const WARDS = ['fire', 'frost', 'storm', 'arcane'];
-const BOSS_SUB = {
-  hollowWarden: 'The old king of the Thornwood wakes.',
-  vashkar: 'The Warchief answers the war horns. Fire will not hurt him much.',
-  riftHeart: 'Its scales drink the elements. Strike with what it is not wearing.',
-};
 
 // Beat schedule for the HUD act timeline (seconds into the act; the boss arrives at ACT_LENGTH).
 export const BEATS = [
@@ -60,7 +53,6 @@ export class Spawner {
     this.budget = 0;
     this.beats = freshBeats();
 
-    game.events.on('enemyKilled', (e) => this._onEnemyKilled(e?.enemy));
   }
 
   reset() {
@@ -82,8 +74,9 @@ export class Spawner {
 
     this._updateBeats(act, t);
 
-    const bossAlive = !!g.boss && !g.boss.dead;
-    this.budget += spawnRate(act, t) * dt * (bossAlive ? BUSY_BOSS_MULT : 1);
+    // Boss encounters are isolated (design/RAID.md): no horde while one runs.
+    if (g.encounter?.active || g.phase !== 'horde') { this.budget = 0; return; }
+    this.budget += spawnRate(act, t) * dt;
 
     let live = g.liveEnemyCount();
     if (live >= ENEMY_CAP) {
@@ -95,7 +88,9 @@ export class Spawner {
     while (this.budget >= 2 && live < ENEMY_CAP) {
       const size = Math.min(Math.floor(this.budget), 2 + Math.floor(Math.random() * 4));
       this.budget -= size;
-      const center = g.world.randomSpawnPoint(g.player.pos, 24, 32);
+      // Rift Pull: while an obelisk is being channelled, packs converge on it (obelisks.js)
+      const pull = g.obelisks?.pullCenter?.();
+      const center = pull ? g.world.randomSpawnPoint(pull, 14, 20) : g.world.randomSpawnPoint(g.player.pos, 24, 32);
       for (let i = 0; i < size && live < ENEMY_CAP; i++) {
         const type = pickFromRoster(def.roster, t);
         if (!type) break;
@@ -125,6 +120,7 @@ export class Spawner {
 
   _updateBeats(act, t) {
     const b = this.beats;
+    if (this.game.phase !== 'horde') return;   // a Hasted boss skips the remaining beats
     if (!b.surge && t >= SURGE_AT) {
       b.surge = true;
       this._eliteSurge(act, t);
@@ -175,33 +171,8 @@ export class Spawner {
     g.events.emit('announce', { kind: 'swarm', text: 'SWARM', sub: 'They come from all sides', color: '#ff9d3d' });
   }
 
+  // The 3:00 timer: hand over to the encounter director (encounter.js).
   _spawnBoss(act) {
-    const g = this.game;
-    const def = ACTS[act];
-    const final = act === ACTS.length - 1;
-    const pos = g.world.randomSpawnPoint(g.player.pos, 14, 18);
-    const boss = createBoss(g, def.boss, pos, {
-      hpMult: 1 + 0.3 * g.tier,
-      damageScale: def.dmg * (1 + 0.12 * g.tier),
-      final,
-    });
-    g.addEnemy(boss);
-    g.boss = boss;
-    g.events.emit('bossSpawned', { enemy: boss, final });
-    g.events.emit('announce', {
-      kind: 'boss',
-      text: def.bossName.toUpperCase(),
-      sub: final ? 'Shatter the Heart to seal the Rift' : BOSS_SUB[def.boss],
-      color: final ? '#ff4d5e' : def.color,
-    });
-  }
-
-  _onEnemyKilled(enemy) {
-    if (!enemy || !enemy.boss) return;
-    const g = this.game;
-    g.boss = null;
-    g.events.emit('bossKilled', { enemy, final: !!enemy.final });
-    // The final boss ends the run; the game shows victory instead.
-    if (!enemy.final) g.events.emit('announce', { kind: 'bossDown', text: `${enemy.name.toUpperCase()} FALLS`, color: '#ffc340' });
+    this.game.encounter.summon('timer');
   }
 }

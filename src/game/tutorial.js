@@ -69,6 +69,10 @@ export class Tutorial {
     on('levelUp', () => this._onLevelUp());
     on('shrineSpawned', () => this.tip('shrine', 'A <b>Shrine</b> has appeared &mdash; follow the arrow.', 'Stand inside it for 2.5s to claim a powerful 25s blessing.'));
     on('bossSpawned', () => this.tip('boss', 'A <b>boss</b> approaches!', 'Every attack is telegraphed in <b style="color:#ff5a4a">red</b>. Step out, or dash through it.'));
+    // v5 raid tips: Rift Obelisks, Stagger / Downed, Break Checks (one-time each; see design/RAID.md)
+    on('obelisksRisen', () => this.tip('obelisks', 'Obelisks let you <b>call the boss your way</b>.', '<b style="color:#ffd34d">Haste</b> summons it now, <b style="color:#b9a4ff">Echo</b> brings it twice, <b style="color:#ff8a4a">Wrath</b> adds affixes. Stand in a ring for 4s to arm one. Doing nothing is fine.'));
+    on('bossDowned', ({ reason } = {}) => reason !== 'winded' && this.tip('downed', 'The boss is <b>Downed</b>!', 'Reactions, freezes and perfect dodges fill its <b style="color:#e8eef8">Stagger</b> bar. A full bar drops it for a few seconds: hit it hard.'));
+    on('breakCheck', () => this.tip('breakcheck', 'A <b>Break Check</b>: it is charging a big attack.', 'Fill the Stagger bar past the marker before the cast ends to cancel it and knock the boss Down.'));
     on('actStart', ({ act }) => {
       if (act === 1) this.tip('act2', 'The orcs of the Barrens <b>resist Fire</b> (50%).', `Lean on reactions and other elements. Red rings with glowing cracks erupt as geysers: step out.`, CARD_DELAY);
       if (act === 2) this.tip('act3', 'Some foes carry a <b>Prism Ward</b> &mdash; immune to one element.', 'Any reaction on a warded foe shatters its ward. Mind the lightning circles.', CARD_DELAY);

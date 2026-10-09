@@ -100,6 +100,14 @@ export function pct(x) {
   return (clamp01(x) * 100).toFixed(2) + '%';
 }
 
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+/** HTML-escape (preview lines, affix names and object names come from game data). */
+export function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g, (c) => ESC[c]);
+}
+
+export const roman = (n) => ['', 'I', 'II', 'III', 'IV', 'V'][Math.max(0, Math.min(5, n | 0))] ?? String(n);
+
 export function fmtTime(sec) {
   const s = Math.max(0, Math.floor(sec || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

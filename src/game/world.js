@@ -24,6 +24,8 @@ const GEODE_HP = 10;              // breaks in one or two hits: it is a trigger,
 const CRYSTAL_HOVER = 1.3;        // float height of the crystal centre
 const CRYSTAL_SCALE = 1.35;
 const GEODE_RESPAWN = 25;
+const ARENA_CRYSTALS = 4;          // Rift Crystals inside a boss arena
+const ARENA_CRYSTAL_RESPAWN = 18;
 const GEODE_BURST_R = 4.5;
 const GEODE_BURST_DMG = 20;
 const SHRINE_FIRST = 35;
@@ -336,6 +338,7 @@ export class World {
     this._hazT = 0;
     this._seenBoss = null;
     this._bossT0 = -99;
+    this.arena = null;
     this._magnetT = 0;
     this._flashT = 6;
     this._clearFissures?.();
@@ -446,6 +449,19 @@ export class World {
     // The playable arena is the circle inside the tree line.
     const r = Math.hypot(pos.x, pos.z), maxR = ARENA_RADIUS - margin;
     if (r > maxR) { pos.x *= maxR / r; pos.z *= maxR / r; }
+    // Boss encounter: the sealed arena circle (design/RAID.md). Soft: pushes back, never damages.
+    const A = this.arena;
+    if (A) {
+      const dx = pos.x - A.center.x, dz = pos.z - A.center.z, d = Math.hypot(dx, dz), m = A.r - margin;
+      if (d > m && d > 1e-6) { pos.x = A.center.x + dx / d * m; pos.z = A.center.z + dz / d * m; }
+    }
+  }
+
+  // Boss encounter arena (encounter.js): { center: Vector3, r } or null. Live object: the encounter may
+  // change r (flood / molten tide). Rift Crystals move inside it (4 slots at 0.6 R, faster respawn).
+  setArena(arena) {
+    this.arena = arena;
+    this._dropGeodes();
   }
 
   randomSpawnPoint(center, minDist, maxDist) {
@@ -484,7 +500,9 @@ export class World {
 
   // Each of the 8 slots holds one geode, or counts down a respawn timer after one breaks.
   _updateGeodes(dt) {
-    for (const slot of this._geodeSlots) {
+    for (let i = 0; i < this._geodeSlots.length; i++) {
+      const slot = this._geodeSlots[i];
+      if (this.arena && i >= ARENA_CRYSTALS) { if (slot.geode) slot.geode.dead = true; slot.geode = null; continue; }
       if (slot.geode && slot.geode.dead) slot.geode = null;
       if (slot.geode) continue;
       if (slot.timer > 0) { slot.timer -= dt; continue; }
@@ -498,7 +516,17 @@ export class World {
     const el = pick(act.geodes);
     // Spread geodes out: retry for a spot at least 9 u from every other geode.
     let pos = null;
-    for (let tries = 0; tries < 8; tries++) {
+    if (this.arena) {
+      const A = this.arena, i = this._geodeSlots.indexOf(slot);
+      // keep clear of fight objects (pillars, banners): try a few angles around the slot's home
+      for (let k = 0; k < 6; k++) {
+        const a = (i / ARENA_CRYSTALS) * Math.PI * 2 + Math.PI / 4 + (k ? (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.32 : 0) + (Math.random() - 0.5) * 0.2;
+        pos = new THREE.Vector3(A.center.x + Math.sin(a) * A.r * 0.6, 0, A.center.z + Math.cos(a) * A.r * 0.6);
+        if (this.obstacles.every((o) => Math.hypot(o.x - pos.x, o.z - pos.z) > o.r + 3)) break;
+      }
+      this.collide(pos, 0.8);
+    }
+    for (let tries = 0; tries < 8 && !pos; tries++) {
       pos = this.randomSpawnPoint(game.player.pos, 10, 32);
       if (this._geodeSlots.every((s) => !s.geode || s.geode.pos.distanceTo(pos) >= 9)) break;
     }
@@ -655,7 +683,7 @@ export class World {
 
     if (geode._slot) {
       geode._slot.geode = null;
-      geode._slot.timer = GEODE_RESPAWN;
+      geode._slot.timer = this.arena ? ARENA_CRYSTAL_RESPAWN : GEODE_RESPAWN;
     }
     const i = this._loose.indexOf(geode);
     if (i >= 0) this._loose.splice(i, 1);
@@ -792,6 +820,10 @@ export class World {
       this._nextShrineAt = SHRINE_FIRST;
       this._removeShrine();
     }
+    // Boss encounter: the shrine sinks (an active buff keeps running) and none spawn.
+    if (game.encounter?.active) {
+      if (this.shrine) { this._removeShrine(); this._nextShrineAt = game.actTime + SHRINE_GAP; }
+    }
 
     // Greed keeps pulling XP in while its buff lasts.
     if (p.hasBuff('greed')) {
@@ -804,7 +836,7 @@ export class World {
 
     const s = this.shrine;
     if (!s) {
-      if (game.actTime >= this._nextShrineAt) this._spawnShrine(p);
+      if (game.actTime >= this._nextShrineAt && !game.encounter?.active) this._spawnShrine(p);
       return;
     }
 
@@ -856,6 +888,7 @@ export class World {
       this._hazT = kind === 'lava' ? LAVA_EVERY : STRIKE_EVERY;
     }
     if (!kind) return;
+    if (game.encounter?.active) return;   // boss encounters bring their own hazards
 
     const boss = game.boss;
     if (boss && !boss.dead) {

@@ -4,11 +4,12 @@
 //         apply?(stats)            → stat modifiers (re-applied on every recalc)
 //         init?(game, player, st)  → event-driven effects; return a cleanup function }
 // =====================================================================================
-import { damageEnemy, applyStatus } from './combat.js';
+import { damageEnemy, applyStatus, stunEnemy, reactionBase } from './combat.js';
 
 export const RELIC_TAG_COLOR = {
   reaction: '#e0c4ff', fire: '#ff7a33', frost: '#7fe0ff', storm: '#ffe45c',
   risk: '#ff4d5e', dodge: '#9dffb0', economy: '#ffd34d', cast: '#c08cff', safety: '#ffffff',
+  boss: '#ec9a3c',   // Boss Relics (v5): gold-crimson; only from Echo chests and Heat 3
 };
 
 export const RELICS = {
@@ -96,12 +97,97 @@ export const RELICS = {
     } },
 };
 
-export const RELIC_IDS = Object.keys(RELICS);
+// ---------------------------------------------------------------------------------------------
+//  Boss Relics (v5, design/RAID_PASSES.md Pass 6): tag 'boss', never in normal chests. They come from
+//  the Echo Chest (spec.pool === 'boss') and from Heat 3 chests (spec.bossRelics).
+// ---------------------------------------------------------------------------------------------
+const _hits = [];
+const BOSS_RELICS = {
+  gorraksTusk: { id: 'gorraksTusk', name: "Gorrak's Tusk", icon: '⇶', tag: 'boss',
+    desc: 'Your dash ends in a shockwave (r 3, stuns 0.5s, knockback) and recharges 25% faster.', flavour: 'Cracked off the Troll King. It still wants to charge.',
+    apply: (s) => { s.dashCdr += 0.25; },
+    init: (game, p, st) => {
+      st.on = false; st.t = 0;
+      const offA = game.events.on('dash', () => { st.on = true; st.t = 1.2; });
+      const offB = game.events.on('tick', ({ dt }) => {
+        if (!st.on) return;
+        st.t -= dt;
+        if (p.dash.t > 0 && st.t > 0) return;      // wait for the dash (or blink) to finish
+        st.on = false;
+        const R = 3 * p.stats.area, dmg = reactionBase(game) * 0.3;
+        game.fx.ring(p.pos, { color: 0xd8b878, radius: R, life: 0.35, width: 0.25 });
+        game.fx.burst(p.pos, { color: 0x8a6a48, count: 10, speed: 4, life: 0.5, size: 0.5, up: 1.5, blend: 'normal' });
+        game.fx.shake(0.12);
+        for (const e of game.queryEnemies(p.pos, R + 0.5, _hits).slice()) {
+          if (e.dead || e.inert || Math.hypot(e.pos.x - p.pos.x, e.pos.z - p.pos.z) > R + (e.radius ?? 0.5)) continue;
+          stunEnemy(e, 0.5);
+          damageEnemy(game, e, dmg, { element: 'physical', raw: true, noCrit: true, noStatus: true, knockback: 8, silent: !e.boss });
+        }
+      });
+      return () => { offA(); offB(); };
+    } },
+  vashkarsBrand: { id: 'vashkarsBrand', name: "Vashkar's Brand", icon: '♨', tag: 'boss',
+    desc: "Foes' Fire resistance is ignored. Burning foes spread Burn to 2 nearby foes when they die.", flavour: 'Branded into the warchief. Now it brands back.',
+    apply: (s) => { s.ignoreFireResist = 1; },
+    init: (game) => game.events.on('enemyKilled', ({ enemy }) => {
+      if (!enemy?.status || enemy.status.burn <= 0) return;
+      let n = 0;
+      for (const e of game.queryEnemies(enemy.pos, 7, []).slice()) {
+        if (e === enemy || e.dead || e.inert || e.status.burn > 0) continue;
+        applyStatus(game, e, 'fire', 1);
+        game.fx.burst(e.pos, { color: 0xff8a3a, count: 6, speed: 3, life: 0.4, size: 0.3, up: 1.5 });
+        if (++n >= 2) break;
+      }
+    }) },
+  aurelithsScale: { id: 'aurelithsScale', name: "Aurelith's Scale", icon: '⬡', tag: 'boss',
+    desc: 'Every 12s your next reaction is guaranteed to echo and breaks Prism Wards.', flavour: 'Each facet remembers a different light.',
+    init: (game, p, st) => {
+      st.ready = false; st.cd = 12; st.used = false;
+      const arm = () => {
+        st.ready = true; st.used = false;
+        // while ready, every reaction echoes (reactionEcho 1); the buff is dropped one tick after the first reaction
+        p.addBuff('aurelithsScale', 99999, { name: "Aurelith's Scale", icon: '⬡', color: '#7fd4ff', apply: (s) => { s.reactionEcho = 1; } });
+        game.fx.text(p.pos, 'SCALE READY', '#7fd4ff');
+      };
+      const offA = game.events.on('reaction', ({ enemy }) => {
+        if (!st.ready || st.used) return;
+        st.used = true;
+        if (enemy?.ward) game.events.emit('scaleBreak', { enemy });
+        enemy?.breakWard?.('scale');       // boss scripts with a Prism Ward may expose breakWard(src)
+        game.fx.text(enemy?.pos ?? p.pos, 'PRISM ECHO', '#7fd4ff');
+      });
+      const offB = game.events.on('tick', ({ dt }) => {
+        if (st.used) { st.ready = false; st.used = false; st.cd = 12; p.buffs.delete('aurelithsScale'); p.recalcStats(); return; }
+        if (st.ready) return;
+        st.cd -= dt;
+        if (st.cd <= 0) arm();
+      });
+      return () => { offA(); offB(); p.buffs.delete('aurelithsScale'); p.recalcStats(); };
+    } },
+  riftbreakersSigil: { id: 'riftbreakersSigil', name: "Riftbreaker's Sigil", icon: '✧', tag: 'boss',
+    desc: '+60% Poise gain. Downed bosses take 20% more damage from you.', flavour: 'Every wall has a seam. This finds it.',
+    apply: (s) => { s.poiseGain += 0.6; s.downedDmg += 0.2; } },
+};
+Object.assign(RELICS, BOSS_RELICS);
 
-export function rollRelics(game, n) {
+export const RELIC_IDS = Object.keys(RELICS);                                  // all of them (codex)
+export const BOSS_RELIC_IDS = Object.keys(BOSS_RELICS);
+export const NORMAL_RELIC_IDS = RELIC_IDS.filter((id) => RELICS[id].tag !== 'boss');
+
+// Roll a chest hand. spec (see game.queueChest): { pool: 'boss' → boss relics only, bossRelics: n guaranteed
+// boss slots }. `extra` / `choices` are resolved by the caller into n. Normal pools never contain boss relics.
+export function rollRelics(game, n, spec = null) {
   const owned = new Set(game.player.relics.map((r) => r.id));
-  const pool = RELIC_IDS.filter((id) => !owned.has(id));
-  const out = [];
-  while (out.length < n && pool.length) out.push(RELICS[pool.splice(Math.floor(Math.random() * pool.length), 1)[0]]);
+  const draw = (pool, k) => {
+    const out = [];
+    while (out.length < k && pool.length) out.push(RELICS[pool.splice(Math.floor(Math.random() * pool.length), 1)[0]]);
+    return out;
+  };
+  const bossPool = BOSS_RELIC_IDS.filter((id) => !owned.has(id));
+  if (spec?.pool === 'boss') return draw(bossPool, n);
+  const bossN = Math.min(spec?.bossRelics ?? 0, n, bossPool.length);
+  const out = draw(bossPool, bossN);
+  out.push(...draw(NORMAL_RELIC_IDS.filter((id) => !owned.has(id)), n - out.length));
+  if (bossN > 0) for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
   return out;
 }

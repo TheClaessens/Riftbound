@@ -108,6 +108,37 @@ const TELE_LINE_FS = TELE_COMMON + /* glsl */`
     gl_FragColor = teleShade(d, y - pr, filled, y + abs(x));
   }`;
 
+// Cone (sector) from the mesh centre: half-angle uHalf (rad) around local +Y of the plane (= world +Z
+// after the group's yaw), radius uRadius. Fills outward like the circle.
+const TELE_CONE_FS = TELE_COMMON + /* glsl */`
+  uniform float uRadius; uniform float uHalf;
+  void main() {
+    vec2 p = (vUv * 2.0 - 1.0) * (uRadius + 0.05);
+    float r = length(p);
+    float a = abs(atan(p.x, p.y));
+    // distance to the two straight edges (perpendicular, valid inside the wedge) and to the arc
+    float side = r * sin(uHalf - a);
+    if (a > uHalf) side = -r * sin(min(a - uHalf, 1.5707));
+    float d = min(uRadius - r, side);
+    float pr = uProgress * (uRadius - OUTLINE_W - RIM_W);
+    float filled = 1.0 - smoothstep(pr - 0.02, pr, r);
+    gl_FragColor = teleShade(d, r - pr, filled, a * r + r);
+  }`;
+// Donut (annulus) uInner..uRadius. Fills from the inner edge outward.
+const TELE_DONUT_FS = TELE_COMMON + /* glsl */`
+  uniform float uRadius; uniform float uInner;
+  void main() {
+    vec2 p = (vUv * 2.0 - 1.0) * (uRadius + 0.05);
+    float r = length(p);
+    float d = min(uRadius - r, r - uInner);
+    float pr = uInner + uProgress * (uRadius - uInner - OUTLINE_W - RIM_W);
+    float filled = 1.0 - smoothstep(pr - 0.02, pr, r);
+    gl_FragColor = teleShade(d, r - pr, filled, atan(p.y, p.x) * uRadius);
+  }`;
+
+// "Go here" colour for safe pockets, cleanse pools, shelters (design/RAID.md). Never used for danger.
+export const SAFE_GOLD = 0xffe9a8;
+
 // Drop-in replacement for an additive MeshBasicMaterial on halos / shells / flat decals.
 // Exposes .color (THREE.Color; multiply for HDR) and .opacity like a MeshBasicMaterial.
 // o: { hdr = 1, occ = 0.35, opacity = 1, side, depthWrite, depthTest (pass false for flat ground decals so grass can't hide them) }
@@ -395,20 +426,22 @@ export class FX {
 
   // Shared telegraph material. Hostile = unified red regardless of `color` unless keepColor; friendly = element colour, dashed.
   _teleMat(fragmentShader, opts) {
-    const friendly = !!opts.friendly;
-    const base = new THREE.Color(friendly || opts.keepColor ? (opts.color ?? 0xffffff) : HOSTILE_RED);
-    if (!friendly && !opts.keepColor) {
+    const safe = !!opts.safe;
+    const friendly = !!opts.friendly && !safe;
+    const base = new THREE.Color(safe ? SAFE_GOLD : friendly || opts.keepColor ? (opts.color ?? 0xffffff) : HOSTILE_RED);
+    if (!friendly && !safe && !opts.keepColor) {
       // slightly tweak hue-neutral base so identical hostile telegraphs always match
       base.set(HOSTILE_RED);
     }
+    // safe (gold "go here"): bright rim, warm low fill, dark-brown outline, dashed like a friendly marker
     return new THREE.ShaderMaterial({
       uniforms: {
-        uRim: { value: friendly ? base.clone().lerp(new THREE.Color(0xffffff), 0.3).multiplyScalar(1.1) : base.clone() },
-        uFill: { value: base.clone().multiplyScalar(friendly ? 0.6 : 0.16) },
-        uOutline: { value: new THREE.Color(0x14000a) },
-        uOutlineA: { value: friendly ? 0.5 : 0.8 },
-        uFillA: { value: friendly ? 0.22 : 0.55 },
-        uDashed: { value: _dashed(opts) ? 1 : 0 },
+        uRim: { value: friendly || safe ? base.clone().lerp(new THREE.Color(0xffffff), 0.3).multiplyScalar(safe ? 1.5 : 1.1) : base.clone() },
+        uFill: { value: base.clone().multiplyScalar(friendly ? 0.6 : safe ? 0.5 : 0.16) },
+        uOutline: { value: new THREE.Color(safe ? 0x1a1000 : 0x14000a) },
+        uOutlineA: { value: friendly ? 0.5 : safe ? 0.7 : 0.8 },
+        uFillA: { value: friendly ? 0.22 : safe ? 0.3 : 0.55 },
+        uDashed: { value: _dashed(opts) || safe ? 1 : 0 },
         uProgress: { value: 0 },
         uTime: { value: 0 },
       },
@@ -429,7 +462,7 @@ export class FX {
     m.position.set(pos.x, 0.07, pos.z);
     m.renderOrder = opts.friendly ? 3 : 8;
     this.scene.add(m);
-    const handle = { done: false, cancel: () => { handle.done = true; } };
+    const handle = { done: false, mesh: m, cancel: () => { handle.done = true; } };
     this.transients.push({
       mesh: m, t: 0, life: duration,
       update: (tr, k) => {
@@ -457,7 +490,7 @@ export class FX {
     group.position.set(from.x, 0.07, from.z);
     group.rotation.y = Math.atan2(dir.x, dir.z);
     this.scene.add(group);
-    const handle = { done: false, cancel: () => { handle.done = true; } };
+    const handle = { done: false, mesh: group, cancel: () => { handle.done = true; } };
     this.transients.push({
       mesh: group, t: 0, life: duration, group: true,
       update: (tr, k) => {
@@ -468,6 +501,87 @@ export class FX {
       onEnd: () => { if (!handle.done) { handle.done = true; opts.onDone?.(); } },
     });
     return handle;
+  }
+
+  // Shared transient driver for the shaped telegraphs below. handle.mesh is the placed object (move it to
+  // make a chasing telegraph). handle.cancel() removes it without calling onDone.
+  _teleTransient(obj, mat, duration, opts, group = false) {
+    this.scene.add(obj);
+    const handle = { done: false, mesh: obj, cancel: () => { handle.done = true; } };
+    this.transients.push({
+      mesh: obj, t: 0, life: duration, group,
+      update: (tr, k) => {
+        if (handle.done) { tr.t = tr.life; return; }
+        mat.uniforms.uProgress.value = k;
+        mat.uniforms.uTime.value = tr.t;
+      },
+      onEnd: () => { if (!handle.done) { handle.done = true; opts.onDone?.(); } },
+    });
+    return handle;
+  }
+
+  // Cone / sector telegraph: apex at `origin`, centred on `dir` (XZ unit), total angle `angle` (rad), radius.
+  // opts as telegraph() (+ safe: gold "go here").
+  coneTelegraph(origin, dir, angle, radius, duration, opts = {}) {
+    const mat = this._teleMat(TELE_CONE_FS, opts);
+    mat.uniforms.uRadius = { value: radius };
+    mat.uniforms.uHalf = { value: Math.min(Math.PI - 0.01, angle / 2) };
+    const m = new THREE.Mesh(GEO.plane, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.scale.setScalar(2 * (radius + 0.05));
+    m.renderOrder = opts.friendly || opts.safe ? 3 : 8;
+    const group = new THREE.Group();
+    group.add(m);
+    group.position.set(origin.x, 0.07, origin.z);
+    group.rotation.y = Math.atan2(dir.x, dir.z) + Math.PI; // plane +Y (uv up) maps to world -Z before the yaw
+    return this._teleTransient(group, mat, duration, opts, true);
+  }
+
+  // Donut telegraph: the annulus inner..outer around `pos` is hit; the hole is safe.
+  donutTelegraph(pos, inner, outer, duration, opts = {}) {
+    const mat = this._teleMat(TELE_DONUT_FS, opts);
+    mat.uniforms.uRadius = { value: outer };
+    mat.uniforms.uInner = { value: inner };
+    const m = new THREE.Mesh(GEO.plane, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.scale.setScalar(2 * (outer + 0.05));
+    m.position.set(pos.x, 0.07, pos.z);
+    m.renderOrder = opts.friendly || opts.safe ? 3 : 8;
+    return this._teleTransient(m, mat, duration, opts);
+  }
+
+  // Persistent ground zone (not a transient): a fully filled telegraph decal that stays until disposed.
+  // kind 'hostile' (red: spore cloud, fire ground) | 'safe' (gold: sap pool, lightning rod, shelter).
+  // shape: { radius } circle | { radius, inner } donut | { radius, angle, dir } cone.
+  // Returns { mesh, setRadius(r), setOpacity(a), dispose() }. Callers own it (boss zone actors).
+  zone(pos, shape, kind = 'hostile', opts = {}) {
+    const o = { ...opts, safe: kind === 'safe' };
+    const fs = shape.inner !== undefined ? TELE_DONUT_FS : shape.angle !== undefined ? TELE_CONE_FS : TELE_CIRCLE_FS;
+    const mat = this._teleMat(fs, o);
+    const r = shape.radius;
+    mat.uniforms.uRadius = { value: r };
+    if (shape.inner !== undefined) mat.uniforms.uInner = { value: shape.inner };
+    if (shape.angle !== undefined) mat.uniforms.uHalf = { value: Math.min(Math.PI - 0.01, shape.angle / 2) };
+    mat.uniforms.uProgress.value = 1;
+    const m = new THREE.Mesh(GEO.plane, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.scale.setScalar(2 * (r + 0.05));
+    m.renderOrder = kind === 'safe' ? 3 : 7;
+    const group = new THREE.Group();
+    group.add(m);
+    group.position.set(pos.x, 0.06, pos.z);
+    if (shape.dir) group.rotation.y = Math.atan2(shape.dir.x, shape.dir.z) + Math.PI;
+    this.scene.add(group);
+    const fillA = mat.uniforms.uFillA.value, outA = mat.uniforms.uOutlineA.value;
+    return {
+      mesh: group,
+      setRadius: (nr) => {
+        mat.uniforms.uRadius.value = nr;
+        m.scale.setScalar(2 * (nr + 0.05));
+      },
+      setOpacity: (a) => { mat.uniforms.uFillA.value = fillA * a; mat.uniforms.uOutlineA.value = outA * a; },
+      dispose: () => { this.scene.remove(group); mat.dispose(); },
+    };
   }
 
   // Take ownership of a dead enemy's mesh: white-ish squash + shrink over `life`, then remove it.

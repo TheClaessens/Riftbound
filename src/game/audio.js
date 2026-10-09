@@ -1,6 +1,11 @@
 // Procedural audio synthesizer for Riftbound using Web Audio API
 // All sounds are synthesized with oscillators, noise, and filters — no audio files.
 
+import { SCORES, degFreq } from './audio/scores.js';
+import { VOICES } from './audio/voices.js';
+import { SCORE, BOSS_MUSIC_LEVEL } from './audio/score.js';
+import { SFX } from './audio/sfx.js';
+
 // ---------------------------------------------------------------- music constants
 const MUSIC_LEVEL = 0.35;           // music bus level, relative to the SFX chain
 const MUSIC_MAX_VOICES = 14;        // cap on live music oscillators / noise sources
@@ -74,16 +79,9 @@ const THEMES = {
     chords: CROWN_CHORDS, lfo: { rate: 0.03, depth: 90 },
   },
 };
+Object.assign(THEMES, SCORES);     // boss scores ('boss:gorrak' ...): the sequencer dispatches on theme.boss
 const ACT_THEMES = ['verge', 'cinder', 'crown'];
 const GEODE_PITCH = { arcane: 1568, fire: 1046.5, frost: 1975.5, storm: 2349.3 };
-
-// Scale degree -> frequency. Degrees wrap by octave; negative degrees go down.
-function degFreq(scale, base, deg) {
-  const n = scale.length;
-  const oct = Math.floor(deg / n);
-  const idx = ((deg % n) + n) % n;
-  return base * Math.pow(2, oct + scale[idx] / 12);
-}
 
 // Soft-clip curve for the boss roar (tanh, normalised to +-1).
 let distortionCurveCache = null;
@@ -102,13 +100,19 @@ function getDistortionCurve() {
 }
 
 export class Audio {
-  constructor(game) {
+  // opts.headless: no window listeners / persisted mute (offline rendering, tests). opts.offline: voices are
+  // counted from [start, stop) intervals and `clock` replaces ctx.currentTime (see audio/offline.js).
+  constructor(game, opts = {}) {
     this.game = game;
     this.ctx = null;
     this.masterGain = null;
     this.compressor = null;
     this.noiseBuffer = null;
-    this.muted = this._loadMuteState();
+    this.offline = !!opts.offline;
+    this.clock = 0;
+    this.vlog = [];
+    this.voiceCapAct = MUSIC_MAX_VOICES;
+    this.muted = opts.headless ? false : this._loadMuteState();
     this.activeVoices = [];
     this.soundLimiters = new Map(); // sound name -> { count, resetTime }
     this.lastBossSpawnSound = 0;
@@ -137,6 +141,11 @@ export class Audio {
     this.nextStepTime = 0;
     this.step = 0;
     this.lastCtrl = 0;
+    this.echoOut = null;
+    this.echoFeedback = null;
+    this.musicLvl = MUSIC_LEVEL;
+    this.hum = null;
+    this._scoreInitState();         // boss score engine state (audio/score.js)
 
     // Subscribe to game events
     game.events.on('cast', (e) => this._onCast(e));
@@ -165,6 +174,30 @@ export class Audio {
     game.events.on('wardBroken', (e) => this._onWardBroken(e));
     game.events.on('chainMilestone', (e) => this._onChainMilestone(e));
     game.events.on('hazard', (e) => this._onHazard(e));
+
+    // v5 raid events (RAID.md). Wrapped: the event bus is synchronous, audio must never throw into the game.
+    const on = (name, fn) => game.events.on(name, (e) => {
+      try { fn.call(this, e); } catch (err) { console.error(`Audio ${name} error:`, err); }
+    });
+    on('encounterStart', this._onEncounterStart);
+    on('encounterEnd', this._onEncounterEnd);
+    on('bossIntermission', this._onBossIntermission);
+    on('bossDowned', this._onBossDowned);
+    on('bossRecovered', this._onBossRecovered);
+    on('breakCheck', this._onBreakCheck);
+    on('breakCheckEnd', this._onBreakCheckEnd);
+    on('bossEnrage', this._onBossEnrage);
+    on('bossImpact', this._onBossImpact);
+    on('bossTell', this._onBossTell);
+    on('bossWard', this._onBossWard);
+    on('echoMend', this._onEchoMend);
+    on('poise', this._onPoise);
+    on('obelisksRisen', this._onObelisksRisen);
+    on('obeliskChannel', this._onObeliskChannel);
+    on('obeliskArmed', this._onObeliskArmed);
+    on('obeliskCollapse', this._onObeliskCollapse);
+
+    if (opts.headless) return;
 
     // Lazy-init on user input. Listeners stay attached so a context created before the
     // first gesture (and left suspended) is resumed on the next one.
@@ -219,34 +252,7 @@ export class Audio {
     }
 
     try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx = audioContext;
-
-      // Master chain: masterGain → compressor → destination
-      this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = this.muted ? 0 : 0.5;
-
-      this.compressor = this.ctx.createDynamicsCompressor();
-      this.compressor.threshold.value = -30;
-      this.compressor.knee.value = 40;
-      this.compressor.ratio.value = 12;
-      this.compressor.attack.value = 0.003;
-      this.compressor.release.value = 0.25;
-
-      this.masterGain.connect(this.compressor);
-      this.compressor.connect(this.ctx.destination);
-
-      // Pre-generate white noise buffer (1 second, 44.1 kHz)
-      const bufLen = this.ctx.sampleRate;
-      const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < bufLen; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-      this.noiseBuffer = buf;
-
-      // Music graph + lookahead scheduler (fails soft: SFX keep working without it)
-      this._initMusic();
+      this._setupContext(new (window.AudioContext || window.webkitAudioContext)(), true);
 
       // Resume audio context if suspended
       if (this.ctx.state === 'suspended') {
@@ -255,6 +261,37 @@ export class Audio {
     } catch (e) {
       console.error('Audio context init failed:', e);
     }
+  }
+
+  // Master chain + noise buffer + music graph on any (real or offline) context.
+  _setupContext(ctx, scheduler = true) {
+    this.ctx = ctx;
+
+    // Master chain: masterGain → compressor → destination
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.value = this.muted ? 0 : 0.5;
+
+    this.compressor = this.ctx.createDynamicsCompressor();
+    this.compressor.threshold.value = -30;
+    this.compressor.knee.value = 40;
+    this.compressor.ratio.value = 12;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.25;
+
+    this.masterGain.connect(this.compressor);
+    this.compressor.connect(this.ctx.destination);
+
+    // Pre-generate white noise buffer (1 second, 44.1 kHz)
+    const bufLen = this.ctx.sampleRate;
+    const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    this.noiseBuffer = buf;
+
+    // Music graph + lookahead scheduler (fails soft: SFX keep working without it)
+    this._initMusic(scheduler);
   }
 
   _getOrInitAudioContext() {
@@ -266,7 +303,7 @@ export class Audio {
 
   _pruneVoices() {
     if (!this.ctx) return;
-    const now = this.ctx.currentTime;
+    const now = this._now();
     this.activeVoices = this.activeVoices.filter((v) => v.endTime > now);
   }
 
@@ -279,7 +316,7 @@ export class Audio {
     }
 
     // Check per-sound throttle
-    const now = this.ctx ? this.ctx.currentTime : 0;
+    const now = this._now();
     if (!this.soundLimiters.has(soundName)) {
       this.soundLimiters.set(soundName, { count: 0, resetTime: now });
     }
@@ -344,7 +381,7 @@ export class Audio {
 
     output.connect(this.masterGain);
 
-    const now = ctx.currentTime + delay;
+    const now = this._now() + delay;
     const startFreq = freq * this._getRandomPitch();
     const endFreq = freqEnd * this._getRandomPitch();
 
@@ -381,7 +418,7 @@ export class Audio {
     const ctx = this._getOrInitAudioContext();
     if (!ctx || !this.masterGain || !this.noiseBuffer) return;
 
-    const now = ctx.currentTime + delay;
+    const now = this._now() + delay;
 
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
@@ -761,7 +798,7 @@ export class Audio {
       if (!this._xpLastTime) this._xpLastTime = 0;
       if (!this._xpComboRise) this._xpComboRise = 0;
 
-      const now = this.ctx ? this.ctx.currentTime : 0;
+      const now = this._now();
       if (now - this._xpLastTime > 0.4) {
         this._xpComboRise = 0;
       }
@@ -906,10 +943,17 @@ export class Audio {
     } catch (err) {
       console.error('Player died sound error:', err);
     }
+    try {
+      if (this.mode === 'boss') { this._scoreTapeStop(); this.mode = 'end'; }
+    } catch (err) {
+      console.error('Score tape stop error:', err);
+    }
   }
 
   _onBossSpawned(e) {
     this.bossDouble = false;
+    // A boss with its own score: the score's summon stinger replaces the generic drone (score/Echo logic in audio/score.js)
+    if (this._scoreBossSpawned(e)) { this.lastBossSpawnSound = this._now(); return; }
     try {
       // Ominous low drone stinger (two detuned sawtooth at ~55 Hz, 2.5 s fade) + deep hit
       this._tone({
@@ -934,7 +978,7 @@ export class Audio {
         gain: 0.12,
         attack: 0.02,
       });
-      this.lastBossSpawnSound = this.ctx ? this.ctx.currentTime : 0;
+      this.lastBossSpawnSound = this._now();
     } catch (err) {
       console.error('Boss spawned sound error:', err);
     }
@@ -944,7 +988,7 @@ export class Audio {
     try {
       // Soft gong-ish tone (sine 220 + 440 + 660 partials, 1.2 s decay)
       // Skip if a bossSpawned sound played within last 500 ms
-      const now = this.ctx ? this.ctx.currentTime : 0;
+      const now = this._now();
       if (now - this.lastBossSpawnSound < 0.5) {
         return;
       }
@@ -1010,7 +1054,7 @@ export class Audio {
 
   // ==================== Music: graph & scheduler ====================
 
-  _initMusic() {
+  _initMusic(scheduler = true) {
     const ctx = this.ctx;
     if (!ctx || !this.masterGain) return;
     try {
@@ -1047,9 +1091,14 @@ export class Audio {
       this.echoDelay.connect(echoFeedback);
       echoFeedback.connect(this.echoDelay);
       this.echoDelay.connect(echoTone);
-      echoTone.connect(this.musicBus);
+      this.echoOut = ctx.createGain();      // lets the boss score cut the echo tail for its silence beat
+      echoTone.connect(this.echoOut);
+      this.echoOut.connect(this.musicBus);
+      this.echoFeedback = echoFeedback;
 
-      this._startScheduler();
+      this._initScoreGraph();               // boss score buses (audio/score.js)
+
+      if (scheduler) this._startScheduler();
     } catch (err) {
       console.error('Music init failed:', err);
     }
@@ -1057,7 +1106,7 @@ export class Audio {
 
   _startScheduler() {
     if (this.schedTimer || !this.ctx) return;
-    const now = this.ctx.currentTime;
+    const now = this._now();
     this.nextStepTime = now + 0.1;
     this.step = 0;
     this.lastCtrl = now;
@@ -1078,7 +1127,7 @@ export class Audio {
       const horizon = now + SCHEDULE_AHEAD;
       while (this.nextStepTime < horizon) {
         const th = this.theme;
-        const stepDur = 60 / (th ? th.bpm : 90) / 4;
+        const stepDur = 60 / (th ? (th.boss ? this.bpmCur : th.bpm) : 90) / 4;
         this._playStep(this.nextStepTime, this.step);
         this.nextStepTime += stepDur;
         this.step++;
@@ -1095,11 +1144,15 @@ export class Audio {
     this.lastCtrl = now;
 
     // Back on the title screen (initial load or quitToTitle): ambient drone
-    if (game.state === 'title' && this.mode !== 'title') this.mode = 'title';
+    if (game.state === 'title' && this.mode !== 'title') {
+      this.mode = 'title';
+      if (this.score) this._abortScore(now);
+    }
 
     let want = null;
     if (this.mode === 'title') want = 'title';
     else if (this.mode === 'act') want = ACT_THEMES[this.musicAct] ?? null;
+    else if (this.mode === 'boss') want = this.score ? this.score.key : null;
     if (want !== this.layerKey) {
       const fade = want === 'title' ? 1.5 : want ? 2.0 : this.mode === 'end' ? 1.2 : 0.8;
       this._switchLayer(want, now, fade);
@@ -1120,7 +1173,12 @@ export class Audio {
     else if (game.state === 'paused') duckTarget = 0.7;
     this.duck += (duckTarget - this.duck) * (1 - Math.exp(-dt / 0.3));
 
-    this.musicBus.gain.value = MUSIC_LEVEL * this.duck;
+    // boss scores are denser than the act bed: slightly lower level while one is alive
+    this.musicLvl += ((this.score ? BOSS_MUSIC_LEVEL : MUSIC_LEVEL) - this.musicLvl) * (1 - Math.exp(-dt / 0.5));
+    this.musicBus.gain.value = this.musicLvl * this.duck;
+    this._scoreWatch(now, dt);
+    this._scoreHousekeeping(now);
+    this._humTick(now);
     this.intensityBus.gain.value = this.intensity * 0.55;
     this.bossBus.gain.value = this.bossLevel * 0.8;
 
@@ -1138,7 +1196,7 @@ export class Audio {
   }
 
   holdDuck(sec) {
-    const now = this.ctx ? this.ctx.currentTime : 0;
+    const now = this._now();
     this.modalHoldUntil = now + sec;
   }
 
@@ -1146,7 +1204,7 @@ export class Audio {
   _switchLayer(key, now, fade) {
     if (this.layer) this._fadeOutLayer(this.layer, now, fade);
     const th = key ? THEMES[key] : null;
-    this.layer = th ? this._buildLayer(th, now, fade) : null;
+    this.layer = th ? (th.boss ? this._buildBossBed(th, now, fade) : this._buildLayer(th, now, fade)) : null;
     this.layerKey = key;
     this.theme = th;
     if (th && this.echoDelay) this.echoDelay.delayTime.setTargetAtTime(th.echo, now, 0.4);
@@ -1231,7 +1289,7 @@ export class Audio {
     g.setTargetAtTime(0, now, Math.max(0.05, fade / 3));
     layer.stopAt = now + fade * 1.6 + 0.1;
     for (const node of layer.nodes) {
-      if (node instanceof OscillatorNode) {
+      if (node instanceof AudioScheduledSourceNode) {
         try { node.stop(layer.stopAt); } catch { /* not started */ }
       }
     }
@@ -1242,6 +1300,7 @@ export class Audio {
   _playStep(t, step) {
     const th = this.theme;
     if (!th) return;
+    if (th.boss) { this._playBossStep(t, step); return; }
 
     // Pads move to the next chord on each bar (cheap; runs even when muted so state stays right)
     if (th.pads && this.layer && this.layer.pads && step % 16 === 0) {
@@ -1315,20 +1374,23 @@ export class Audio {
     }
   }
 
-  // Music oscillator with an ADSR-ish envelope at absolute time `when`. Self-disconnects when done.
-  _mTone({ wave = 'sine', freq, freqEnd = freq, dur, gain = 0.1, attack = 0.01, when, dest, filter = null }) {
+  // Music oscillator with an envelope at absolute time `when`. Self-disconnects when done.
+  // Defaults reproduce the act-music voice (attack, exponential decay). Extras for the boss scores:
+  // sweep (pitch glide time, default = dur), prio (0 essential / 1 normal / 2 ornament), detune (cents),
+  // sus (0..1: attack, settle to gain*sus, hold, release over `rel`).
+  _mTone({ wave = 'sine', freq, freqEnd = freq, dur, gain = 0.1, attack = 0.01, when, dest, filter = null,
+           sweep = dur, prio = 1, detune = 0, sus = null, rel = 0.12 }) {
     const ctx = this.ctx;
-    if (!ctx || !dest || this.musicVoices >= MUSIC_MAX_VOICES) return;
+    if (!ctx || !dest || !this._mRoom(1, prio, when)) return;
     try {
       const osc = ctx.createOscillator();
       osc.type = wave;
       osc.frequency.setValueAtTime(freq, when);
-      if (freqEnd !== freq) osc.frequency.exponentialRampToValueAtTime(freqEnd, when + dur);
+      if (freqEnd !== freq) osc.frequency.exponentialRampToValueAtTime(freqEnd, when + sweep);
+      if (detune) osc.detune.value = detune;
 
       const env = ctx.createGain();
-      env.gain.setValueAtTime(0.0001, when);
-      env.gain.linearRampToValueAtTime(gain, when + attack);
-      env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+      const stop = this._mEnv(env.gain, when, dur, gain, attack, sus, rel);
       osc.connect(env);
 
       let out = env;
@@ -1344,23 +1406,17 @@ export class Audio {
       out.connect(dest);
 
       osc.start(when);
-      osc.stop(when + dur + 0.05);
-      this.musicVoices++;
-      osc.addEventListener('ended', () => {
-        this.musicVoices--;
-        osc.disconnect();
-        env.disconnect();
-        if (f) f.disconnect();
-      });
+      osc.stop(when + stop);
+      this._vReg([osc], when, when + stop, f ? [env, f] : [env]);
     } catch (err) {
       console.error('Music tone error:', err);
     }
   }
 
-  // Music noise burst at absolute time `when` (used for hats and the rift whoosh).
-  _mNoise({ dur, gain = 0.1, attack = 0.01, filterType = null, freqStart = null, freqEnd = null, Q = 1, when, dest }) {
+  // Music noise burst at absolute time `when` (used for hats, drums and the rift whoosh).
+  _mNoise({ dur, gain = 0.1, attack = 0.01, filterType = null, freqStart = null, freqEnd = null, Q = 1, when, dest, prio = 1 }) {
     const ctx = this.ctx;
-    if (!ctx || !dest || !this.noiseBuffer || this.musicVoices >= MUSIC_MAX_VOICES) return;
+    if (!ctx || !dest || !this.noiseBuffer || !this._mRoom(1, prio, when)) return;
     try {
       const src = ctx.createBufferSource();
       src.buffer = this.noiseBuffer;
@@ -1385,15 +1441,9 @@ export class Audio {
       }
       out.connect(dest);
 
-      src.start(when);
+      src.start(when, Math.random() * 0.9);
       src.stop(when + dur + 0.05);
-      this.musicVoices++;
-      src.addEventListener('ended', () => {
-        this.musicVoices--;
-        src.disconnect();
-        env.disconnect();
-        if (f) f.disconnect();
-      });
+      this._vReg([src], when, when + dur + 0.05, f ? [env, f] : [env]);
     } catch (err) {
       console.error('Music noise error:', err);
     }
@@ -1402,6 +1452,7 @@ export class Audio {
   // ==================== Music: state events ====================
 
   _onActStart(e) {
+    if (this.score) { this._abortScore(this._now()); }
     this.mode = 'act';
     this.musicAct = e && e.act != null ? e.act : 0;
     this.bossDouble = false;
@@ -1417,11 +1468,13 @@ export class Audio {
     this.bossDouble = false;
     if (!this.ctx || !this.musicBus) return;
     try {
-      const t = this.ctx.currentTime;
-      // Music: rising filter sweep, then the bed fades out (see _controlTick) until the next actStart
+      const t = this._now();
+      if (this.score) this._leaveScore(this.winUntil > t ? this.winUntil - t + 2.5 : 0.1);
+      // Music: rising filter sweep, then the bed fades out (see _controlTick) until the next actStart.
+      // After a boss resolution the sweep starts late so it does not stomp the final chord.
       this._mNoise({
         dur: 2.6, gain: 0.28, attack: 2.0, filterType: 'bandpass', freqStart: 150, freqEnd: 5000,
-        Q: 1.5, when: t, dest: this.musicBus,
+        Q: 1.5, when: Math.max(t, this.winUntil - 0.6), dest: this.musicBus,
       });
       // SFX: huge downward sweep, then an impact
       this._tone({
@@ -1442,15 +1495,18 @@ export class Audio {
     this.bossDouble = false;
     if (!this.ctx || !this.musicBus) return;
     try {
-      const t = this.ctx.currentTime + 0.05;
-      if (e && e.victory) {
+      const t = this._now() + 0.05;
+      if (e && e.victory && this.winUntil > t) {
+        // the boss score's own resolution is still playing: no generic arpeggio on top of it
+      } else if (e && e.victory) {
         // Victory: major arpeggio up
         [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
           this._mTone({ wave: 'triangle', freq: f, dur: 1.4, gain: 0.14, attack: 0.01, when: t + i * 0.11, dest: this.musicBus });
         });
         this._mTone({ wave: 'sine', freq: 2093, dur: 2.0, gain: 0.05, attack: 0.02, when: t + 0.45, dest: this.musicBus });
       } else {
-        // Death: low descending minor
+        // Death: low descending minor (the boss score, if any, tape-stops underneath)
+        if (this.score) this._scoreTapeStop();
         [196, 174.61, 146.83, 110].forEach((f, i) => {
           this._mTone({
             wave: 'sawtooth', freq: f, dur: 1.8, gain: 0.1, attack: 0.02, when: t + i * 0.42,
@@ -1466,7 +1522,7 @@ export class Audio {
   // ==================== New SFX ====================
 
   _playGong() {
-    const now = this.ctx ? this.ctx.currentTime : 0;
+    const now = this._now();
     if (!this.ctx || now - this.lastGongAt < 0.6) return;
     this.lastGongAt = now;
     // Low inharmonic gong: partials at 1, 1.51, 2.32, 2.76 x 82.4 Hz
@@ -1605,9 +1661,11 @@ export class Audio {
     }
   }
 
-  _onBossPhase() {
-    this.bossDouble = true;
+  _onBossPhase(e) {
+    const scored = this.mode === 'boss' && !!this.score;
+    if (!scored) this.bossDouble = true;
     try {
+      if (scored) this._scorePhase(e);
       this._roar();
     } catch (err) {
       console.error('Boss phase sound error:', err);
@@ -1618,7 +1676,7 @@ export class Audio {
   _roar() {
     const ctx = this.ctx;
     if (!ctx || !this.masterGain) return;
-    const t = ctx.currentTime;
+    const t = this._now();
 
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
@@ -1707,3 +1765,6 @@ export class Audio {
     }
   }
 }
+
+// Boss score voices / engine / raid SFX live in src/game/audio/ (mixed in to keep this file the single Audio class)
+Object.assign(Audio.prototype, VOICES, SCORE, SFX);

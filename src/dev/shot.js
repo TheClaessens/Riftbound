@@ -67,7 +67,11 @@ export async function stage({ classId = 'pyromancer', act = 0, zoom = 1.6, secon
   const { snap } = await import('/src/dev/sim.js?v=' + Date.now());
   await snap({ act, seconds: 0.1, classId, zoom, boss });
   if (!enemies) clearEnemies();
-  if (!enemies) g.spawner.update = () => {};
+  if (!enemies) {
+    g.spawner.update = () => {};
+    // restore the real spawner on the next run start (sim lanes after a stage used to stay empty)
+    const off = g.events.on('runStart', () => { delete g.spawner.update; off(); });
+  }
   step(seconds);
   return { player: g.player.pos.clone(), enemies: g.enemies.length };
 }

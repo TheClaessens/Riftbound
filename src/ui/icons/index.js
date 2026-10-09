@@ -14,8 +14,9 @@ import SKILL_ICONS from './set-skills.js';
 import RELIC_ICONS from './set-relics.js';
 import MISC_ICONS from './set-misc.js';
 import REACT_ICONS from './set-react.js';
+import RAID_ICONS from './set-raid.js';
 
-const SETS = [SKILL_ICONS, RELIC_ICONS, REACT_ICONS, MISC_ICONS];
+const SETS = [SKILL_ICONS, RELIC_ICONS, REACT_ICONS, MISC_ICONS, RAID_ICONS];
 const REG = new Map();
 let injected = false;
 

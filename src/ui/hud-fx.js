@@ -10,8 +10,10 @@ import { ACTS } from '../game/acts.js';
 import { RELICS, RELIC_TAG_COLOR } from '../game/relics.js';
 import { FUSIONS, SKILLS } from '../game/skills/registry.js';
 import { icon, ICON, hasIcon } from './icons/index.js';
-import { flash, reducedMotion, fmtCount } from './hud-util.js';
+import { flash, reducedMotion, fmtCount, fmtTime, roman, esc } from './hud-util.js';
+import { AFFIXES } from '../game/bosses/affixes.js';
 
+const BANNER_BIG_S = 1.2;   // intermission / Rift Mend banners stay big this long, then become a strip
 const TOAST_MS = 3400;
 const TOASTS_MAX = 2;
 const FEED_S = 2.5;
@@ -19,6 +21,17 @@ const FEED_MAX = 4;
 const FORGE = 'cubic-bezier(.2,.8,.2,1)';
 const STAMP = 'cubic-bezier(.34,1.56,.64,1)';
 const RIFT = 'cubic-bezier(.7,0,.84,0)';
+
+// Flavour names for the encounter moments (design/RAID_PASSES.md Pass 4). A boss script can override with
+// boss.intermissionNames / boss.phaseNames; unknown bosses fall back to the generic words.
+const INTER_NAMES = { hollowWarden: ['Timberfall', "King's Wrath"], vashkar: ['Ashfall', 'Molten Tide'], riftHeart: ['Skyward', 'Floodfall'] };
+const PHASE_NAMES = {
+  hollowWarden: ['Club and Pods', 'Spore Rot', 'Troll Rage'],
+  vashkar: ['Twin Banners', 'Cinder Memory', "Warchief's Fury"],
+  riftHeart: ['Refraction', 'Storm Reach', 'Prismatic Overload'],
+};
+const OB_ICON = { haste: 'obeliskHaste', echo: 'obeliskEcho', wrath: 'obeliskWrath' };
+const OB_COLOR = { haste: '#ffc340', echo: '#b08cff', wrath: '#ff7a33' };
 
 const titleCase = (s) => String(s ?? '').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
 
@@ -42,6 +55,18 @@ const FX_HTML = `
     <div class="hud-bi-epi" data-fx="biEpi"></div>
   </div>
   <div class="hud-stamp" data-fx="stamp"></div>
+  <div class="hud-banner" data-fx="banner">
+    <div class="hud-bn-mini" data-fx="bnMini"></div>
+    <div class="hud-bn-kick" data-fx="bnKick"></div>
+    <div class="hud-bn-title" data-fx="bnTitle"></div>
+    <div class="hud-bn-row"><div class="hud-bn-bar"><i data-fx="bnFill"></i></div><span class="hud-bn-t num" data-fx="bnT"></span></div>
+    <div class="hud-bn-sub" data-fx="bnSub"></div>
+  </div>
+  <div class="hud-sting" data-fx="sting"><span class="hud-sting-t" data-fx="stT"></span><span class="hud-sting-s" data-fx="stS"></span></div>
+  <div class="hud-stakes cf-plate" data-fx="stakes"></div>
+  <div class="hud-vic" data-fx="vic"><span class="hud-vic-t" data-fx="vicT"></span><span class="hud-vic-s" data-fx="vicS"></span></div>
+  <div class="hud-pay cf-plate" data-fx="pay"></div>
+  <div class="hud-vflash" data-fx="vflash"></div>
   <div class="hud-shift" data-fx="shift"><i class="hud-shift-crack"></i></div>
   <div class="hud-perfect" data-fx="perfect"><span>perfect</span></div>
 `;
@@ -67,8 +92,21 @@ export class HUDFx {
     const on = (ev, fn) => this._unsub.push(game.events.on(ev, fn));
     on('runStart', () => this.reset());
     on('actStart', ({ act }) => this._titleCard(act));
-    on('announce', (e) => { if (e.kind === 'bossDown') this._stamp(e.text, e.color); });
-    on('bossSpawned', ({ enemy }) => this._bossIntro(enemy));
+    on('announce', (e) => {
+      if (e.kind === 'bossDown') this._stamp(e.text, e.color);
+      else if (e.kind === 'obelisk') this._sting(e.text, e.sub, e.color, 1.5);   // THE RIFT OFFERS / HASTE / ECHO / WRATH
+    });
+    on('bossSpawned', ({ enemy }) => { this._bannerOff(); this._bossIntro(enemy); });
+    // ---- raid encounter moments (design/RAID.md) ----
+    on('encounterStart', (e) => this._stakes(e));
+    on('bossIntermission', (e) => this._intermission(e));
+    on('bossPhase', (e) => this._phase(e));
+    on('echoMend', (e) => this._echoMend(e));
+    on('breakCheckEnd', (e) => this._breakResult(e));
+    on('bossEnrage', () => this._sting('enraged', 'the fight speeds up', '#ff5a4a', 0.9));
+    on('encounterEnd', (e) => this._victory(e));
+    on('obeliskPayout', (e) => this._payout(e));
+    on('encounterStart', () => this._bannerOff());
     on('discovered', (e) => this._discovered(e));
     on('reaction', ({ type }) => this._reaction(type));
     on('chainMilestone', ({ chain }) => this._milestone(chain));
@@ -85,10 +123,13 @@ export class HUDFx {
     this._queue.length = 0;
     for (const t of this._toasts) { clearTimeout(t.timer); t.node.remove(); }
     this._toasts.length = 0;
-    for (const k of ['tc', 'bi', 'stamp', 'shift', 'perfect']) this.el[k].getAnimations?.().forEach((a) => a.cancel());
+    for (const k of ['tc', 'bi', 'stamp', 'shift', 'perfect', 'banner', 'sting', 'stakes', 'vic', 'vflash', 'pay']) this.el[k].getAnimations?.().forEach((a) => a.cancel());
+    this._bn = null;
+    this.el.banner.classList.remove('on');
   }
 
   update(dt) {
+    if (this._bn) this._updateBanner(dt);
     // expired rows leave the DOM on game time: an onfinish that never fires (throttled or
     // hidden tab) used to pile stale duplicate chips down the right edge
     for (let i = this._fading.length - 1; i >= 0; i--) {
@@ -137,9 +178,11 @@ export class HUDFx {
     const E = this.el;
     const full = ACTS[this.game.act]?.bossName ?? enemy?.name ?? 'Boss';
     const i = full.indexOf(',');
-    E.biName.textContent = i < 0 ? full : full.slice(0, i).trim();
-    E.biEpi.textContent = i < 0 ? '' : full.slice(i + 1).trim().toLowerCase();
-    E.bi.classList.toggle('prism', enemy?.id === 'riftHeart');
+    const nm = i < 0 ? full : full.slice(0, i).trim();
+    E.biName.textContent = enemy?.isEcho ? `Echo of ${nm}` : nm;
+    E.biEpi.textContent = enemy?.isEcho ? 'it returns, weaker and faster' : (i < 0 ? '' : full.slice(i + 1).trim().toLowerCase());
+    E.bi.classList.toggle('echo', !!enemy?.isEcho);
+    E.bi.classList.toggle('prism', enemy?.id === 'riftHeart' && !enemy?.isEcho);
     E.tc.getAnimations?.().forEach((a) => a.cancel());   // never two centre cards at once
     const calm = reducedMotion();
     E.bi.animate([
@@ -161,6 +204,156 @@ export class HUDFx {
       { opacity: 1, transform: 'none', offset: 0.75 },
       { opacity: 0, transform: 'translateY(-10px)' },
     ], { duration: 1300, easing: FORGE });
+  }
+
+  // ------------------------------------------------------------ raid encounter moments
+  // Persistent banner with a countdown: intermissions and the Echo's Rift Mend. Driven by the boss / encounter
+  // fields every frame (accurate through hit-stop and slow-mo); falls back to its own clock.
+  _banner({ kick, title, sub, dur, remain, echo = false }) {
+    const E = this.el;
+    E.bnKick.textContent = kick;
+    E.bnTitle.textContent = title;
+    E.bnSub.textContent = sub;
+    E.bnMini.textContent = kick && !/^[IV]+$/.test(kick) ? `${title} · ${kick}` : title;
+    E.banner.classList.toggle('echo', echo);
+    E.banner.classList.remove('compact');
+    E.banner.style.top = '';
+    E.banner.classList.add('on');
+    this._bn = { dur: Math.max(0.1, dur), remain, age: 0, last: '', compact: false };
+    this._updateBanner(0);
+  }
+
+  _bannerOff() {
+    this._bn = null;
+    this.el.banner.classList.remove('on');
+  }
+
+  _updateBanner(dt) {
+    const bn = this._bn;
+    bn.age += dt;
+    let rem = bn.remain?.();
+    if (rem == null) rem = bn.dur - bn.age;
+    if (rem <= -0.5 || (bn.age > bn.dur + 2)) { this._bannerOff(); return; }
+    // big for ~1.2 s, then a compact strip under the boss frame so the arena centre stays clear
+    if (!bn.compact && bn.age >= BANNER_BIG_S) {
+      bn.compact = true;
+      const E = this.el, h = this.hud.el;
+      const host = h.boss.classList.contains('on') ? h.boss : h.top;
+      const gap = (host === h.boss ? 14 : 8) * this.hud._uPx;
+      E.banner.style.top = `${Math.round(host.getBoundingClientRect().bottom + gap)}px`;
+      E.banner.classList.add('compact');
+      E.banner.animate?.([{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: FORGE });
+    }
+    const s = Math.max(0, rem).toFixed(1);
+    if (s !== bn.last) {
+      bn.last = s;
+      this.el.bnT.textContent = s;
+      this.el.bnFill.style.transform = `scaleX(${Math.max(0, Math.min(1, rem / bn.dur)).toFixed(3)})`;
+    }
+  }
+
+  // Short centre stamp: PHASE II, BROKEN!, FAILED, ENRAGED, THE RIFT OFFERS, HASTE ARMED …
+  _sting(text, sub, color, secs = 1.3) {
+    const E = this.el;
+    if (!text) return;
+    E.stT.textContent = String(text).toUpperCase();
+    E.stS.textContent = sub ? String(sub) : '';
+    E.sting.style.setProperty('--c', color || '#ecd9a6');
+    const calm = reducedMotion();
+    E.sting.animate([
+      { opacity: 0, transform: calm ? 'none' : 'scale(1.25)', easing: STAMP },
+      { opacity: 1, transform: 'none', offset: 0.14, easing: 'linear' },
+      { opacity: 1, transform: 'none', offset: 0.78 },
+      { opacity: 0, transform: calm ? 'none' : 'translateY(-8px)' },
+    ], { duration: secs * 1000, easing: 'linear' });
+  }
+
+  _intermission({ enemy: b, index, dur }) {
+    const name = (b?.intermissionNames ?? INTER_NAMES[b?.id])?.[(index | 0) - 1];
+    this._banner({
+      kick: `${roman(index)}${name ? ` · ${name}` : ''}`, title: 'Intermission', sub: 'It cannot be harmed. Survive.',
+      dur, remain: () => (b && !b.dead && b.intermissionIdx ? b.intT : null),
+    });
+  }
+
+  _phase({ enemy: b, phase }) {
+    this._bannerOff();
+    const name = (b?.phaseNames ?? PHASE_NAMES[b?.id])?.[(phase | 0) - 1];
+    this._sting(`phase ${roman(phase)}`, name, '#ecd9a6', 1.6);
+  }
+
+  _echoMend({ dur }) {
+    const enc = this.game.encounter;
+    this._banner({
+      kick: 'rift mend', title: 'The Echo rises', sub: '+20% health  ·  dash restored  ·  the field is clear',
+      dur, echo: true, remain: () => (enc?.state === 'mend' ? dur - enc.t : null),
+    });
+  }
+
+  _breakResult({ success, name }) {
+    if (success) this._sting('broken!', name, '#e8eef8', 1.4);
+    else this._sting('failed', name, '#ff5a4a', 1.4);
+  }
+
+  // Stakes card (encounterStart, 2 s, non-blocking): what the player armed with the obelisks.
+  _stakes({ stakes: st, act }) {
+    const E = this.el;
+    st = st ?? {};
+    const heat = st.heat | 0;
+    if (!st.haste && !st.echo && heat <= 0) { E.stakes.style.opacity = '0'; return; }
+    const card = (type, title, sub) =>
+      `<div class="hud-sk" style="--acc:${OB_COLOR[type]}"><span class="hud-sk-ico">${icon(ICON.ui(OB_ICON[type]))}</span><span class="hud-sk-t"><b>${esc(title)}</b><span>${sub}</span></span></div>`;
+    const aff = (st.affixes ?? []).map((id) => AFFIXES[id]).filter(Boolean);
+    const cards = [];
+    if (st.haste) cards.push(card('haste', 'Haste', `skipped ${fmtTime(st.haste.skipped | 0)}`));
+    if (st.echo) cards.push(card('echo', 'Echo', 'comes twice · +10% damage taken'));
+    if (heat > 0) {
+      cards.push(card('wrath', `Wrath ×${heat}`, aff.map((a) =>
+        `<span class="hud-sk-aff">${icon(hasIcon(ICON.ui(a.icon)) ? ICON.ui(a.icon) : ICON.ui('affix'))}${esc(a.name)}</span>`).join('')));
+    }
+    E.stakes.innerHTML = `<div class="hud-sk-h"><span>stakes</span><i></i><span>act ${roman((act | 0) + 1)}</span></div><div class="hud-sk-row">${cards.join('')}</div>`;
+    const calm = reducedMotion();
+    E.stakes.animate([
+      { opacity: 0, transform: calm ? 'none' : 'translateY(10px)', easing: FORGE },
+      { opacity: 1, transform: 'none', offset: 0.12 },
+      { opacity: 1, transform: 'none', offset: 0.85 },
+      { opacity: 0, transform: calm ? 'none' : 'translateY(-6px)' },
+    ], { duration: 2000, easing: 'linear' });
+  }
+
+  // Victory sting: a gilt flash, the verdict and the clock (the bossDown stamp names the boss)
+  _victory({ final }) {
+    this._bannerOff();
+    const E = this.el;
+    const enc = this.game.encounter;
+    E.vicT.textContent = final ? 'VICTORY' : 'BOSS SLAIN';
+    E.vicS.textContent = `felled in ${fmtTime(enc?.fightTime ?? 0)}${this.game.run?.stakes?.echo ? '  ·  both bodies' : ''}`;
+    E.vflash.animate([{ opacity: 0 }, { opacity: 1, offset: 0.1 }, { opacity: 0 }], { duration: 1100, easing: 'ease-out' });
+    E.vic.animate([
+      { opacity: 0, transform: 'scale(1.3)', easing: STAMP },
+      { opacity: 1, transform: 'none', offset: 0.14, easing: 'linear' },
+      { opacity: 1, transform: 'none', offset: 0.8 },
+      { opacity: 0, transform: 'translateY(-8px)' },
+    ], { duration: 2200, easing: 'linear' });
+  }
+
+  // Obelisk payout (obeliskPayout { shards, parts, lines:[{ type, text, shards }] }): a compact card stacked
+  // under the victory sting for the 2.4 s beat: one row per armed obelisk + the shard total.
+  _payout({ shards, lines }) {
+    const E = this.el;
+    const rows = (lines ?? []).filter((l) => l && (l.text || l.shards));
+    if (!rows.length && !(shards > 0)) return;
+    E.pay.innerHTML = rows.map((l) => {
+      const t = OB_ICON[l.type] ? l.type : 'haste';
+      return `<div class="hud-pay-row" style="--acc:${OB_COLOR[t]}"><span class="hud-pay-ico">${icon(ICON.ui(OB_ICON[t]))}</span><span class="hud-pay-t">${esc(l.text ?? '')}</span>${l.shards ? `<b class="num">+${l.shards}</b>` : ''}</div>`;
+    }).join('') + (shards > 0 ? `<div class="hud-pay-tot"><span>${icon(ICON.ui('shard'))}</span><span class="hud-pay-lbl">shards</span><b class="num">+${shards}</b></div>` : '');
+    const calm = reducedMotion();
+    E.pay.animate([
+      { opacity: 0, transform: calm ? 'none' : 'translateY(8px)', easing: FORGE },
+      { opacity: 1, transform: 'none', offset: 0.12 },
+      { opacity: 1, transform: 'none', offset: 0.86 },
+      { opacity: 0, transform: 'none' },
+    ], { duration: 2400, easing: 'linear' });
   }
 
   // ------------------------------------------------------------ Rift Shift flash

@@ -82,11 +82,23 @@ export function buyAttunement(meta, id) {
 // thousands of reactions and it became ~46% of a run's shards (playtest round 1).
 export const CHAIN_SHARD_CAP = 300;
 
-// runStats: { kills, actsReached (1..3), bossesKilled, maxChain, victory, tier }
-export function computeShards(rs) {
+// Rift Obelisk payouts (design/RAID_PASSES.md Pass 1 §6) are capped at 60% of the run's base shards and
+// added BEFORE the tier multiplier.
+export const OBELISK_SHARD_CAP = 0.6;
+
+// Base run shards before the tier multiplier.
+export function baseShards(rs) {
   const chain = Math.min(rs.maxChain, CHAIN_SHARD_CAP);
-  const base = Math.floor(rs.kills / 30) + 15 * rs.actsReached + 40 * rs.bossesKilled + Math.floor(chain / 10);
-  return Math.round(base * (1 + 0.25 * (rs.tier ?? 0)));
+  return Math.floor(rs.kills / 30) + 15 * rs.actsReached + 40 * rs.bossesKilled + Math.floor(chain / 10);
+}
+// The part of rs.bonusShards (obelisk payouts; missing = 0) that counts after the cap.
+export function bonusShardsPaid(rs) {
+  return Math.min(Math.max(0, Math.round(rs.bonusShards ?? 0)), Math.floor(OBELISK_SHARD_CAP * baseShards(rs)));
+}
+
+// runStats: { kills, actsReached (1..3), bossesKilled, maxChain, victory, tier, bonusShards? }
+export function computeShards(rs) {
+  return Math.round((baseShards(rs) + bonusShardsPaid(rs)) * (1 + 0.25 * (rs.tier ?? 0)));
 }
 
 // Returns ids of classes whose unlock condition is satisfied but not yet unlocked.
@@ -121,5 +133,5 @@ export function recordRun(meta, rs) {
   }
   const unlocks = checkUnlocks(meta);
   saveMeta(meta);
-  return { shards, unlocks, tierUnlocked };
+  return { shards, unlocks, tierUnlocked, obeliskShards: bonusShardsPaid(rs) };   // obeliskShards: paid after the 60% cap, before the tier multiplier
 }

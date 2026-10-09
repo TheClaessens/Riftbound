@@ -174,3 +174,26 @@ function rankHint(p, s, banned) {
   }
   return '';
 }
+
+// Wrath Cache (obelisks.js, Heat 2): a hand of "+1 rank to a skill you own" cards. Skills first (random),
+// then owned passives, then Rift Essence; banished ids are skipped. Apply the pick with applyCard().
+export function rollRankCards(game, n = 3) {
+  const p = game.player;
+  const banned = game.run?.banished ?? new Set();
+  const cards = [];
+  const skills = p.skills.filter((s) => s.rank < (s.def.maxRank ?? 5) && !banned.has(s.def.id));
+  for (let i = skills.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [skills[i], skills[j]] = [skills[j], skills[i]]; }
+  for (const s of skills.slice(0, n)) {
+    cards.push({ type: 'rank', id: s.def.id, name: s.def.name, icon: s.def.icon, element: s.def.element, rank: s.rank + 1, desc: s.def.desc(s.rank + 1), hint: rankHint(p, s, banned) || 'Wrath Cache: +1 rank' });
+  }
+  if (cards.length < n) {
+    for (const def of Object.values(PASSIVES)) {
+      const r = p.passives.get(def.id) ?? 0;
+      if (cards.length >= n) break;
+      if (r === 0 || r >= def.maxRank || banned.has(def.id)) continue;
+      cards.push({ type: 'passive', id: def.id, name: def.name, icon: def.icon, element: 'physical', rank: r + 1, desc: def.desc(r + 1), hint: 'Wrath Cache: +1 rank' });
+    }
+  }
+  while (cards.length < n) cards.push({ type: 'heal', id: 'heal-' + cards.length, name: 'Rift Essence', icon: '✚', element: 'physical', rank: 0, desc: 'Restore 40% HP.', hint: '' });
+  return cards;
+}

@@ -18,11 +18,11 @@ import { ACTS, ACT_LENGTH } from '../game/acts.js';
 import { RELIC_TAG_COLOR } from '../game/relics.js';
 import { BEATS } from '../game/spawner.js';
 import { WARD_CYCLE } from '../game/bosses.js';
-import { icon, ICON } from './icons/index.js';
+import { icon, ICON, hasIcon } from './icons/index.js';
 import { HUDFx } from './hud-fx.js';
 import {
   setText, setHTML, setCss, setVar, setCls, setAttr, setScaleX, setOpacity, flash,
-  clamp01, q, fmtTime, fmtCount, lerp3, rgbHex, setPips, snap, Meter,
+  clamp01, q, fmtTime, fmtCount, lerp3, rgbHex, setPips, snap, Meter, esc, pct,
 } from './hud-util.js';
 
 // Kept for ui.js (pause build view); the HUD itself draws dash icons with icon().
@@ -36,11 +36,32 @@ const KEY_HTML = [
   '<span class="cf-key hud-key">e</span>',
   '<span class="cf-key hud-key">r</span>',
 ];
-const BEAT_ICON = { surge: ['surge', '♛'], swarm: ['swarm', '◎'], boss: ['boss', '☠'] };
+const BEAT_ICON = { surge: ['surge', '♛'], swarm: ['swarm', '◎'], boss: ['boss', '☠'], obelisks: ['obelisk', '◆'] };
+// The HUD's own beat (spawner.js BEATS stays untouched): the Rift Obelisks rise at 0:50 (design/RAID.md).
+const OBELISK_BEAT = { id: 'obelisks', at: 50, name: 'Obelisks rise' };
 const CHAIN_WHITE = [255, 255, 255], CHAIN_AMBER = [224, 160, 48];
 const RIBBON_LEAD = 10;      // seconds of "Elite Surge in 0:08" before a beat
 const RIBBON_HOLD = 3;       // seconds the beat name stays after it lands
-const MARKERS = 5;           // pooled edge markers (boss + shrine + bearer + 2 chests)
+const MARKERS = 12;          // pooled edge markers (boss + 3 obelisks + 3 fight objects + shrine + bearer + chests)
+const RECOVER_TIME = 8;      // BossBase poise lock after a Downed (core.js RECOVER_TIME)
+const OB_NEAR = 10;          // world units: the approach card appears inside this radius (hysteresis +2)
+const HEAT_MAX = 3;
+// Obelisk identity: colour + icon + label (never colour alone).
+const OB = {
+  haste: { color: '#ffc340', icon: 'obeliskHaste', name: 'Haste', title: 'Obelisk of Haste' },
+  echo: { color: '#b08cff', icon: 'obeliskEcho', name: 'Echo', title: 'Obelisk of Echo' },
+  wrath: { color: '#ff7a33', icon: 'obeliskWrath', name: 'Wrath', title: 'Obelisk of Wrath' },
+};
+const POISE_STEEL = '#e8eef8';
+
+// Affix def.icon is a bare name ('affixFrenzied'): resolve to a sprite, falling back to the generic sigil.
+export const affixIcon = (def, cls = '') => icon(def?.icon && hasIcon(ICON.ui(def.icon)) ? ICON.ui(def.icon) : ICON.ui('affix'), { cls });
+// Buff sprite by id, then by def.icon name, then the generic buff sprite: never a text glyph.
+function buffIcon(id, b) {
+  if (hasIcon(ICON.buff(id))) return icon(ICON.buff(id));
+  const alt = typeof b?.icon === 'string' && b.icon.length > 2 ? ICON.buff(b.icon) : '';
+  return icon(alt && hasIcon(alt) ? alt : ICON.ui('buff'));
+}
 
 const _v = new THREE.Vector3();
 const _m = new THREE.Vector3();
@@ -63,6 +84,7 @@ const TEMPLATE = `
         <div class="hud-tl-beats" data-ref="tlBeats"></div>
       </div>
       <div class="hud-timer" data-ref="timerBox"><i class="hud-hold"></i><span class="num outlined" data-ref="timer">0:00</span></div>
+      <div class="hud-armed" data-ref="armed"></div>
     </div>
     <div class="hud-ribbon cf-plate flat" data-ref="ribbon">
       <span class="hud-rb-ico" data-ref="rbIco"></span>
@@ -70,24 +92,63 @@ const TEMPLATE = `
       <span class="hud-rb-t num" data-ref="rbT"></span>
     </div>
     <div class="hud-boss cf-frame crown" data-ref="boss">
+      <i class="hud-boss-glow" data-ref="bossGlow"></i>
       <div class="hud-ward" data-ref="ward">
         <div class="cf-socket round hud-ward-sock" data-ref="wardSock"><span class="hud-ward-gem" data-ref="wardGem"></span></div>
         ${ringSvg('hud-ward-ring')}
         <span class="hud-ward-t num" data-ref="wardT"></span>
       </div>
       <div class="hud-boss-head">
-        <span class="hud-boss-name" data-ref="bossName"></span>
-        <span class="hud-boss-epi" data-ref="bossEpi"></span>
+        <div class="hud-boss-tags">
+          <span class="hud-tag echo" data-ref="tagEcho"><span class="hud-tag-ico">${icon(ICON.ui('obeliskEcho'))}</span><span data-ref="tagEchoTxt">echo</span></span>
+          <span class="hud-tag enrage" data-ref="tagEnrage"><span class="hud-tag-ico">${icon(ICON.ui('affixFrenzied'))}</span><span data-ref="tagEnrageTxt">enraged</span></span>
+        </div>
+        <div class="hud-boss-who">
+          <span class="hud-boss-name" data-ref="bossName"></span>
+          <span class="hud-boss-epi" data-ref="bossEpi"></span>
+        </div>
+        <span class="hud-boss-state" data-ref="bossState"><span class="hud-bs-ico" data-ref="bsIco"></span><span class="hud-bs-txt" data-ref="bsTxt"></span></span>
       </div>
       <div class="hud-boss-row">
         <div class="cf-bar hud-boss-bar" data-ref="bossBar">
-          <div class="cf-bar-track"><i class="cf-bar-ghost"></i><i class="cf-bar-fill"></i><i class="hud-bar-flash"></i></div>
-          <i class="hud-boss-notch" data-ref="bossNotch"></i>
+          <div class="cf-bar-track"><i class="cf-bar-ghost"></i><i class="cf-bar-fill"></i><i class="hud-bar-flash"></i><i class="hud-boss-lock" data-ref="bossLock"></i></div>
+          <div class="hud-boss-notches" data-ref="bossNotches"></div>
           <div class="cf-prism hud-boss-prism"></div>
         </div>
-        <span class="cf-pips hud-boss-ph" data-ref="bossPh"><i class="on"></i><i></i></span>
+        <span class="cf-pips hud-boss-ph" data-ref="bossPh"><i class="on"></i><i></i><i></i></span>
+      </div>
+      <div class="hud-boss-prow" data-ref="prow">
+        <div class="hud-poise" data-ref="poise">
+          <div class="hud-poise-track"><i class="hud-poise-fill" data-ref="poiseFill"></i><i class="hud-poise-flash" data-ref="poiseFlash"></i></div>
+          <i class="hud-poise-mk" data-ref="poiseMk"></i>
+          <span class="hud-poise-lbl"><span class="hud-poise-ico">${icon(ICON.ui('stagger'))}</span><span class="hud-poise-txt" data-ref="poiseTxt">stagger</span></span>
+          <span class="hud-poise-fl" data-ref="poiseFl"></span>
+        </div>
+        <div class="hud-heat" data-ref="heat"><div class="hud-heat-track"><i class="hud-heat-fill" data-ref="heatFill"></i></div><span class="hud-heat-lbl"><span class="hud-heat-ico">${icon(ICON.ui("affixFrenzied"))}</span><span data-ref="heatTxt">axe heat</span></span></div>
+        <span class="hud-boss-tail"></span>
+      </div>
+      <div class="hud-boss-affixes" data-ref="affixes"></div>
+      <div class="hud-cast cf-plate" data-ref="cast">
+        <div class="hud-cast-head">
+          <span class="hud-cast-ico">${icon(ICON.ui('breakCheck'))}</span>
+          <span class="hud-cast-name" data-ref="castName"></span>
+          <span class="hud-cast-tag" data-ref="castTag"></span>
+          <span class="hud-cast-t num" data-ref="castT"></span>
+        </div>
+        <div class="hud-cast-bar"><i class="hud-cast-fill" data-ref="castFill"></i></div>
       </div>
     </div>
+  </div>
+
+  <div class="hud-ob cf-frame" data-ref="ob">
+    <div class="hud-ob-head">
+      <div class="cf-socket hud-ob-sock" data-ref="obSock"><span data-ref="obIco"></span>${ringSvg('hud-ob-ring')}</div>
+      <div class="hud-ob-title"><span class="hud-ob-kick" data-ref="obKick">rift obelisk</span><span class="hud-ob-name" data-ref="obName"></span></div>
+      <span class="hud-ob-chip" data-ref="obChip"></span>
+    </div>
+    <div class="hud-ob-body" data-ref="obBody"></div>
+    <div class="hud-ob-foot"><span data-ref="obFoot"></span></div>
+    <div class="hud-ob-meter"><i data-ref="obFill"></i></div>
   </div>
 
   <div class="hud-relics cf-plate" data-ref="relics"></div>
@@ -181,6 +242,15 @@ export class HUD {
     this._dashLast = -1;
     this._pScreen = { x: -999, y: -999, ok: false };
     this._uPx = 0.8;
+    this._notches = [];        // boss HP-bar gate notches [{ el, g }]
+    this._downReason = '';     // last bossDowned reason ('stagger' | 'break' | 'winded')
+    this._poiseAcc = 0;        // poise gained since the last floater
+    this._poiseCd = 0;
+    this._ob = null;           // obelisk shown on the approach card
+    this._obT = 0;             // preview() refresh timer
+    this._obKey = '';
+    this._obSize = { w: 0, h: 0 };
+    this._obHint = 'hold the ring to channel';
 
     const root = document.createElement('div');
     root.className = 'hud';
@@ -220,6 +290,21 @@ export class HUD {
         { duration: 320, delay: 900, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
       this.bossMeter.reset(1);
     });
+    // ---- raid encounter (design/RAID.md) ----
+    on('poise', (e) => this._onPoise(e));
+    on('bossDowned', (e) => {
+      this._downReason = e?.reason ?? 'stagger';
+      flash(E.bossGlow, [{ opacity: 1 }, { opacity: 0.55 }], { duration: 320 }, 60);
+    });
+    on('breakCheck', () => {
+      flash(E.cast, [{ transform: 'scale(1.06)' }, { transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+    });
+    on('breakCheckEnd', ({ success }) => {
+      if (success) flash(E.poiseFlash, [{ opacity: 1 }, { opacity: 0 }], { duration: 520 }, 0);
+    });
+    on('obelisksRisen', () => { this._ribbon = { kind: 'obelisks', text: 'The Rift offers', t: 4 }; });
+    on('obeliskArmed', ({ type }) => { this._armPop = type; this._k.armed = null; });
+    on('encounterStart', () => { this._k.armed = null; });
     on('relicGained', ({ def }) => { this._newRelic = def?.id; });
     on('autoCastChanged', () => flash(E.ac.firstElementChild, [{ transform: 'scale(1.1)' }, { transform: 'none' }], { duration: 160 }));
 
@@ -258,6 +343,8 @@ export class HUD {
     this.hpMeter.reset(1);
     this.clMeter.reset(1);
     this.bossMeter.reset(1);
+    this._ob = null; this._obKey = '';
+    setCls(this.el.ob, 'on', false);
     for (const s of this._slots) { s.wasCd = false; s.start = 0; }
   }
 
@@ -277,6 +364,7 @@ export class HUD {
 
     if (!p) return;
     this._updateCluster(g, p, dt, live);
+    this._updateObelisks(g, p, dt);
     this._updateMarkers(g, p, dt);
     this._updateRelics(p);
     this._updateBuffs(p);
@@ -288,7 +376,7 @@ export class HUD {
 
   // ================================================================== top: act timeline
   _buildTimeline() {
-    const beats = [...BEATS.map((b) => ({ ...b })), { id: 'boss', at: ACT_LENGTH, name: 'Boss' }];
+    const beats = [{ ...OBELISK_BEAT }, ...BEATS.map((b) => ({ ...b })), { id: 'boss', at: ACT_LENGTH, name: 'Boss' }].sort((a, b) => a.at - b.at);
     this._beats = beats;
     this.el.tlBeats.innerHTML = beats.map((b) => {
       const [ui, fb] = BEAT_ICON[b.id] ?? ['surge', '◆'];
@@ -320,20 +408,37 @@ export class HUD {
     setText(E.timer, fmtTime(t));
     setCls(E.timerBox, 'held', !!g.tutorial?.holdClock && g.phase === 'horde');
 
+    // Haste armed: the boss gem slides from 3:00 to "now" (the skip is visible)
+    const stakes = g.run?.stakes ?? {};
+    const hasteOn = g.phase === 'horde' && !!(g.obelisks?.list ?? []).find((o) => o.type === 'haste')?.armed;
+    if (!hasteOn) this._hasteFrom = null; else if (this._hasteFrom == null) this._hasteFrom = t;
+    const hasteAt = hasteOn ? clamp01((t + 3) / ACT_LENGTH) : 1;
+
     // beat markers: past ones dim; the next one pulses in its last seconds
     let soon = null;
     for (const b of this._beats) {
-      const d = b.at - t;
-      setCls(b.node, 'past', d <= 0);
+      let at = b.at;
+      if (b.id === 'boss') {
+        at = hasteAt * ACT_LENGTH;
+        setCss(b.node, 'left', `${(hasteAt * 100).toFixed(3)}%`);
+        setCls(b.node, 'hasted', hasteAt < 1);
+      }
+      const d = at - t;
+      setCls(b.node, 'past', d <= 0 && b.id !== 'boss');
       const isSoon = g.phase === 'horde' && d > 0 && d <= RIBBON_LEAD;
       setCls(b.node, 'soon', isSoon);
       if (isSoon && !soon) soon = { b, d };
     }
+    this._updateArmed(stakes, bossOn);
 
     // ribbon: "Elite Surge in 0:08" before a beat, the beat name for 3 s after it
     if (this._ribbon) { this._ribbon.t -= gdt; if (this._ribbon.t <= 0) this._ribbon = null; }
     let kind = '', txt = '', tt = '';
-    if (this._ribbon && !bossOn) {
+    if (hasteOn && !bossOn) {
+      // the 3 s Haste warning: the boss is coming now
+      kind = 'boss'; txt = 'the heart stirs in';
+      tt = fmtTime(Math.ceil(Math.max(0, 3 - (t - (this._hasteFrom ?? t)))));
+    } else if (this._ribbon && !bossOn) {
       kind = this._ribbon.kind;
       txt = (this._ribbon.sub ? `${BEATS.find((b) => b.id === kind)?.name ?? this._ribbon.text} · ${this._ribbon.sub}` : this._ribbon.text).toLowerCase();
       tt = '';
@@ -357,27 +462,158 @@ export class HUD {
     }
   }
 
+  // ================================================================== top: armed chips (timeline)
+  // One chip per armed obelisk, hanging under the act plate (right end). Wrath shows its Heat.
+  _updateArmed(stakes, bossOn) {
+    const E = this.el, list = this.game.obelisks?.list ?? [];
+    const armed = (t) => list.find((o) => o.type === t)?.armed;
+    const haste = !!armed('haste'), echo = !!stakes.echo || !!armed('echo');
+    const heat = stakes.heat | 0;
+    const key = `${haste ? 1 : 0}${echo ? 1 : 0}${heat}`;
+    if (this._k.armed === key) return;
+    this._k.armed = key;
+    const chips = [];
+    if (haste) chips.push(['haste', '', 'Haste armed: the boss comes now']);
+    if (echo) chips.push(['echo', '', 'Echo armed: the boss comes twice']);
+    if (heat > 0) chips.push(['wrath', `<b>${heat}</b>`, `Wrath: Heat ${heat}`]);
+    E.armed.innerHTML = chips.map(([t, extra, title]) =>
+      `<span class="hud-chip" data-t="${t}" title="${esc(title)}" style="--acc:${OB[t].color}">${icon(ICON.ui(OB[t].icon))}${extra}</span>`).join('');
+    setCls(E.armed, 'on', chips.length > 0);
+    const pop = this._armPop;
+    this._armPop = null;
+    if (pop) E.armed.querySelector(`[data-t="${pop}"]`)?.animate?.([{ transform: 'scale(1.7)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 360, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+  }
+
   // ================================================================== top: boss bar
+  _bossSetup(g, b) {
+    const E = this.el;
+    this._k.bossId = b;
+    const [name, epi] = splitBossName(ACTS[g.act]?.bossName ?? b.name);
+    setText(E.bossName, name);
+    setText(E.bossEpi, epi.toLowerCase());
+    setCls(E.boss, 'prism', b.id === 'riftHeart');
+    this.bossMeter.reset(b.maxHp > 0 ? b.hp / b.maxHp : 1);
+    // 3 phases (legacy bosses: 2), a notch per gate (Echo [1, .5] draws one at 50%)
+    const phases = b.phases ?? 2;
+    E.bossPh.innerHTML = pips(phases);
+    const gates = (b.gates ?? [0.5]).filter((x) => x > 0.01 && x < 0.99);
+    E.bossNotches.innerHTML = gates.map((x) => `<i class="hud-boss-notch" style="left:${(x * 100).toFixed(2)}%"></i>`).join('');
+    this._notches = gates.map((x, i) => ({ el: E.bossNotches.children[i], g: x }));
+    // affixes: icon + name (the def text is the tooltip); the row exists for the whole fight (no layout shift)
+    const ax = b.affixes ?? [];
+    E.affixes.innerHTML = ax.map((a) =>
+      `<span class="hud-affix" title="${esc(a.name)}: ${esc(a.desc)}"><span class="hud-affix-ico">${affixIcon(a)}</span><span class="hud-affix-n">${esc(a.name)}</span></span>`).join('');
+    setCls(E.boss, 'has-affix', ax.length > 0);
+    setCls(E.boss, 'has-poise', !!b.poise);
+    setCls(E.boss, 'has-heat', b.id === 'vashkar' && typeof b.axeHeat === 'number');
+    setCls(E.boss, 'echo', !!b.isEcho);
+    setCls(E.tagEcho, 'on', !!b.isEcho || !!g.run?.stakes?.echo);
+    setCls(E.tagEcho, 'pending', !b.isEcho);
+    setText(E.tagEchoTxt, b.isEcho ? 'echo' : '+ echo');
+    this._poiseAcc = 0;
+  }
+
   _updateBoss(g, gdt) {
     const E = this.el;
     const b = g.boss;
     const on = !!b && !b.dead;
     setCls(E.boss, 'on', on);
     if (!on) return;
+    if (this._k.bossId !== b) this._bossSetup(g, b);
 
-    if (this._k.bossId !== b) {
-      this._k.bossId = b;
-      const [name, epi] = splitBossName(ACTS[g.act]?.bossName ?? b.name);
-      setText(E.bossName, name);
-      setText(E.bossEpi, epi.toLowerCase());
-      setCls(E.boss, 'prism', b.id === 'riftHeart');
-      this.bossMeter.reset(b.maxHp > 0 ? b.hp / b.maxHp : 1);
-    }
     const f = b.maxHp > 0 ? b.hp / b.maxHp : 0;
     this.bossMeter.update(gdt, f);
-    const p2 = (b.phase ?? 1) >= 2;
-    setCls(E.bossNotch, 'past', p2 || f <= 0.5);
-    setCls(E.bossPh.children[1], 'on', p2);
+    const phase = b.phase ?? 1;
+    setPips(E.bossPh, phase);
+    const legacyP2 = b.phases === undefined && phase >= 2;
+    for (const n of this._notches) setCls(n.el, 'past', legacyP2 || f <= n.g + 0.003);
+
+    // ---- state: sealed (gate / intermission) · downed · exposed · enrage
+    const inter = !!b.untargetable || (b.intermissionIdx | 0) > 0;
+    const atFloor = b.hpFloor !== undefined && b.hpFloor > 0 && b.hp <= b.hpFloor + 0.5;
+    const sealed = inter || atFloor;
+    const downed = !!b.downed;
+    const exposed = (b.exposedT ?? 0) > 0;
+    setCls(E.boss, 'sealed', sealed);
+    if (sealed) setScaleX(E.bossLock, f);
+    setCls(E.boss, 'downed', downed);
+    setCls(E.boss, 'exposed', exposed && !downed);
+    const enr = b.enrage | 0;
+    setCls(E.tagEnrage, 'on', enr > 0);
+    if (enr > 0) setText(E.tagEnrageTxt, enr > 1 ? `enraged ×${enr}` : 'enraged');
+    let kind = '', txt = '';
+    if (downed) { kind = 'downed'; txt = this._downReason === 'winded' ? 'winded' : 'downed'; }
+    else if (exposed) { kind = 'exposed'; txt = `exposed ${Math.ceil(b.exposedT)}`; }
+    else if (sealed) { kind = 'sealed'; txt = 'sealed'; }
+    setCls(E.bossState, 'on', !!kind);
+    if (kind) {
+      if (this._k.bsKind !== kind) {
+        this._k.bsKind = kind;
+        E.bossState.dataset.k = kind;
+        setHTML(E.bsIco, icon(kind === 'sealed' ? ICON.ui('lock') : ICON.ui(kind)));
+      }
+      setText(E.bsTxt, txt);
+    } else this._k.bsKind = '';
+
+    // ---- Poise / STAGGER bar
+    const P = b.poise;
+    if (P) {
+      const cap = Math.max(1, (P.max ?? 100) * (P.mult || 1));
+      const check = !!b.cast?.check && P.threshold > 0;
+      let fill, mode, label;
+      if (downed && b.downedDur > 0) { fill = b.downedT / b.downedDur; mode = 'downed'; label = `${this._downReason === 'winded' ? 'winded' : 'downed'} ${Math.ceil(Math.max(0, b.downedT))}`; }
+      else if (P.lockT > 0) { fill = P.lockT / RECOVER_TIME; mode = 'rec'; label = 'recovering'; }
+      else {
+        fill = P.v / cap;
+        mode = inter ? 'off' : check ? 'check' : 'idle';
+        label = check ? `stagger ${Math.round(P.threshold)}` : 'stagger';
+      }
+      setScaleX(E.poiseFill, fill);
+      const pc = E.poise;
+      setCls(pc, 'downed', mode === 'downed');
+      setCls(pc, 'rec', mode === 'rec');
+      setCls(pc, 'off', mode === 'off');
+      setCls(pc, 'check', mode === 'check');
+      setCls(pc, 'hot', mode !== 'downed' && mode !== 'rec' && P.v / cap > 0.8);
+      setText(E.poiseTxt, label);
+      const th = check ? clamp01(P.threshold / cap) : 0;
+      setCls(E.poiseMk, 'on', th > 0);
+      if (th > 0) {
+        setCss(E.poiseMk, 'left', `${(q(th) * 100).toFixed(2)}%`);
+        setCls(E.poiseMk, 'met', P.v >= P.threshold);
+      }
+      // "+N" floaters, batched (a Chain of reactions is many events)
+      this._poiseCd -= gdt;
+      if (this._poiseAcc >= 1 && this._poiseCd <= 0) {
+        this._poiseCd = 0.22;
+        this._poiseFloater(this._poiseAcc, clamp01(P.v / cap));
+        this._poiseAcc = 0;
+      }
+    }
+
+    // ---- Vashkar's Axe Heat (0..100; the Molten Overswing Break Check queues at 100)
+    if (typeof b.axeHeat === 'number' && b.id === 'vashkar') {
+      const hv = Math.max(0, Math.min(100, b.axeHeat));
+      setScaleX(E.heatFill, hv / 100);
+      setText(E.heatTxt, `axe heat ${Math.round(hv)}`);
+      setCls(E.heat, 'hot', hv >= 85);
+      setCls(E.heat, 'full', hv >= 100);
+    }
+
+    // ---- cast bar (named casts + Break Checks)
+    const c = b.cast;
+    setCls(E.cast, 'on', !!c);
+    if (c) {
+      const key = `${c.name}|${c.check ? c.threshold : 0}`;
+      if (this._k.cast !== key) {
+        this._k.cast = key;
+        setText(E.castName, c.name);
+        setText(E.castTag, c.check ? `break it — stagger ${Math.round(c.threshold)}` : '');
+        setCls(E.cast, 'check', !!c.check);
+      }
+      setScaleX(E.castFill, c.dur > 0 ? c.t / c.dur : 0);
+      setText(E.castT, Math.max(0, c.dur - c.t).toFixed(1));
+    } else this._k.cast = null;
 
     // Prism Ward (Aurelith): element gem + countdown ring; broken = grey until the next cycle
     const warded = b.id === 'riftHeart' || !!b.ward;
@@ -399,9 +635,30 @@ export class HUD {
         this._k.wardSeen = true;
       }
       const wt = Math.max(0, b.wardT ?? 0);
-      setAttr(E.ward.querySelector('.fg'), 'stroke-dasharray', `${Math.round(clamp01(wt / WARD_CYCLE) * 100)} 100`);
+      setAttr(E.ward.querySelector('.fg'), 'stroke-dasharray', `${Math.round(clamp01(wt / (b.wardCycle ?? WARD_CYCLE)) * 100)} 100`);
       setText(E.wardT, String(Math.ceil(wt)));
     }
+  }
+
+  _onPoise({ enemy, amount }) {
+    if (enemy !== this.game.boss || !(amount > 0)) return;
+    this._poiseAcc += amount;
+    flash(this.el.poiseFlash, [{ opacity: 0.85 }, { opacity: 0 }], { duration: 240 }, 70);
+  }
+
+  // a "+N" that rises off the fill's leading edge
+  _poiseFloater(n, at) {
+    const host = this.el.poiseFl;
+    if (!host.animate) return;
+    const s = document.createElement('span');
+    s.textContent = `+${Math.round(n)}`;
+    s.style.left = `${(q(at) * 100).toFixed(2)}%`;
+    host.appendChild(s);
+    const done = () => s.remove();
+    const a = s.animate([{ opacity: 0, transform: 'translate(-50%, 4px)' }, { opacity: 1, transform: 'translate(-50%, -4px)', offset: 0.2 }, { opacity: 0, transform: 'translate(-50%, -16px)' }], { duration: 700, easing: 'ease-out' });
+    a.onfinish = done;
+    setTimeout(done, 900);
+    while (host.children.length > 4) host.firstElementChild.remove();
   }
 
   // ================================================================== right lane: chain
@@ -492,6 +749,106 @@ export class HUD {
     setCls(E.cl, 'low', frac < 0.3 && hp > 0);
   }
 
+  // ================================================================== obelisks: approach card
+  // The nearest idle/channelling obelisk inside OB_NEAR: a compact world-anchored card with the live preview()
+  // (title, cost, pay, Haste's "≈ −N levels", Wrath's rolled affix + Heat pips) and, while channelling, the
+  // progress ring + meter. Everything is data from game.obelisks (defensive `?.`: the director may be a stub).
+  _updateObelisks(g, p, dt) {
+    const E = this.el;
+    const OBS = g.obelisks;
+    let best = null, bd = 1e9;
+    if (OBS?.list && g.phase === 'horde' && g.state === 'playing' && !p.dead) {
+      for (const o of OBS.list) {
+        if (!o?.pos || !(o.state === 'idle' || o.state === 'channel')) continue;
+        const d = Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
+        if (d < bd) { bd = d; best = o; }
+      }
+    }
+    const near = best && bd <= (this._ob === best ? OB_NEAR + 2 : OB_NEAR);
+    if (!near) {
+      this._ob = null;
+      setCls(E.ob, 'on', false);
+      return;
+    }
+    const o = best;
+    const def = OB[o.type] ?? OB.haste;
+    const same = this._ob === o;
+    this._ob = o;
+    this._obT -= dt;
+    let pv = null;
+    if (!same || this._obT <= 0) {
+      this._obT = 0.25;
+      try { pv = OBS.preview?.(o.type) ?? null; } catch { pv = null; }
+      const heat = o.heat | 0;
+      const key = JSON.stringify([o.type, pv, o.nextAffix?.id, heat]);
+      if (key !== this._obKey) {
+        this._obKey = key;
+        this._buildObCard(o, def, pv);
+      }
+    }
+    // channel: progress ring + meter; the body collapses so the card stays small while you stand in the ring
+    const ch = !!o.channelling || o.state === 'channel';
+    const prog = clamp01(o.progress);
+    const chOn = ch && prog > 0;
+    setCls(E.ob, 'channel', chOn);
+    if (this._obCh !== chOn) {            // the body collapses / returns: re-measure once per toggle
+      this._obCh = chOn;
+      if (E.ob.offsetWidth) { this._obSize.w = E.ob.offsetWidth; this._obSize.h = E.ob.offsetHeight; }
+    }
+    setAttr(E.ob.querySelector('.hud-ob-ring .fg'), 'stroke-dasharray', `${Math.round(prog * 100)} 100`);
+    setScaleX(E.obFill, prog);
+    setText(E.obFoot, ch && prog > 0 ? `channelling ${Math.round(prog * 100)}%` : this._obHint);
+
+    // anchor above the monolith, clamped under the top bar and above the action bar
+    const u = this._uPx, w = window.innerWidth, h = window.innerHeight;
+    _v.set(o.pos.x, 4.6, o.pos.z);
+    _m.copy(_v).project(g.camera);
+    const sx = (_m.x * 0.5 + 0.5) * w, sy = (-_m.y * 0.5 + 0.5) * h, vis = _m.z < 1;
+    const cw = this._obSize.w || 330 * u, ch2 = this._obSize.h || 200 * u;
+    const x = Math.max(10 * u, Math.min(w - cw - 10 * u, sx - cw / 2));
+    let yy = sy - ch2 - 6 * u;
+    if (yy < 120 * u) {                    // no room above the monolith: hang the card under its plinth instead
+      _v.set(o.pos.x, 0, o.pos.z);
+      _m.copy(_v).project(g.camera);
+      yy = (-_m.y * 0.5 + 0.5) * h + 44 * u;
+    }
+    const y = Math.max(120 * u, Math.min(h - ch2 - 150 * u, yy));
+    setCls(E.ob, 'on', vis);
+    setCss(E.ob, 'transform', `translate3d(${snap(x)}px, ${snap(y)}px, 0)`);
+    setVar(E.ob, '--acc', o.def?.color ?? def.color);
+  }
+
+  _buildObCard(o, def, pv) {
+    const E = this.el;
+    const line = (l) => (typeof l === 'string' ? l : (l?.text ?? l?.label ?? ''));
+    const aff = o.nextAffix ?? pv?.nextAffix ?? null;
+    // Wrath's affix gets its own row: drop the cost line that repeats it
+    const cost = (pv?.cost ?? []).map(line).filter((s) => s && !(aff && s.includes(aff.desc)));
+    const pay = (pv?.pay ?? []).map(line).filter(Boolean);
+    const spriteId = o.def?.icon ?? def.icon;
+    setHTML(E.obIco, icon(ICON.ui(spriteId)));
+    setText(E.obName, pv?.title ?? o.def?.name ?? def.title);
+    setText(E.obKick, pv?.tag ?? 'rift obelisk');
+    // Haste: the net level swing, computed live by the director
+    const ld = pv?.levelsDelta;
+    setText(E.obChip, typeof ld === 'number' ? (ld < 0 ? `≈ −${Math.abs(ld)} level${Math.abs(ld) === 1 ? '' : 's'}` : ld > 0 ? `≈ +${ld} level${ld === 1 ? '' : 's'}` : '≈ even') : '');
+    setCls(E.obChip, 'on', typeof ld === 'number');
+    setCls(E.obChip, 'gain', typeof ld === 'number' && ld > 0);
+    const heat = o.type === 'wrath' ? (o.heat | 0) : -1;
+    const sec = (cls, label, lines) => (lines.length
+      ? `<div class="hud-ob-sec ${cls}"><span class="hud-ob-lbl"><i></i>${label}</span><ul>${lines.map((s) => `<li>${esc(s)}</li>`).join('')}</ul></div>` : '');
+    E.obBody.innerHTML =
+      (heat >= 0 ? `<div class="hud-ob-heat"><span class="hud-ob-lbl">heat</span><span class="cf-pips">${Array.from({ length: HEAT_MAX }, (_, i) => `<i class="${i < heat ? 'on' : ''}"></i>`).join('')}</span></div>` : '')
+      + (aff ? `<div class="hud-ob-affix"><span class="hud-ob-aico">${affixIcon(aff)}</span><span class="hud-ob-atxt"><b>${esc(aff.name)}</b><span>${esc(aff.desc)}</span></span></div>` : '')
+      + sec('cost', 'cost', cost) + sec('pay', 'pay', pay);
+    this._obHint = 'hold the ring to channel';
+    setText(E.obFoot, this._obHint);
+    setCls(E.ob, 'on', true);
+    // measure once per rebuild (never per frame)
+    this._obSize.w = E.ob.offsetWidth || 0;
+    this._obSize.h = E.ob.offsetHeight || 0;
+  }
+
   // ================================================================== edge markers
   _buildMarkers() {
     this._mk = [];
@@ -502,15 +859,40 @@ export class HUD {
           <span class="hud-mk-d num"></span>
         </div>`);
       this.el.markers.appendChild(m);
-      this._mk.push({ root: m, arrow: m.querySelector('.hud-mk-arrow'), ico: m.querySelector('.hud-mk-ico'), ring: m.querySelector('.hud-mk-ring .fg'), d: m.querySelector('.hud-mk-d'), kind: '' });
+      this._mk.push({ root: m, disk: m.querySelector('.hud-mk-disk'), arrow: m.querySelector('.hud-mk-arrow'), ico: m.querySelector('.hud-mk-ico'), ring: m.querySelector('.hud-mk-ring .fg'), d: m.querySelector('.hud-mk-d'), kind: '' });
     }
   }
 
   _updateMarkers(g, p, dt) {
     const cam = g.camera;
     const targets = [];
+    const bossLive = g.boss && !g.boss.dead ? g.boss : null;
     // the act boss: edge arrow only while off screen (the boss bar covers the rest)
-    if (g.boss && !g.boss.dead) targets.push({ kind: 'boss', pos: g.boss.pos, y: 2, color: '#e04a3a' });
+    if (bossLive) targets.push({ kind: 'boss', pos: bossLive.pos, y: 2, color: '#e04a3a' });
+    // Rift Obelisks (rise at 0:50): the nearest one is on the approach card instead
+    const obList = g.obelisks?.list;
+    if (obList && g.phase === 'horde') {
+      const remain = ACT_LENGTH - (g.actTime ?? 0);
+      for (const o of obList) {
+        if (!o?.pos || !(o.state === 'idle' || o.state === 'channel') || o === this._ob) continue;
+        const d = OB[o.type] ?? OB.haste;
+        targets.push({
+          kind: `ob-${o.type}`, pos: o.pos, y: 4.4, color: o.def?.color ?? d.color, onScreen: true, label: d.name,
+          sprite: o.def?.icon ?? d.icon, prog: clamp01(o.progress), ring: true,
+          // Haste's marker pulses faster as the 3:00 summon closes in
+          pulse: o.type === 'haste' ? Math.max(0.35, Math.min(1.6, remain / 90)) : 0,
+        });
+      }
+    }
+    // fight objects that ask for it (banners, conduits): steel-white = poise sources; the ring is their HP
+    if (bossLive?.objects) {
+      let n = 0;
+      for (const o of bossLive.objects) {
+        if (!o.marker || o.dead || n >= 4) continue;
+        n++;
+        targets.push({ kind: 'object', pos: o.pos, y: 3.2, color: POISE_STEEL, onScreen: true, label: o.name, prog: o.maxHp > 0 ? clamp01(o.hp / o.maxHp) : 1, ring: true, sprite: 'generator' });
+      }
+    }
     const s = g.world?.shrine;
     if (s?.pos) targets.push({ kind: 'shrine', pos: s.pos, y: 1.6, color: s.color ?? '#c08cff', prog: clamp01(s.progress), onScreen: true });
 
@@ -527,19 +909,26 @@ export class HUD {
     }
 
     const w = window.innerWidth, h = window.innerHeight, u = this._uPx;
-    const bossOn = !!g.boss && !g.boss.dead;
+    const bossOn = !!bossLive;
     const L = 40 * u, R = w - 40 * u;
-    const T = (bossOn ? 150 : 132) * u, B = h - 150 * u;   // excludes the top bar and the action bar
+    const T = (bossOn ? 178 : 132) * u, B = h - 150 * u;   // excludes the top bar and the action bar
     for (let i = 0; i < this._mk.length; i++) {
       const M = this._mk[i], t = targets[i];
       if (!t) { setCls(M.root, 'on', false); continue; }
       if (M.kind !== t.kind) {
         M.kind = t.kind;
-        const [ui, fb] = t.kind === 'boss' ? ['boss', '☠'] : t.kind === 'shrine' ? ['shrine', '⛩'] : t.kind === 'bearer' ? ['chest', '♛'] : ['chest', '▣'];
-        M.ico.innerHTML = icon(ICON.ui(ui), { fallback: fb });
+        const sprite = t.sprite
+          ? icon(ICON.ui(t.sprite))
+          : (() => {
+            const [ui, fb] = t.kind === 'boss' ? ['boss', '☠'] : t.kind === 'shrine' ? ['shrine', '⛩'] : t.kind === 'bearer' ? ['chest', '♛'] : ['chest', '▣'];
+            return icon(ICON.ui(ui), { fallback: fb });
+          })();
+        M.ico.innerHTML = sprite;
         M.root.dataset.kind = t.kind;
       }
       setVar(M.root, '--acc', t.color);
+      setVar(M.disk, '--pulse', t.pulse ? `${t.pulse.toFixed(2)}s` : '0s');
+      setCls(M.root, 'pulse', !!t.pulse);
       _v.set(t.pos.x, t.y, t.pos.z);
       _m.copy(_v).applyMatrix4(cam.matrixWorldInverse);
       const front = _m.z < 0;
@@ -549,10 +938,12 @@ export class HUD {
       if (inside && !t.onScreen) { setCls(M.root, 'on', false); continue; }
       setCls(M.root, 'on', true);
       setCls(M.root, 'edge', !inside);
-      if (t.kind === 'shrine') setAttr(M.ring, 'stroke-dasharray', `${Math.round(t.prog * 100)} 100`);
-      setCls(M.root, 'prog', t.kind === 'shrine' && t.prog > 0);
+      const showRing = t.ring ? true : (t.kind === 'shrine' && t.prog > 0);
+      if (showRing) setAttr(M.ring, 'stroke-dasharray', `${Math.round((t.prog ?? 0) * 100)} 100`);
+      setCls(M.root, 'prog', showRing);
 
       let x = sx, y = sy - 44 * u, ang = 0;
+      let label = t.label ?? '';
       if (!inside) {
         let dx = sx - w / 2, dy = sy - h / 2;
         if (!front) { dx = -dx; dy = -dy; }
@@ -563,8 +954,9 @@ export class HUD {
         x = cx + ux * k; y = cy + uy * k;
         ang = Math.atan2(uy, ux) * 180 / Math.PI;
         const dist = Math.hypot(t.pos.x - p.pos.x, t.pos.z - p.pos.z);
-        setText(M.d, `${Math.round(dist)}m`);
+        label = `${label ? label + ' ' : ''}${Math.round(dist)}m`;
       }
+      setText(M.d, label);
       setCss(M.root, 'transform', `translate3d(${snap(x)}px, ${snap(y)}px, 0)`);
       setCss(M.arrow, 'transform', `rotate(${Math.round(ang)}deg)`);
     }
@@ -600,7 +992,7 @@ export class HUD {
       this._k.buffs = key;
       E.buffs.innerHTML = buffs.map(([id, b]) =>
         `<div class="hud-buff" style="--acc:${b.color ?? 'var(--cf-gilt)'};--el:${b.color ?? 'var(--cf-gilt)'}">
-           <div class="hud-buff-sq">${icon(ICON.buff(id), { fallback: b.icon ?? '◆' })}<i class="hud-buff-sweep"></i></div>
+           <div class="hud-buff-sq">${buffIcon(id, b)}<i class="hud-buff-sweep"></i></div>
            <span class="hud-buff-t num"></span>
          </div>`).join('');
       this._buffRefs = [...E.buffs.children].map((n) => ({ sweep: n.querySelector('.hud-buff-sweep'), t: n.querySelector('.hud-buff-t') }));

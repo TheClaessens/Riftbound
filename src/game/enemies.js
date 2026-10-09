@@ -368,8 +368,10 @@ function moveXZ(e, game, dx, dz, speed, dt) {
 }
 
 // Writes the unit XZ direction from the enemy to the player into out. Returns the distance.
+// Boss adds may carry a goal (design/RAID.md "race adds"): e.goal (Vector3) replaces the player as the
+// chase target, and e.onGoal(game, e) fires once within e.goalR (default 1.6) of it.
 function aimPlayer(e, game, out) {
-  const p = game.player.pos;
+  const p = e.goal ?? game.player.pos;
   const dx = p.x - e.pos.x, dz = p.z - e.pos.z;
   const d = Math.sqrt(dx * dx + dz * dz);
   if (d > 1e-5) out.set(dx / d, 0, dz / d);
@@ -381,8 +383,9 @@ function aimPlayer(e, game, out) {
 // Each behaviour gets mv (status multiplier, 0 = frozen/stunned: no movement, no attacks).
 
 function behaveChase(e, game, dt, mv) {
-  aimPlayer(e, game, _to);
+  const d = aimPlayer(e, game, _to);
   if (mv > 0) moveXZ(e, game, _to.x, _to.z, e.speed * mv, dt);
+  if (e.goal && e.onGoal && d < (e.goalR ?? 1.6)) { const f = e.onGoal; e.onGoal = null; f(game, e); }
 }
 
 // World-space muzzle (creature spec.muzzle = [x, y, z] in model space; default chest height).

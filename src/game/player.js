@@ -61,6 +61,7 @@ export class Player {
     this.traitDamage = 0;             // extra damage multiplier from trait (read by combat)
     this.traitCdr = 0;
     this.relicDmgTaken = 1;
+    this.god = 1;                  // dev / sim damage-taken factor (src/dev/sim.js god option); never touched by relics
     this.adrenalineDur = 3;
     this.secondWind = false;
     this.lastElement = this.cls.element;
@@ -242,7 +243,7 @@ export class Player {
     // Perfect Dodge: anything that would land early in a dash is negated and rewarded.
     if (this.dash.window > 0 && !this.dash.perfectUsed) { this._perfectDodge(source); return; }
     if (this.invuln > 0) return;
-    let dmg = amount * (1 - this.stats.armor) * this.stats.dmgTaken * this.relicDmgTaken;
+    let dmg = amount * (1 - this.stats.armor) * this.stats.dmgTaken * this.relicDmgTaken * this.god;
     // No single hit takes more than HIT_CAP of max HP (Act II War Boar charges took 40-50%).
     dmg = Math.min(dmg, this.stats.maxHp * HIT_CAP);
     if (this.frostArmor > 0) {

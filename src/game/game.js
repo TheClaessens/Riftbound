@@ -16,6 +16,8 @@ import { rollRelics } from './relics.js';
 import { ACTS, ACT_LENGTH, SHIFT_DURATION } from './acts.js';
 import { loadMeta, saveMeta, recordRun, maxTierOf } from './meta.js';
 import { Tutorial } from './tutorial.js';
+import { Encounter } from './encounter.js';
+import { Obelisks } from './obelisks.js';
 
 export const CHAIN_WINDOW = 2.5;
 const RESONANCE_CHAIN_WINDOW = 4;   // Arcanist: the Chain holds longer
@@ -58,6 +60,8 @@ export class Game {
     this.vfx = new VFX(this);   // world-grounded spell VFX (src/game/vfx/): particles, debris, shells, decals, ribbons, clouds, status overlays
     this.world = new World(this);
     this.pickups = new Pickups(this);
+    this.encounter = new Encounter(this);   // boss encounters (design/RAID.md)
+    this.obelisks = new Obelisks(this);     // Rift Obelisks: risk/reward boss summoning
     this.player = null;
     this.spawner = new Spawner(this);
     this.ui = new UI(this);
@@ -115,6 +119,7 @@ export class Game {
     this.chain = 0; this._lastReactionT = -99;
     this.pendingLevelUps = 0;
     this.pendingChests = 0;
+    this.chestQueue = [];
     this.world.setBiome?.(ACTS[0].id, true);
     this.player = new Player(this, classId);
     this.spawner.reset();
@@ -148,6 +153,7 @@ export class Game {
     const res = recordRun(this.meta, {
       kills: s.kills, actsReached: this.act + 1, bossesKilled: s.bossesKilled, maxChain: s.maxChain,
       victory: s.victory, tier: this.tier, wardenKilled: s.bossesKilled > 0,
+      bonusShards: s.obeliskShards ?? 0,   // Rift Obelisk payouts (obelisks.js; capped in meta.recordRun)
     });
     s.shardsEarned = res.shards;
     s.unlocks = res.unlocks;
@@ -192,6 +198,8 @@ export class Game {
     this.creatures.clear();
     this.player?.dispose(); this.player = null;
     this.boss = null;
+    this.encounter.reset();
+    this.obelisks.reset?.();
     this.state = 'title';
     this.world.setBiome?.(ACTS[0].id, true);
     this.ui.showTitle?.();
@@ -288,7 +296,7 @@ export class Game {
     let best = null, bd = maxRange * maxRange;
     const list = isFinite(maxRange) ? this.queryEnemies(pos, maxRange, this._nearTmp ??= []) : this.enemies;
     for (const e of list) {
-      if (e.dead || e.inert || (exclude && exclude.has?.(e))) continue;
+      if (e.dead || (e.inert && !e.targetable) || (exclude && exclude.has?.(e))) continue;
       const dx = e.pos.x - pos.x, dz = e.pos.z - pos.z, d = dx * dx + dz * dz;
       if (d < bd) { bd = d; best = e; }
     }
@@ -315,6 +323,8 @@ export class Game {
       if (this.state === 'playing') {
         if (!this.tutorial.holdClock) this.actTime += dt;   // the Rift Primer holds the act clock
         this.spawner.update(dt);
+        this.obelisks.update(dt);
+        this.encounter.update(dt);
       } else this._updateShift(dt);
       if (this.chain > 0 && this.time - this._lastReactionT > this.chainWindow) {
         this.events.emit('chainEnd', { chain: this.chain });
@@ -368,7 +378,7 @@ export class Game {
       this.fx.updateTexts(0);
     }
 
-    const followTarget = this.player ? this.player.pos : _origin;
+    const followTarget = this.player ? this.encounter.cameraTarget(this.player.pos, _camT) : _origin;
     this.engine.follow(followTarget, realDt, input.wheel);
     this.engine.update?.(realDt, this);
     this.tutorial.update(realDt);
@@ -407,10 +417,14 @@ export class Game {
   }
 
   // Called by pickups when a Relic Chest is collected.
-  queueChest() { this.pendingChests++; }
+  // spec (boss chests, design/RAID.md): { extra: +choices, bossRelics: n guaranteed boss-tag slots,
+  //   pool: 'boss' (boss relics only), choices: n (overrides) }
+  queueChest(spec = null) { this.pendingChests++; (this.chestQueue ??= []).push(spec ?? {}); }
 
   _openChest() {
-    const relics = rollRelics(this, this.player.stats.chestChoices);
+    const spec = this.chestQueue?.shift() ?? {};
+    const n = spec.choices ?? this.player.stats.chestChoices + (spec.extra ?? 0);
+    const relics = rollRelics(this, n, spec);
     if (!relics.length) { this.pendingChests--; this.player.heal(this.player.stats.maxHp * 0.5); return; }
     this.state = 'relic';
     this.events.emit('chestOpened', { relics });
@@ -424,6 +438,7 @@ export class Game {
 }
 
 const _origin = new THREE.Vector3();
+const _camT = new THREE.Vector3();
 
 // stats.hurt: the death recap's data (contract: design/playtest/round-1/NEXT.md §Death recap)
 //   by:     { [sourceName]: { dmg, hits, hows: { [how]: dmg } } }   whole run

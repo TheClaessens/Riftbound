@@ -72,10 +72,14 @@ export function applyStatus(game, enemy, element, power = 1) {
       break;
     }
     case 'frost': {
-      if (s.frozen > 0) { s.frozen = Math.max(s.frozen, 0.6); break; }
+      // Bosses: a freeze is never refreshed, and after one they can't be frozen again for
+      // BOSS_FREEZE_IMMUNE s (chained re-freezes used to lock a boss's whole script; v5 playtest).
+      if (s.frozen > 0) { if (!enemy.boss) s.frozen = Math.max(s.frozen, 0.6); break; }
       s.chill = Math.min(st.freezeAt, s.chill + Math.max(1, Math.round(power)) * bossRes * res);
       s.chillT = 3;
+      if (enemy.boss && enemy.freezeImmuneT > 0) { s.chill = Math.min(s.chill, st.freezeAt - 1); break; }
       if (s.chill >= st.freezeAt) {
+        if (enemy.boss) enemy.freezeImmuneT = BOSS_FREEZE_IMMUNE;
         s.frozen = (enemy.boss ? 0.6 : 1.6) * res;
         s.chill = 0;
         frozenFx(game, enemy);
@@ -91,8 +95,14 @@ export function applyStatus(game, enemy, element, power = 1) {
 
 export function stunEnemy(enemy, dur) {
   if (enemy.inert) return;
+  if (enemy.boss) {
+    if (enemy.stunImmuneT > 0) return;
+    enemy.stunImmuneT = BOSS_STUN_IMMUNE;
+  }
   enemy.status.stun = Math.max(enemy.status.stun, enemy.boss ? Math.min(0.3, dur) : dur);
 }
+const BOSS_FREEZE_IMMUNE = 4;    // s after a boss freeze before it can freeze again
+const BOSS_STUN_IMMUNE = 1.5;    // s between boss stuns
 
 // Deal damage to an enemy. Returns damage dealt.
 // opts: element, knockback (impulse), dir (Vector3 XZ, push direction; defaults away from player),
@@ -100,6 +110,8 @@ export function stunEnemy(enemy, dur) {
 //       noCrit, silent (no number)
 export function damageEnemy(game, enemy, amount, opts = {}) {
   if (!enemy || enemy.dead) return 0;
+  // Boss encounters (design/RAID.md): untargetable bodies (intermissions) take nothing.
+  if (enemy.untargetable) return 0;
   const p = game.player;
   const st = p.stats;
   const element = opts.element ?? 'physical';
@@ -118,7 +130,10 @@ export function damageEnemy(game, enemy, amount, opts = {}) {
   if (s.shock > 0) dmg *= 1 + st.shockAmp;
   if (s.stun > 0) dmg *= 1.25;
   if (s.frozen > 0 && p.traitId === 'permafrost') dmg *= 1.35;
-  if (enemy.resist?.[element] !== undefined) dmg *= enemy.resist[element];
+  if (enemy.resist?.[element] !== undefined && !(element === 'fire' && st.ignoreFireResist > 0)) dmg *= enemy.resist[element];
+  // Boss encounters: Exposed / Downed / generator damage reduction (takenMult) and the Downed bonus.
+  if (enemy.takenMult !== undefined) dmg *= enemy.takenMult;
+  if (enemy.downed) dmg *= 1 + st.downedDmg;
 
   // ---- reactions / statuses ----
   let reacted = null;
@@ -148,6 +163,11 @@ export function damageEnemy(game, enemy, amount, opts = {}) {
     if (enemy.barrier <= 0) barrierBreakFx(game, enemy);
   }
 
+  // Phase gates: a boss can't be pushed past its current gate (hpFloor) until its intermission ends.
+  if (enemy.hpFloor !== undefined && enemy.hp - dmg < enemy.hpFloor) {
+    dmg = Math.max(0, enemy.hp - enemy.hpFloor);
+    enemy.onGate?.(game);
+  }
   enemy.hp -= dmg;
   enemy.flash?.();
   if (!enemy.inert) game.stats.damageDealt += dmg;
@@ -183,7 +203,7 @@ export function killEnemy(game, enemy) {
   game.pickups.spawnXP(enemy.pos, xp);
   // Relic Chests: bosses, Elite Surge's Relic Bearer, and 6% of random elites (~7 per run).
   const chest = enemy.boss || enemy.dropsChest || (enemy.elite && enemy.dropsChest === undefined && Math.random() < 0.06);
-  if (chest) game.pickups.spawn('chest', enemy.pos);
+  if (chest) game.pickups.spawn('chest', enemy.pos, enemy.chestSpec);
   if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.25 : 0.01)) game.pickups.spawn('health', { x: enemy.pos.x + 1, z: enemy.pos.z });
   if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.12 : 0.0025)) game.pickups.spawn('magnet', { x: enemy.pos.x - 1, z: enemy.pos.z });
   killFx(game, enemy);
@@ -295,6 +315,8 @@ function triggerReaction(game, enemy, type, opts, isEcho = false) {
 // Tick statuses. Returns movement multiplier (0 when frozen or stunned).
 export function updateStatuses(game, enemy, dt) {
   const s = enemy.status;
+  if (enemy.freezeImmuneT > 0) enemy.freezeImmuneT -= dt;
+  if (enemy.stunImmuneT > 0) enemy.stunImmuneT -= dt;
   if (s.reactCd > 0) s.reactCd -= dt;
   if (s.burn > 0) {
     s.burn -= dt;

@@ -73,4 +73,6 @@ export const BASE_STATS = {
   overloadRadius: 1, overloadStun: 0,
   // misc (relics / buffs)
   dashCdr: 0, echo: 0, reactionEcho: 0, chestChoices: 3, reactionXp: 1, dmgTaken: 1,
+  // boss encounters (v5, design/RAID.md): Poise gain multiplier, bonus damage vs a Downed boss, ignore fire resist (0/1)
+  poiseGain: 1, downedDmg: 0, ignoreFireResist: 0,
 };

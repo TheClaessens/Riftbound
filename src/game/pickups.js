@@ -65,7 +65,7 @@ export class Pickups {
     });
   }
 
-  spawn(type, pos) {
+  spawn(type, pos, spec = null) {
     let mesh;
     if (type === 'health') {
       mesh = new THREE.Group();
@@ -98,7 +98,7 @@ export class Pickups {
     }
     mesh.position.set(pos.x, 0.7, pos.z);
     this.game.scene.add(mesh);
-    this.items.push({ type, pos: new THREE.Vector3(pos.x, 0, pos.z), mesh, t: 0, attracted: false, speed: 0 });
+    this.items.push({ type, pos: new THREE.Vector3(pos.x, 0, pos.z), mesh, t: 0, attracted: false, speed: 0, spec });
   }
 
   // Flat shadow blob on the ground under a floating item (items hover at y = 0.7).
@@ -182,7 +182,7 @@ export class Pickups {
       it.mesh.position.x = it.pos.x; it.mesh.position.z = it.pos.z;
       if (d < 0.7) {
         if (it.type === 'chest') {
-          this.game.queueChest();
+          this.game.queueChest(it.spec);
           this.game.fx.ring(p.pos, { color: 0xffc340, radius: 3, life: 0.5 });
           this.game.fx.burst(p.pos, { color: 0xffc340, count: 24, speed: 5, life: 0.6, up: 2 });
         } else if (it.type === 'health') { p.heal(p.stats.maxHp * 0.3); this.game.fx.burst(p.pos, { color: 0xff3355, count: 16, speed: 3, life: 0.6, up: 2 }); }
