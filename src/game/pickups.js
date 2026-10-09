@@ -154,7 +154,7 @@ export class Pickups {
       this._m.compose(this._p, this._q, this._s);
       this.inst.setMatrixAt(n, this._m);
       // small blue, big gold, huge white-hot (HDR, blooms). Green/pink read as grass / hostile bullets.
-      this.inst.setColorAt(n, huge ? this._c.set(0xffffff).multiplyScalar(1.7) : this._c.set(big ? 0xffc83a : 0x4fb8ff));
+      this.inst.setColorAt(n, huge ? this._c.set(0xffffff).multiplyScalar(1.7) : this._c.set(big ? 0xc08cff : 0x4fb8ff));
       this._m.compose(this._bp.set(s.pos.x, 0.03, s.pos.z), this._qId, this._bs.setScalar(0.2 * sc));
       this.blobs.setMatrixAt(n, this._m);
       n++;

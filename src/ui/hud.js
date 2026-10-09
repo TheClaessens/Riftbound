@@ -43,7 +43,8 @@ const CHAIN_WHITE = [255, 255, 255], CHAIN_AMBER = [224, 160, 48];
 const RIBBON_LEAD = 10;      // seconds of "Elite Surge in 0:08" before a beat
 const RIBBON_HOLD = 3;       // seconds the beat name stays after it lands
 const MARKERS = 12;          // pooled edge markers (boss + 3 obelisks + 3 fight objects + shrine + bearer + chests)
-const RECOVER_TIME = 8;      // BossBase poise lock after a Downed (core.js RECOVER_TIME)
+const PTRS = 8;              // pooled off-screen objective pointers (boss.objectives)
+const RECOVER_TIME = 8;     // BossBase poise lock after a Downed (core.js RECOVER_TIME)
 const OB_NEAR = 10;          // world units: the approach card appears inside this radius (hysteresis +2)
 const HEAT_MAX = 3;
 // Obelisk identity: colour + icon + label (never colour alone).
@@ -88,6 +89,7 @@ const TEMPLATE = `
   <div class="hud-vig" data-ref="vig"></div>
   <div class="hud-vig-hit" data-ref="vigHit"></div>
   <div class="hud-markers" data-ref="markers"></div>
+  <div class="hud-markers hud-ptrs" data-ref="ptrs"></div>
 
   <div class="hud-top" data-ref="top">
     <div class="hud-act cf-plate flat" data-ref="act">
@@ -142,6 +144,7 @@ const TEMPLATE = `
         <span class="hud-boss-tail"></span>
       </div>
       <div class="hud-boss-affixes" data-ref="affixes"></div>
+      <div class="hud-boss-note cf-plate" data-ref="bossNote"></div>
       <div class="hud-cast cf-plate" data-ref="cast">
         <div class="hud-cast-head">
           <span class="hud-cast-ico">${icon(ICON.ui('breakCheck'))}</span>
@@ -203,6 +206,7 @@ const TEMPLATE = `
               <div class="cf-bar-track"><i class="cf-bar-ghost"></i><i class="cf-bar-fill"></i><i class="cf-bar-shield"></i><i class="cf-bar-ticks" style="--n:4"></i><i class="hud-bar-flash"></i><i class="hud-hp-low"></i></div>
             </div>
             <div class="hud-xp"><i data-ref="xpFill"></i></div>
+            <span class="hud-hp-fl" data-ref="hpFl"></span>
           </div>
           <div class="hud-hpnum"><span class="num hud-hp-n" data-ref="hpN"></span><span class="num hud-sh-n" data-ref="shN"></span></div>
         </div>
@@ -282,6 +286,7 @@ export class HUD {
     this._buildTimeline();
     this._buildSlots();
     this._buildMarkers();
+    this._buildPointers();
 
     this.hpMeter = new Meter(E.hp);
     this.bossMeter = new Meter(E.bossBar, { hold: 0.45, rate: 5 });
@@ -317,6 +322,8 @@ export class HUD {
       if (success) flash(E.poiseFlash, [{ opacity: 1 }, { opacity: 0 }], { duration: 520 }, 0);
       if (enemy === this.game.boss) this._verdict = { t: 1.5, success: !!success, name };   // shown INSIDE the cast bar, never centre
     });
+    // v5.2 earned sustain: each phase gate tops you up (+12% max HP): pulse the player HP and note it on the boss frame
+    on('bossGateHeal', (e) => this._onGateHeal(e));
     on('obelisksRisen', () => { this._ribbon = { kind: 'obelisks', text: 'The Rift offers', t: 4 }; });
     on('obeliskArmed', ({ type }) => { this._armPop = type; this._k.armed = null; });
     on('encounterStart', () => { this._k.armed = null; });
@@ -383,6 +390,7 @@ export class HUD {
     this._updateCluster(g, p, dt, live);
     this._updateObelisks(g, p, dt);
     this._updateMarkers(g, p, dt);
+    this._updatePointers(g);
     this._updateRelics(p);
     this._updateBuffs(p);
     this._updateVitals(p, gdt);
@@ -606,7 +614,7 @@ export class HUD {
       else {
         fill = P.v / cap;
         mode = inter ? 'off' : check ? 'check' : 'idle';
-        label = check ? `stagger ${Math.round(P.threshold)}` : 'stagger';
+        label = check ? `break ${Math.round(clamp01(P.threshold / cap) * 100)}%` : 'stagger';   // % of the bar, never the absolute number
       }
       setScaleX(E.poiseFill, fill);
       const pc = E.poise;
@@ -651,11 +659,13 @@ export class HUD {
     setCls(E.cast, 'ok', !!V?.success);
     setCls(E.cast, 'fail', !!V && !V.success);
     if (c) {
-      const key = `${c.name}|${c.check ? c.threshold : 0}`;
+      const capC = Math.max(1, (b.poise?.max ?? 100) * (b.poise?.mult || 1));
+      const thPct = c.check ? Math.round(clamp01(c.threshold / capC) * 100) : 0;
+      const key = `${c.name}|${thPct}`;
       if (this._k.cast !== key) {
         this._k.cast = key;
         setText(E.castName, c.name);
-        setText(E.castTag, c.check ? `break it — stagger ${Math.round(c.threshold)}` : '');
+        setText(E.castTag, c.check ? `break it — ${thPct}% of the bar` : '');
         setCls(E.cast, 'check', !!c.check);
       }
       setScaleX(E.castFill, c.dur > 0 ? c.t / c.dur : 0);
@@ -946,7 +956,7 @@ export class HUD {
     if (bossLive?.objects) {
       let n = 0;
       for (const o of bossLive.objects) {
-        if (!o.marker || o.dead || n >= 4) continue;
+        if (!o.marker || o.dead || n >= 4 || bossLive.objectives?.has?.(o)) continue;   // objectives get a coloured pointer instead
         n++;
         targets.push({ kind: 'object', pos: o.pos, y: 3.2, color: POISE_STEEL, onScreen: true, label: o.name, prog: o.maxHp > 0 ? clamp01(o.hp / o.maxHp) : 1, ring: true, sprite: 'generator' });
       }
@@ -1017,6 +1027,80 @@ export class HUD {
       setText(M.d, label);
       setCss(M.root, 'transform', `translate3d(${snap(x)}px, ${snap(y)}px, 0)`);
       setCss(M.arrow, 'transform', `rotate(${Math.round(ang)}deg)`);
+    }
+  }
+
+  // ================================================================== objective pointers (v5.2 C4)
+  // boss.objectives (core.js markObjective): runners, banners, pods, conduits, the wyvern. One pooled arrow per
+  // objective, drawn in its mark colour at the viewport edge only while the objective is off screen.
+  _buildPointers() {
+    this._ptr = [];
+    this._ptrOn = 0;
+    for (let i = 0; i < PTRS; i++) {
+      const n = el('<div class="hud-ptr"><i class="hud-ptr-a"></i></div>');
+      this.el.ptrs.appendChild(n);
+      this._ptr.push({ root: n, arrow: n.firstElementChild, c: null, on: false });
+    }
+  }
+
+  _updatePointers(g) {
+    const objs = g.boss && !g.boss.dead ? g.boss.objectives : null;
+    let used = 0;
+    if (objs && objs.size) {
+      const cam = g.camera;
+      const w = window.innerWidth, h = window.innerHeight, u = this._uPx;
+      const L = 40 * u, R = w - 40 * u, T = 140 * u, B = h - 150 * u;   // same safe rect as the edge markers
+      const cx = w / 2, cy = (T + B) / 2;
+      for (const e of objs) {
+        if (used >= PTRS) break;
+        if (!e || e.dead || !e.pos) continue;
+        _v.set(e.pos.x, 1.2, e.pos.z);
+        _m.copy(_v).applyMatrix4(cam.matrixWorldInverse);
+        const front = _m.z < 0;
+        _m.copy(_v).project(cam);
+        const sx = (_m.x * 0.5 + 0.5) * w, sy = (-_m.y * 0.5 + 0.5) * h;
+        if (front && sx >= L && sx <= R && sy >= T && sy <= B) continue;   // on screen: its ground ring is enough
+        let dx = sx - cx, dy = sy - cy;
+        if (!front) { dx = -dx; dy = -dy; }
+        if (dx === 0 && dy === 0) dy = -1;
+        const len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
+        const k = Math.min(ux ? ((ux > 0 ? R : L) - cx) / ux : Infinity, uy ? ((uy > 0 ? B : T) - cy) / uy : Infinity);
+        const P = this._ptr[used++];
+        const col = e.objective?.color ?? e._mark?.color ?? e.markColor ?? 0xff9a3c;
+        if (P.c !== col) { P.c = col; setVar(P.root, '--acc', typeof col === 'number' ? `#${col.toString(16).padStart(6, '0')}` : String(col)); }
+        if (!P.on) { P.on = true; setCls(P.root, 'on', true); }
+        setCss(P.root, 'transform', `translate3d(${snap(cx + ux * k)}px, ${snap(cy + uy * k)}px, 0)`);
+        setCss(P.arrow, 'transform', `rotate(${Math.round(Math.atan2(uy, ux) * 180 / Math.PI)}deg)`);
+      }
+    }
+    for (let i = used; i < this._ptrOn; i++) { const P = this._ptr[i]; if (P.on) { P.on = false; setCls(P.root, 'on', false); } }
+    this._ptrOn = used;
+  }
+
+  // ================================================================== earned heals (v5.2 C5)
+  _onGateHeal({ amount } = {}) {
+    const E = this.el;
+    const pctTxt = `+${Math.round(((amount ?? 0) / Math.max(1, this.game.player?.stats.maxHp ?? 1)) * 100) || 12}% HP`;
+    this._clBoost = Math.max(this._clBoost, 1.6);
+    const host = E.hpFl;
+    if (host?.animate) {
+      const s = document.createElement('span');
+      s.textContent = pctTxt;
+      host.appendChild(s);
+      const done = () => s.remove();
+      const a = s.animate([{ opacity: 0, transform: 'translate(-50%, 6px)' }, { opacity: 1, transform: 'translate(-50%, -6px)', offset: 0.18 }, { opacity: 1, transform: 'translate(-50%, -22px)', offset: 0.7 }, { opacity: 0, transform: 'translate(-50%, -34px)' }], { duration: 1500, easing: 'ease-out' });
+      a.onfinish = done;
+      setTimeout(done, 1700);
+      while (host.children.length > 2) host.firstElementChild.remove();
+    }
+    flash(E.hp, [{ filter: 'brightness(1.9) saturate(1.2)' }, { filter: 'none' }], { duration: 520, easing: 'ease-out' }, 0);
+    const note = E.bossNote;
+    if (note?.animate) {
+      setText(note, `phase cleared · you recover ${pctTxt.slice(1)}`);
+      setCls(note, 'on', true);
+      clearTimeout(this._noteT);
+      this._noteT = setTimeout(() => setCls(note, 'on', false), 2400);
+      flash(note, [{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none', offset: 0.14 }, { opacity: 1, offset: 0.82 }, { opacity: 0 }], { duration: 2400, easing: 'ease-out' }, 0);
     }
   }
 

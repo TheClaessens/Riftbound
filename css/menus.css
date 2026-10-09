@@ -679,6 +679,24 @@
 .mn-tip .ico { flex: none; width: round(calc(30 * var(--u)), 2px); height: round(calc(30 * var(--u)), 2px); }
 .mn-tip b { margin-right: calc(8 * var(--u)); font: 800 calc(16 * var(--u)) / 1 var(--font-label); letter-spacing: .06em; text-transform: lowercase; color: var(--cf-gilt); }
 
+/* "Your bets" (v5.2): one compact row inside the recap plate when you fell in a boss fight */
+.mn-bets { display: flex; align-items: center; flex-wrap: wrap; gap: calc(8 * var(--u)) calc(22 * var(--u)); margin-top: calc(10 * var(--u)); padding-top: calc(10 * var(--u)); border-top: 1px solid var(--cf-bronze-lo); box-shadow: 0 -1px 0 rgb(236 217 166 / .07); }
+.mn-bets-h { display: flex; align-items: baseline; gap: calc(10 * var(--u)); font: 700 calc(21 * var(--u)) / 1 var(--font-head); color: var(--cf-gilt); white-space: nowrap; }
+.mn-bets-h > span { font: 600 calc(17 * var(--u)) / 1 var(--font-body); color: var(--cf-dim); }
+.mn-bets-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(8 * var(--u)) calc(16 * var(--u)); flex: 1 1 auto; min-width: 0; }
+.mn-bet { display: inline-flex; align-items: center; gap: calc(8 * var(--u)); --acc: var(--cf-gilt); }
+.mn-bet > .ico { flex: none; width: round(calc(28 * var(--u)), 2px); height: round(calc(28 * var(--u)), 2px); }
+.mn-bet .ico-glyph { color: var(--acc); }
+.mn-bet-t { display: inline-flex; align-items: baseline; gap: calc(8 * var(--u)); white-space: nowrap; }
+.mn-bet-t > b { font: 700 calc(19 * var(--u)) / 1 var(--font-head); color: var(--acc); }
+.mn-bet-t > em { font: italic 500 calc(15 * var(--u)) / 1 var(--font-body); color: var(--cf-dim); }
+.mn-bet.none { font: italic 500 calc(17 * var(--u)) / 1 var(--font-body); color: var(--cf-dim); }
+.mn-bet-hp, .mn-bet-lost { display: inline-flex; align-items: center; gap: calc(8 * var(--u)); white-space: nowrap; font: 600 calc(16 * var(--u)) / 1 var(--font-body); color: var(--cf-dim); }
+.mn-bet-hp > b, .mn-bet-lost > b { font-size: calc(21 * var(--u)); color: var(--cf-text); }
+.mn-bet-bar { position: relative; width: calc(90 * var(--u)); height: round(calc(8 * var(--u)), 2px); background: #120f1c; box-shadow: 0 0 0 1px var(--cf-void); }
+.mn-bet-bar > i { position: absolute; inset: 0; transform-origin: 0 50%; background: var(--hp); }
+.mn-bet-lost > .ico { flex: none; width: round(calc(22 * var(--u)), 2px); height: round(calc(22 * var(--u)), 2px); }
+
 /* the death screen carries one more plate: tighten the stack so it still fits 720p without scrolling */
 .mn-end.is-death .mn-end-wrap { gap: calc(14 * var(--u)); padding-block: calc(18 * var(--u)); }
 .mn-end.is-death .mn-end-hero { font-size: calc(60 * var(--u)); margin-top: calc(4 * var(--u)); -webkit-text-stroke-width: calc(6 * var(--u)); }

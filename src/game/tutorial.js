@@ -81,6 +81,9 @@ export class Tutorial {
       else this.tip('downed', 'The boss is <b>Downed</b>!', 'Reactions, freezes and perfect dodges fill its <b style="color:#e8eef8">Stagger</b> bar. A full bar drops it for a few seconds: hit it hard.');
     });
     on('breakCheck', () => this.tip('breakcheck', '<b>Break Check!</b> Fill the <b style="color:#e8eef8">STAGGER</b> bar to the marker before the cast ends, or it lands.'));
+    // v5.2 earned sustain (one-time each): the phase-gate top-up and Echo's Rift Mend
+    on('bossGateHeal', () => this.tip('gateheal', 'Each phase you clear <b>restores some HP</b>.', 'Fodder that pours in drops health orbs.'));
+    on('echoMend', () => this.tip('riftmend', '<b style="color:#b9a4ff">Rift Mend</b>: you healed 20% and your dash refilled before the Echo rises.'));
     on('actStart', ({ act }) => {
       if (act === 1) this.tip('act2', 'The orcs of the Barrens <b>resist Fire</b> (50%).', `Lean on reactions and other elements. Red rings with glowing cracks erupt as geysers: step out.`, CARD_DELAY);
       if (act === 2) this.tip('act3', 'Some foes carry a <b>Prism Ward</b> &mdash; immune to one element.', 'Any reaction on a warded foe shatters its ward. Mind the lightning circles.', CARD_DELAY);

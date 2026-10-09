@@ -20,6 +20,7 @@ import { REACTION_FX, frozenFx, burnTickFx, wardBreakFx, barrierBreakFx, killFx 
 //    enemy.ward   = 'fire'|...      immune to that element; any reaction on it breaks the ward
 //    enemy.barrier                  points absorbed before HP
 //    enemy.inert                    world objects (geodes): no status, no XP / kills, onDeath()
+//    enemy.orbChance                (number) health-orb drop chance on kill; replaces the 1% / 25% default (boss fodder)
 // =====================================================================================
 
 export const REACTIONS = {
@@ -204,7 +205,8 @@ export function killEnemy(game, enemy) {
   // Relic Chests: bosses, Elite Surge's Relic Bearer, and 6% of random elites (~7 per run).
   const chest = enemy.boss || enemy.dropsChest || (enemy.elite && enemy.dropsChest === undefined && Math.random() < 0.06);
   if (chest) game.pickups.spawn('chest', enemy.pos, enemy.chestSpec);
-  if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.25 : 0.01)) game.pickups.spawn('health', { x: enemy.pos.x + 1, z: enemy.pos.z });
+  // enemy.orbChance (boss fodder, v5.2) replaces the default 1% / 25% health-orb roll
+  if (Math.random() < (typeof enemy.orbChance === 'number' ? enemy.orbChance : enemy.boss ? 1 : enemy.elite ? 0.25 : 0.01)) game.pickups.spawn('health', { x: enemy.pos.x + 1, z: enemy.pos.z });
   if (Math.random() < (enemy.boss ? 1 : enemy.elite ? 0.12 : 0.0025)) game.pickups.spawn('magnet', { x: enemy.pos.x - 1, z: enemy.pos.z });
   killFx(game, enemy);
   enemy.onDeath?.(game);

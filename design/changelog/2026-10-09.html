@@ -117,8 +117,115 @@ td { min-width: 0; }
 <div class="wrap">
   <article class="release">
   <header>
+    <div class="kicker">patch notes · 9 october 2026 · version 5.2</div>
+    <h1>Raid sustain &amp; targeting</h1>
+    <div class="prism" aria-hidden="true"></div>
+    <p class="lede">Boss fights now give some health back, the adds that matter stand out, and auto-cast knows which one to shoot first. Break Checks read more clearly, gold now means only "go here", and every boss brings its minions into the fight. Playtesters' findings from round three shaped each change.</p>
+    <a class="play" href="https://claude.ai/artifact/EB6NLo6nJutTjXVujuf6ng">Play Riftbound</a>
+
+    <div class="highlights">
+      <div class="hl"><b>Health inside the fight</b><span>Minion orbs, a top-up at each phase and a full dash in every intermission.</span></div>
+      <div class="hl"><b>Auto-cast with priorities</b><span>Runners, pods and banners come before the boss.</span></div>
+      <div class="hl"><b>Gold means safe</b><span>Everything to destroy has its own colour now.</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>Health in the fight</h2>
+    <p class="why">Nothing healed you inside a boss arena, so deaths often came after attrition with nothing to fall back on.</p>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>Minions join the fight.</strong> Each phase, a small wave of the boss's minions appears at the arena wall. They give normal XP, and about one in twelve drops a health orb. Waves pause during a Break Check and never come during an intermission.</div></li>
+      <li><span class="tag new">new</span><div><strong>Break Check reward.</strong> Breaking a Break Check sometimes drops a health orb at the boss's feet.</div></li>
+      <li><span class="tag new">new</span><div><strong>Phase top-up.</strong> Clearing an intermission restores 12% of your maximum health.</div></li>
+      <li><span class="tag change">change</span><div><strong>Full dash for every intermission.</strong> You start each intermission with all your dash charges, instead of getting one at the end.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Auto-cast with priorities</h2>
+    <p class="why">Auto-cast kept firing at the boss while its runners healed him, and it ignored the banners and pods that decide a fight.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>With a boss up, auto-cast picks targets in this order: <strong>runners and torchbearers</strong>, then <strong>Rift Crystals</strong> inside the boss's blast, then <strong>pods, banners, conduits and the wyvern</strong>, then minions, and the boss last. Outside boss fights it works as before.</div></li>
+      <li><span class="tag new">new</span><div><strong>Marks on the adds that matter.</strong> Runners and torchbearers glow orange, banners cyan, spore pods lime, conduits violet and the wyvern pale cyan. Each has a ground ring, and most have a line to the boss. An arrow on the screen edge points to any that are off screen.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Gold means go here</h2>
+    <p class="why">Gold was also on things to destroy, which made the safe spots hard to tell apart.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>Conduits, the beam core, the storm ward, tempest strikes and spore pods are no longer gold. Gold stays on safe pockets, shelters, cleanse pools and the gaps in King's Wrath.</div></li>
+      <li><span class="tag change">change</span><div>The big XP gem is violet, and storm's rings are white-blue, so none of them look like safe ground.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Break Checks you can read</h2>
+    <ul class="notes">
+      <li><span class="tag fix">fix</span><div>A Break Check target could read as a number above the top of the bar (171 on a 100 bar). It now shows as a percentage of the bar, such as <span class="quote">break 60%</span>.</div></li>
+      <li><span class="tag change">change</span><div>The target grows by at most 1.5 times within a phase, so a long phase no longer pushes it out of reach.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Intermissions you can survive</h2>
+    <p class="why">Several playtesters lost a lot of health in intermissions. These changes lower the damage without removing the danger.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div><strong>King's Wrath</strong> rings have a gold walk-through gap that follows your side of the arena. Ring damage is lower.</div></li>
+      <li><span class="tag change">change</span><div><strong>Vashkar's lava</strong> lanes are thinner and hit softer. Each intermission has one safe gold pocket, and the whole intermission can take at most 30% of your maximum health.</div></li>
+      <li><span class="tag change">change</span><div><strong>Aurelith's Prism Crash</strong> takes at most 22% of your maximum health.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Steadier fight lengths</h2>
+    <p class="why">Burst builds could skip a boss's script, and single-target builds ran into the soft enrage.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>Each phase lasts at least <strong>12 seconds</strong> for Gorrak, <strong>18</strong> for Vashkar and <strong>30</strong> for Aurelith, counting fight time. Time spent Downed doesn't count.</div></li>
+      <li><span class="tag change">change</span><div>Boss health: <strong>Gorrak 12,000</strong> (was 14,500) and <strong>Vashkar 21,500</strong> (was 24,000).</div></li>
+      <li><span class="tag change">change</span><div>Vashkar's banners shield him 15% each (was 20%), and his soft enrage starts at 115 seconds (was 95).</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Stagger rewards skill</h2>
+    <p class="why">Reactions filled most of the stagger bar, while dodges and crystal blasts barely moved it.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>A perfect dodge or a Rift Crystal blast on a boss now adds <strong>20</strong> Stagger, up from 10.</div></li>
+      <li><span class="tag change">change</span><div>Repeated reactions fade faster, so spamming one kind of reaction fills the bar more slowly.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Obelisks in plain words</h2>
+    <p class="why">Some card text used jargon, and one line seemed to contradict itself.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>Windfall, Strain and Heat are gone from the card text. Haste reads <span class="quote">net −2 levels by the boss</span>, Wrath is tagged <span class="quote">Danger</span> and says the boss gets harder, and the Echo card says you take 10% more damage.</div></li>
+      <li><span class="tag change">change</span><div><strong>Haste</strong> warns you when your health is below 40%: <span class="quote">Low HP: the boss arrives now</span>.</div></li>
+      <li><span class="tag change">change</span><div>In <strong>Act III</strong>, Haste no longer pays a shard bounty, and its card leaves out the chest line.</div></li>
+      <li><span class="tag new">new</span><div>The <strong>Rift Mend</strong> is announced when it starts. You heal 20% and your dash refills before the Echo rises, and the Echo card lists it.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The death screen</h2>
+    <p class="why">The damage list covered the whole run, and the screen never showed what the fight had cost you.</p>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>This fight.</strong> The damage list covers the boss fight you lost, not the whole run.</div></li>
+      <li><span class="tag new">new</span><div><strong>Your bets.</strong> Shows the obelisks you armed, the health you entered the fight with, and the shards you lost.</div></li>
+      <li><span class="tag fix">fix</span><div>The killer's row now matches the fight's damage breakdown.</div></li>
+      <li><span class="tag new">new</span><div>One-time tips for the phase top-up and the Rift Mend.</div></li>
+    </ul>
+  </section>
+
+  </article>
+
+  <div class="earlier" role="separator">earlier release</div>
+
+  <article class="release release-old">
+  <header>
     <div class="kicker">patch notes · 9 october 2026 · version 5</div>
-    <h1>The Rift Obelisks Update</h1>
+    <h2 class="release-title">The Rift Obelisks Update</h2>
     <div class="prism" aria-hidden="true"></div>
     <p class="lede">You now decide when the boss comes and how hard it hits. Each boss fight is now a sealed, three-phase encounter with its own music, mechanics you can read and learn, and a stagger bar that rewards clever play. A panel of playtesters tried it first, and their findings shaped the final tuning below.</p>
     <a class="play" href="https://claude.ai/artifact/EB6NLo6nJutTjXVujuf6ng">Play Riftbound</a>

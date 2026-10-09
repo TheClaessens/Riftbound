@@ -66,7 +66,8 @@ export class HeroModel {
     this._pulse = 0;
     this.time = 0;
     this.root = new THREE.Group();          // non-rig attachments that follow the hero (ground ring + aim notch)
-    this.ring = groundRing(ELEMENT_COLOR[this.element]);
+    // storm's element yellow reads as SAFE_GOLD on the floor: the Stormcaller's ground ring is electric white-blue
+    this.ring = groundRing(this.element === 'storm' ? 0xcfe0ff : ELEMENT_COLOR[this.element]);
     this.notch = this.ring.userData.notch;
     this.root.add(this.ring);
     game.scene.add(this.root);

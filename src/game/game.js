@@ -74,6 +74,7 @@ export class Game {
     this.events.on('levelUp', () => { this.pendingLevelUps++; });
     this.events.on('playerHit', (e) => this._onPlayerHit(e));
     this.events.on('playerDied', () => this._end('dead'));
+    this.events.on('encounterStart', (e) => this._onEncounterStart(e));
     this.events.on('bossSpawned', () => { if (this.phase === 'horde') this.phase = 'boss'; });
     this.events.on('bossKilled', () => this._onBossKilled());
     this.events.on('reaction', (e) => this._onReaction(e));
@@ -107,6 +108,7 @@ export class Game {
     this.pickups.reset();
     this.player?.dispose();
     this.stats = freshStats();
+    this._fight = null;
     this.stats.classId = classId;
     this.stats.tier = this.tier;
     this.run = freshRun(this.meta);
@@ -139,6 +141,42 @@ export class Game {
     if (this.player && this.player.hp <= 0) h.killer = { name, how: how ?? null, dmg: amount };
   }
 
+  // v5.2 death screen: remember what the run had taken and how healthy you were when the boss fight began,
+  // so the recap can show THIS fight's damage and the bets that were riding on it.
+  _onEncounterStart(e) {
+    const by = {};
+    for (const [n, v] of Object.entries(this.stats.hurt.by)) by[n] = { dmg: v.dmg, hits: v.hits, hows: { ...v.hows } };
+    const p = this.player;
+    const eh = e?.entryHp;
+    const entry = typeof eh === 'number' ? eh : eh?.pct ?? (p ? p.hp / Math.max(1, p.stats.maxHp) : 1);
+    this._fight = { by, t: this.time, entryHp: Math.max(0, Math.min(1, entry)), bossId: e?.bossId ?? null, act: e?.act ?? this.act };
+  }
+
+  // stats.fight for the end screen: damage since the snapshot + the stakes riding on the fight (null outside a fight)
+  _fightRecap() {
+    const f = this._fight, enc = this.encounter;
+    if (!f || !enc?.active || enc.state === 'victory' || enc.state === 'idle') return null;
+    const by = {};
+    for (const [n, v] of Object.entries(this.stats.hurt.by)) {
+      const o = f.by[n];
+      const dmg = v.dmg - (o?.dmg ?? 0);
+      if (!(dmg > 0.5)) continue;
+      const hows = {};
+      for (const [h, d] of Object.entries(v.hows ?? {})) {
+        const dd = d - (o?.hows?.[h] ?? 0);
+        if (dd > 0.5) hows[h] = dd;
+      }
+      by[n] = { dmg, hits: v.hits - (o?.hits ?? 0), hows };
+    }
+    const st = this.run?.stakes ?? {};
+    const pay = this.obelisks?._payout ?? {};
+    return {
+      by, entryHp: f.entryHp, bossId: f.bossId, act: f.act, secs: this.time - f.t,
+      stakes: { echo: !!st.echo, heat: st.heat | 0, affixes: [...(st.affixes ?? [])], haste: st.haste ? { skipped: st.haste.skipped | 0 } : null },
+      lost: Math.round((pay.haste || 0) + (pay.echo || 0) + (pay.wrath || 0)),
+    };
+  }
+
   _end(state) {
     if (this.state === 'dead' || this.state === 'victory') return;
     this.state = state;
@@ -149,6 +187,7 @@ export class Game {
     s.time = this.time;
     s.act = this.act;
     s.victory = state === 'victory';
+    s.fight = state === 'dead' ? this._fightRecap() : null;
     s.relics = this.player.relics.map((r) => r.name);
     const res = recordRun(this.meta, {
       kills: s.kills, actsReached: this.act + 1, bossesKilled: s.bossesKilled, maxChain: s.maxChain,

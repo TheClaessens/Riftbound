@@ -76,7 +76,7 @@ export function levelAtXP(cum) {
 export const OBELISK_TYPES = {
   haste: { id: 'haste', name: 'Obelisk of Haste', title: 'Haste', tag: 'Summon now', color: '#bfefff', hex: 0xbfefff, icon: 'obeliskHaste', fallback: '»' },
   echo: { id: 'echo', name: 'Obelisk of Echo', title: 'Echo', tag: 'The boss comes twice', color: '#b08cff', hex: 0xa88cff, accent: 0x4ff0d0, icon: 'obeliskEcho', fallback: '◈' },
-  wrath: { id: 'wrath', name: 'Obelisk of Wrath', title: 'Wrath', tag: 'Heat', color: '#ff7a33', hex: 0xff7a33, icon: 'obeliskWrath', fallback: '♨' },
+  wrath: { id: 'wrath', name: 'Obelisk of Wrath', title: 'Wrath', tag: 'Danger', color: '#ff7a33', hex: 0xff7a33, icon: 'obeliskWrath', fallback: '♨' },
 };
 const TYPE_IDS = ['haste', 'echo', 'wrath'];
 
@@ -717,12 +717,13 @@ export class Obelisks {
       const mult = ACT_MULT[g.act] ?? 1;
       const m = this._hasteMath(ACT_LENGTH - st.haste.skipped, g.act);
       st.chest.extra += 1;                                                    // Quick Chest: 4 relics instead of 3
-      this._payout.haste = Math.round(BOUNTY_PER_S * st.haste.skipped * mult) + (g.act >= 2 ? PERK_SHARDS : 0); // Haste Bounty (paid on victory)
+      // Haste bonus shards (paid on victory); none in the final act
+      this._payout.haste = g.act >= 2 ? 0 : Math.round(BOUNTY_PER_S * st.haste.skipped * mult);
       // Windfall XP: a burst of gems that flies straight to the player (level-up hands follow)
       const n = 6;
       for (let i = 0; i < n; i++) g.pickups.spawnXP(g.player.pos, m.windfall / n);
       g.pickups.magnetAll();
-      g.fx.text(g.player.pos, `WINDFALL +${m.windfall} XP`, '#bfefff', true);
+      g.fx.text(g.player.pos, `+${m.windfall} XP`, '#bfefff', true);
       st.haste.windfall = m.windfall;
     }
   }
@@ -734,9 +735,9 @@ export class Obelisks {
     if (total > 0) {
       g.stats.obeliskShards = (g.stats.obeliskShards ?? 0) + total;
       const lines = [];
-      if (parts.haste) lines.push({ type: 'haste', text: `Haste Bounty +${parts.haste}`, shards: parts.haste });
-      if (parts.echo) lines.push({ type: 'echo', text: `Echo +${parts.echo}`, shards: parts.echo });
-      if (parts.wrath) lines.push({ type: 'wrath', text: `Wrath ${st.heat} +${parts.wrath}`, shards: parts.wrath });
+      if (parts.haste) lines.push({ type: 'haste', text: `Haste bonus +${parts.haste}`, shards: parts.haste });
+      if (parts.echo) lines.push({ type: 'echo', text: `Echo bonus +${parts.echo}`, shards: parts.echo });
+      if (parts.wrath) lines.push({ type: 'wrath', text: `Wrath bonus +${parts.wrath}`, shards: parts.wrath });
       g.events.emit('obeliskPayout', { shards: total, parts, lines });
     }
     this._payout = { haste: 0, echo: 0, wrath: 0 };
@@ -771,16 +772,19 @@ export class Obelisks {
       const m = this._hasteMath();
       const beats = [t < 90 ? 'Elite Surge' : null, t < 135 ? 'Swarm' : null].filter(Boolean);
       const net = Math.abs(m.levelsDelta);
+      const p = this.game.player;
+      const lowHp = !!p && p.stats.maxHp > 0 && p.hp / p.stats.maxHp < 0.4;
       return {
         title: def.name, tag: def.tag, levelsDelta: m.levelsDelta, skipped: m.skipped, windfall: m.windfall,
         cost: [
           m.skipped > 8 ? `Skips ${m.skipped} s of horde${beats.length ? ` (${beats.join(', ')})` : ''}` : 'Skips almost nothing',
-          net > 0 ? `≈ −${net} level${net === 1 ? '' : 's'} after the Windfall` : '≈ no levels lost after the Windfall',
+          net > 0 ? `≈ net −${net} level${net === 1 ? '' : 's'} by the boss` : '≈ no levels lost by the boss',
+          ...(lowHp ? ['Low HP: the boss arrives now'] : []),
         ],
         pay: [
-          `Windfall: +${m.windfall} XP now`,
-          `≈ +${Math.round(BOUNTY_PER_S * m.skipped * mult) + (final ? PERK_SHARDS : 0)} shards`,
-          ...(final ? [perk('Boss chest with 4 relics')] : ['Boss chest: choose from 4 relics instead of 3']),
+          `+${m.windfall} XP right away`,
+          final ? 'No shard bounty in the final act' : `≈ +${Math.round(BOUNTY_PER_S * m.skipped * mult)} shards`,
+          ...(final ? [] : ['Boss chest: choose from 4 relics instead of 3']),
           WIN,
         ],
       };
@@ -788,8 +792,9 @@ export class Obelisks {
     if (type === 'echo') {
       return {
         title: def.name, tag: def.tag,
-        cost: ['Strain: +10% damage taken for the whole fight', 'The boss rises again as an Echo (55% HP, starts at Phase 2)'],
+        cost: ['You take +10% damage for the whole fight', 'The boss rises again as an Echo (55% HP, starts at Phase 2)'],
         pay: [
+          'Before the Echo: heal 20% and refill your dash',
           ...(final ? [perk('Echo Chest: pick 1 of 3 Boss Relics')] : ['Echo Chest: pick 1 of 3 Boss Relics']),
           `≈ +${Math.round(ECHO_SHARDS * mult) + (final ? PERK_SHARDS : 0)} shards`,
           WIN,
@@ -797,21 +802,21 @@ export class Obelisks {
       };
     }
     const heat = o?.heat ?? 0, h = heat + 1;
-    const note = o?.needExit && o.channelling === false && this.game.player && distXZ(this.game.player.pos, o.pos) <= CHANNEL_R ? 'Step out and back in to add more Heat' : null;
-    if (heat >= 3) return { title: def.name, tag: def.tag, heat, cost: ['Heat 3: the sigils are full'], pay: [`≈ +${this._wrathShards(3)} shards in total`, WIN] };
+    const note = o?.needExit && o.channelling === false && this.game.player && distXZ(this.game.player.pos, o.pos) <= CHANNEL_R ? 'Step out and back in to raise it again' : null;
+    if (heat >= 3) return { title: def.name, tag: def.tag, heat, cost: ['Max level reached (3 of 3)'], pay: [`≈ +${this._wrathShards(3)} shards in total`, WIN] };
     const aff = o?.nextAffix ?? AFFIXES[AFFIX_IDS[0]];
     const perkLine = h === 1 ? 'Boss chest: choose from 4 relics instead of 3' : h === 2 ? 'Wrath Cache: +1 rank to a skill you own' : 'Boss chest: one of the choices is a Boss Relic';
     return {
       title: def.name, tag: def.tag, heat, nextAffix: aff, note,
       cost: [
         ...(note ? [note] : []),
-        `Boss affix: ${aff.name} (${aff.desc})`,
+        `Boss gets harder: ${aff.name} (${aff.desc})`,
         ...(h === 2 ? ['Boss HP +15%'] : h === 3 ? ['Boss HP +30%, damage +10%'] : []),
         'Packs converge on you while you channel',
       ],
       pay: [
         perk(perkLine),
-        `≈ ${this._wrathShards(h)} shards in total at Heat ${h}`,
+        `≈ ${this._wrathShards(h)} shards in total at level ${h}`,
         WIN,
       ],
     };

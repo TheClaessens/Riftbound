@@ -27,14 +27,28 @@ import { distXZ, dirXZ } from '../../core/utils.js';
 //  Events: bossTell { kind: combo|charge|overswing|memory|meteor|ashfall|tide|disarmed }.
 // =====================================================================================
 
-// Damage reduction per living War Banner (round 2: 0.25 each doubled fights for players who ignore banners).
-const BANNER_DR = 0.2;
+// Damage reduction per living War Banner (round 2: 0.25 each doubled fights; v5.2: 0.2 -> 0.15, single-target builds soft-enraged on him).
+const BANNER_DR = 0.15;
 const CFG = {
   id: 'vashkar', name: 'Vashkar, the Ashen Warchief', model: VASHKAR_MODEL,
-  hp: 24000, radius: 2.2, speed: 2.1, stopGap: 1.2, resist: { fire: 0.5 }, deathColor: 0xff6a1f,
+  hp: 21500, radius: 2.2, speed: 2.1, stopGap: 1.2, resist: { fire: 0.5 }, deathColor: 0xff6a1f,
   look: { scale: 1.0, glow: [0.25, 0.45, 0.62] },
-  cycle: [1.7, 1.4, 1.1], downed: [4, 5, 6], enrageAt: 95,
+  cycle: [1.7, 1.4, 1.1], downed: [4, 5, 6], enrageAt: 115,   // v5.2: minPhase [18, 18] floors the unenraged script near 80 s
+  // v5.2: wargs and War Boars rise from the wall (never ashHusk: that is the Torchbearer look); the gates hold 24 s per phase.
+  fodder: { types: ['cinderling', 'cinderling', 'magmaRam'], count: [3, 4, 5], every: 20 },
+  minPhase: [18, 18],
 };
+
+// v5.2 intermission lava budget (round 3: 23-80 HP of lava while he was untargetable). Lanes are 25% thinner, hit softer, and
+// one gold safe pocket per intermission is kept clear of every lane. No matter where you stand, the whole intermission
+// (lane telegraph hits + lava ticks) takes at most INT_CAP of max HP: every hit's multiplier is clamped to the room left.
+const INT_CAP = 0.30;
+const LANE_W = 2.25;             // was 3.0
+const TIDE_LANE_W = 2.55;        // was 3.4
+const LANE_DMG = 0.5;            // lane telegraph hit (was 1.2)
+const LAVA_TICK = 0.16;          // lava tick every 0.5 s (was 0.28)
+const POCKET_R = 2.8;            // gold safe pocket (never touched by a lane)
+const BANNER_MARK = 0x7fd8ff;    // banner objective mark (cyan, never gold / red)
 
 const CHARGE_LEN = 26;
 const CHARGE_SPEED = 22;
@@ -152,7 +166,7 @@ class LavaPatch {
     this.a = V3(from.x, from.z); this.b = V3(to.x, to.z);
     this.width = width;
     this.life = life; this.t = 0; this.tickT = 0;
-    this.mult = o.mult ?? 0.28;
+    this.mult = o.mult ?? LAVA_TICK;
     const len = this.a.distanceTo(this.b);
     this.mat = lavaMaterial(game, { mode: 0, size: [width, len] });
     this.mesh = new THREE.Mesh(GEO.plane, this.mat);
@@ -177,7 +191,8 @@ class LavaPatch {
     if (this.tickT <= 0 && !p.dead && this.t > 0.15 && this.t < this.life - 0.4
       && segDist(p.pos.x, p.pos.z, this.a.x, this.a.z, this.b.x, this.b.z) < this.width / 2 + p.radius * 0.4) {
       this.tickT = 0.5;
-      this.boss.hitPlayer(this.mult, 'lava');
+      const m = this.boss._intMult(this.mult);
+      if (m > 0) this.boss.hitPlayer(m, 'lava');
     }
     return this.t < this.life;
   }
@@ -511,6 +526,11 @@ export class Vashkar extends BossBase {
     this._banHide = [false, false];
     this.rim = null;
     this.bannerA0 = Math.random() * Math.PI * 2;
+    this._pocket = null;             // the intermission's gold safe pocket { pos, r }
+    this._intTaken = 0;              // HP the intermission has dealt to the player so far
+    this._offs.push(game.events.on('playerHit', (e) => {
+      if (this.intermissionIdx && e.source === this) this._intTaken += e.amount;
+    }));
     this.moves = {
       combo: () => this.mCombo(),
       charge: () => this.mCharge(false),
@@ -837,6 +857,9 @@ export class Vashkar extends BossBase {
     });
     obj.side = side;
     obj.hpMult = hpMult;
+    obj.autoPriority = 2;            // mechanic object: auto-cast ranks it above fodder (banners are his shield)
+    this.markObjective(obj, { color: BANNER_MARK, tether: true, label: 'War Banner' });
+    B.linkG.visible = false;         // the mark's own tether replaces the banner's old teal link
     this.banners.push({ obj, side });
     this.armor = BANNER_DR * this.banners.length;
     return obj;
@@ -912,6 +935,8 @@ export class Vashkar extends BossBase {
       const fl = new THREE.Mesh(GEO.cone, BM.teal); fl.scale.set(0.2, 0.5, 0.2); fl.position.set(0.5, 1.85, 0.1);
       torch.add(stick, fl);
       e.mesh.add(torch);
+      e.autoPriority = 3;            // goal-seeking add: auto-cast picks it first
+      this.markObjective(e, { color: 0xff9a3c, label: 'Torchbearer' });
       site.adds.push(e);
     }
     g.fx.text({ x: site.pos.x, y: 3.2, z: site.pos.z }, 'TORCHBEARERS', '#1fe0c2', true);
@@ -924,7 +949,33 @@ export class Vashkar extends BossBase {
     this.banners = [];
     for (const s of this.sites) s.marker.dead = true;
     this.sites.length = 0;
+    this._intTaken = 0;
+    this._pocket = null;
     return idx === 1 ? this.ashfall() : this.moltenTide();
+  }
+
+  // Intermission hit multiplier clamped to the room left under INT_CAP (HP -> mult at the player's current mitigation).
+  // Outside an intermission it passes through. `floor` keeps a telegraph hit from becoming a 0 (it chips instead).
+  _intMult(m, floor = 0) {
+    if (!this.intermissionIdx) return m;
+    const p = this.game.player;
+    const room = p.stats.maxHp * INT_CAP - this._intTaken;
+    const per = this.dmg(1) * (1 - p.stats.armor) * p.stats.dmgTaken * p.relicDmgTaken * p.god;
+    if (per <= 0) return m;
+    return Math.max(floor, Math.min(m, room / per));
+  }
+
+  // One gold safe pocket for this intermission, toward the player's side, never touched by a lane (see lane()).
+  safePocket(dist, life) {
+    const g = this.game, c = this.arena.center, pp = g.player.pos;
+    let a = Math.atan2(pp.x - c.x, pp.z - c.z);
+    if (distXZ(pp, c) < 4) a = Math.random() * Math.PI * 2;
+    a += rnd(-0.5, 0.5);
+    const at = V3(c.x + Math.sin(a) * dist, c.z + Math.cos(a) * dist);
+    this._pocket = { pos: at, r: POCKET_R };
+    this.zone(at, 'safe', { radius: POCKET_R, life, tag: 'pocket' });
+    g.fx.text({ x: at.x, y: 1.2, z: at.z }, 'SAFE GROUND', '#ffe9a8', true);
+    return at;
   }
 
   // Intermission 1: plants the axe at the centre; 3 lava lanes follow in shown order, 1.6 s apart.
@@ -962,22 +1013,41 @@ export class Vashkar extends BossBase {
         this.lane(pp, a, lead, i + 1);
       });
     }
-    return t0 + 2 * 1.6 + lead + 1.1;
+    const total = t0 + 2 * 1.6 + lead + 1.1;
+    this.safePocket(8.5, total + 0.4);
+    return total;
   }
 
   // One lava lane across the whole arena through `p`. Telegraph (line w 3) → lava for 3 s.
-  lane(p, ang, lead, n, o = {}) {
-    const g = this.game, c = this.arena.center, R = this.arena.r - 0.8;
+  _laneGeom(p, ang) {
+    const c = this.arena.center, R = this.arena.r - 0.8;
     const d = new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang));
     const w = { x: p.x - c.x, z: p.z - c.z };
     const b = w.x * d.x + w.z * d.z, cc = w.x * w.x + w.z * w.z - R * R;
     const disc = Math.max(0.01, b * b - cc), s = Math.sqrt(disc);
     const t1 = -b - s, t2 = -b + s;
-    const from = V3(p.x + d.x * t1, p.z + d.z * t1), to = V3(p.x + d.x * t2, p.z + d.z * t2);
-    const len = t2 - t1;
-    const width = o.width ?? 3;
+    return { d, from: V3(p.x + d.x * t1, p.z + d.z * t1), to: V3(p.x + d.x * t2, p.z + d.z * t2), len: t2 - t1 };
+  }
+
+  // The lane runs through `p` (where you stand) but never touches the safe pocket: other angles are tried first, and
+  // if you are standing in the pocket the lane slides off to one side of it.
+  lane(p, ang, lead, n, o = {}) {
+    const g = this.game;
+    const width = o.width ?? LANE_W;
+    const pk = this._pocket;
+    const clear = pk ? pk.r + width / 2 + 0.9 : 0;
+    const hits = (q) => pk && segDist(pk.pos.x, pk.pos.z, q.from.x, q.from.z, q.to.x, q.to.z) < clear;
+    let geo = this._laneGeom(p, ang);
+    for (let i = 0; i < 16 && hits(geo); i++) geo = this._laneGeom(p, Math.random() * Math.PI);
+    if (hits(geo)) {
+      const dd = geo.d, side = ((p.x - pk.pos.x) * dd.z - (p.z - pk.pos.z) * dd.x) >= 0 ? 1 : -1;
+      const q = { x: pk.pos.x + dd.z * clear * 1.04 * side, z: pk.pos.z - dd.x * clear * 1.04 * side };
+      geo = this._laneGeom(q, Math.atan2(dd.x, dd.z));
+    }
+    const { d, from, to, len } = geo;
     g.fx.text({ x: from.x + d.x * 2, y: 0.5, z: from.z + d.z * 2 }, String(n), '#ffb040', true);
-    this.line(from, d, len, width, lead, { dmg: o.dmg ?? 1.2, how: o.how ?? 'lava lane', onResolve: () => {
+    const boss = this, base = o.dmg ?? LANE_DMG;
+    this.line(from, d, len, width, lead, { get dmg() { return boss._intMult(base, 0.02); }, how: o.how ?? 'lava lane', onResolve: () => {
       if (o.meteors) { this.laneMeteors(from, d, len); return; }
       this.own(new LavaPatch(this, from, to, width, 3.4));
       flameLicks(g, V3((from.x + to.x) / 2, (from.z + to.z) / 2), 5, 10, 1.2, 4);
@@ -1033,10 +1103,12 @@ export class Vashkar extends BossBase {
     for (let i = 0; i < 4; i++) {
       this.after(t0 + i * 1.1, () => {
         const pp = g.player.pos;
-        this.lane(pp, Math.random() * Math.PI, lead, i + 1, { width: 3.4, dmg: 1.2, how: 'meteor lane', meteors: true });
+        this.lane(pp, Math.random() * Math.PI, lead, i + 1, { width: TIDE_LANE_W, how: 'meteor lane', meteors: true });
       });
     }
-    return t0 + 3 * 1.1 + lead + 0.8;
+    const total = t0 + 3 * 1.1 + lead + 0.8;
+    this.safePocket(8, total + 0.4);   // inside the new r 16 edge, clear of the boss
+    return total;
   }
 
   // ---------------------------------------------------------------- hooks

@@ -578,7 +578,8 @@ export class World {
     scar.position.y = 0.04;
     scar.renderOrder = 1;
 
-    const ringMat = texBlendAdd(this._dashRing, color, { hdr: 1.3, occ: 0.3, opacity: 0.4, depthTest: false });
+    // storm's element yellow reads as SAFE_GOLD on the floor: the dashed blast ring uses electric white-blue instead
+    const ringMat = texBlendAdd(this._dashRing, el === 'storm' ? 0xcfe0ff : color, { hdr: 1.3, occ: 0.3, opacity: 0.4, depthTest: false });
     const ring = new THREE.Mesh(GEO.plane, ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.scale.setScalar(GEODE_BURST_R * 2 * (128 / 120));   // the texture's ring sits at r 120 of 128

@@ -76,7 +76,7 @@ function buildAurelith(pb) {
     F.crystal([0.67 * s, 4.86, 1.78], [0.1 * s, 0.35, -1], 0.11, 0.5, { bone: 'head', color: D.prism, emis: 2.6, trim: true });
     F.spike([0.42 * s, 3.88, 3.05], [s, 0.2, -0.6], 0.08, 0.45, { bone: 'head', color: D.ivory });
     F.spike([0.4 * s, 3.68, 3.25], [s, -0.3, -0.5], 0.07, 0.35, { bone: 'head', color: D.ivory });
-    F.seg([0.36 * s, 4.25, 3.0], [0.75 * s, 4.95, 2.3], 0.08, 0.04, { bone: 'head', color: 0xffc93a, eliteOnly: true });
+    F.seg([0.36 * s, 4.25, 3.0], [0.75 * s, 4.95, 2.3], 0.08, 0.04, { bone: 'head', color: 0xd0b0ff, eliteOnly: true });
   }
   // jaw
   F.box(0.6, 0.22, 1.0, { bone: 'jaw', pos: [0, 3.58, 3.75], taper: [0.9, 0.9], color: D.wine });

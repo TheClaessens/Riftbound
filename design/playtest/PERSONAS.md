@@ -13,6 +13,7 @@ casual and by a hardcore player) is deliberate — disagreement between personas
 | 5 | **Ilse** | Comfort & readability | Readability of chaos at peak density, colour reliance, text legibility, screen shake, performance | `average` | `unlockAll` | Sonnet |
 | 6 | **Dex** | Numbers analyst | Balance: classes, skills, fusions, relics vs DESIGN.md §13 targets; dominant / dead picks | `average` + `expert` (batches) | throwaway | Haiku |
 | 7 | **Sam** | Completionist & lore fan | Meta loop: Sanctum, unlock pacing, codex, discovery, long-term goals; world & flavour text | `average` | fresh save, many runs | Haiku |
+| 8 | **Ola** | Motor accessibility | Input load, auto-cast target choice, timing windows, one-hand play | `casual` + auto-cast | `unlockAll` | Sonnet |
 
 Model rule: Sonnet where judgement of screenshots or "feel" matters; Haiku where the work is
 numeric or text-centric and the brief is exact. No Opus playtesters — the orchestrator (who
@@ -83,3 +84,11 @@ synthesises) is the only top-tier model in the loop.
 - Reads all flavour: relic flavour lines, act/boss names, announcements, end-screen text.
 - Questions: *Is there always a next goal? How long until everything is unlocked? Does the world's text
   feel coherent and evocative?*
+
+## 8. Ola — motor accessibility (added round 3)
+*"I can't flick a mouse. Can the game aim for me, and is everything still possible?"*
+- `unlockAll`, casual hands, plays with the game's **auto-cast** on (`PT.autoCast(true)`); one run without, to compare.
+- Counts what has to be held, timed or aimed at once; judges timing windows, hold-vs-toggle and one-hand play.
+- Cares about: whether auto-cast picks sensible targets (boss vs adds vs objects), whether every mechanic can be
+  completed without precise aim, which assist options exist (auto-cast, remapping) and which are missing.
+- Questions: *What is the minimum input load to succeed? Which mechanic excludes players with limited dexterity?*

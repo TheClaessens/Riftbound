@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { GEO, dirXZ, distXZ } from '../../core/utils.js';
 import { makeStatus, updateStatuses, statusTint, statusLook, damageEnemy } from '../combat.js';
 import { createEnemy } from '../enemies.js';
-import { enemyHpMult, enemyDmgMult } from '../acts.js';
-import { blendAddMaterial, HOSTILE_RED, SAFE_GOLD } from '../fx.js';
+import { ACTS, enemyHpMult, enemyDmgMult } from '../acts.js';
+import { blendAddMaterial, BLEND_ADD, HOSTILE_RED, SAFE_GOLD } from '../fx.js';
 import { AFFIXES } from './affixes.js';
 
 // =====================================================================================
@@ -19,6 +19,17 @@ import { AFFIXES } from './affixes.js';
 //              onClearField(), onDispose()
 //  Everything else (rig + action clock, telegraph shapes with hit resolution, poise/Downed/Break Checks,
 //  phases + gates + intermissions, adds, objects, zones, ring waves, enrage, affixes, echo) lives here.
+//
+//  v5.2 additions (design/playtest/round-3/PLAN-v5.2.md):
+//    cfg.fodder = { types: [typeId], count: [p1, p2, p3], every: s }   phase-scripted fodder waves (BossBase
+//        schedules them; spawnWave({ types, count, ring, orbChance, xp }) spawns one). Fodder live in this.fodder
+//        (NOT this.adds), carry e.isFodder / e.orbChance / e.autoPriority = 1, and pay their XP out on clearField.
+//    cfg.minPhase = [s1, s2]   a gate holds (hp pinned at hpFloor) until the phase ran that many fight-seconds
+//    markObjective(e, { color, tether, label }) / unmarkObjective(e); this.objectives (Set of enemies, each with
+//        e.objective = { color, label }) is what the HUD reads for edge pointers.
+//    ringWave(c, { gap: { angle, width } })  a gold striped walk-through notch in the wave.
+//  Events: bossGateHeal { enemy, amount, pct } (12% max HP at every intermission end; dash refilled at its start),
+//          bossFodder { enemy, wave, count } (a wave was telegraphed), bossBreakOrb { enemy, pos } (30% on a broken check).
 // =====================================================================================
 
 const BLEND = 0.2;            // s: cross-fade when an action interrupts or chains into another
@@ -30,15 +41,22 @@ const RECOVER_TIME = 8;       // poise locked after a Downed
 const DOWNED_TAKEN = 1.4;
 const EXPOSED_TAKEN = 1.2;
 const TEACH = 1.4;            // first use of a mechanic: lead × TEACH
+const POISE_MULT_CAP = 1.5;   // v5.2: the Break Check bar grows at most this much per phase (HUD shows a % of the bar)
+const BREAK_ORB_CHANCE = 0.3; // a broken Break Check drops a health orb this often
+const GATE_HEAL = 0.12;       // max-HP fraction restored when an intermission ends
+const FODDER_LAND_HOLD = 2.5; // no fodder during the landing hold (matches encounter.holdModals)
+const FODDER_TELL = 0.7;      // s of ground dust before a fodder body rises
+const MARK_COLOR = 0xff9a3c;  // objective mark orange (never SAFE_GOLD / HOSTILE_RED)
 
 export const POISE = {
   shatter: 14, steam: 10, overload: 10, combust: 10, superconduct: 8, arcflash: 8,
-  frozen: 6, stunned: 4, perfect: 10, crystal: 10, generator: 15, chainPer: 0.5, chainMax: 5,
+  frozen: 6, stunned: 4, perfect: 20, crystal: 20, generator: 15, chainPer: 0.5, chainMax: 5,
 };
 // Reaction fatigue (playtest round 2: reaction spam kept bosses Downed most of the fight with no dodging
 // involved). Each reaction poise gain is × 1 / (1 + fatigue / FATIGUE_K); fatigue +1 per reaction, decays
-// with FATIGUE_TAU. ~1 reaction/s → ×0.5; 3/s → ×0.25. Skill sources (perfect dodge, crystal, generator) are exempt.
-const FATIGUE_K = 4;
+// with FATIGUE_TAU. ~1 reaction/s → ×0.57; 3/s → ×0.33. Skill sources (perfect dodge, crystal, generator) are exempt.
+// v5.2 (round 3, "lean toward skill"): perfect dodge / Rift Crystal 10 → 20, FATIGUE_K 4 → 3 so spam fades sooner.
+const FATIGUE_K = 3;
 const STATUS_POISE = 1.5;          // per 0.5 s while the boss carries a player status (≈ 3/s)
 const FATIGUE_TAU = 4;
 const REACTION_SRC = new Set(['shatter', 'steam', 'overload', 'combust', 'superconduct', 'arcflash']);
@@ -74,8 +92,47 @@ export function inCone(p, o, d, angle, radius, pad = 0) {
 //  Hostile actors (generic)
 // =====================================================================================
 
+// Ring-wave material with a safe notch: red band everywhere except the gap arc, which shows as a wider gold
+// diagonal-striped lane with bright rails (the same stripe language as the safe-zone decals in fx.js).
+function ringGapMaterial(color, gap) {
+  const u = {
+    uColor: { value: new THREE.Color(color).multiplyScalar(1.9) },
+    uGold: { value: new THREE.Color(SAFE_GOLD).multiplyScalar(1.5) },
+    uOpacity: { value: 0.95 },
+    uGap: { value: new THREE.Vector2(gap.a, gap.w) },
+    uR: { value: 1 },
+  };
+  const m = new THREE.ShaderMaterial({
+    uniforms: u,
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform vec3 uColor; uniform vec3 uGold; uniform float uOpacity; uniform vec2 uGap; uniform float uR;
+      varying vec2 vUv;
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        float rr = length(p);
+        float a = atan(p.x, -p.y);
+        float d = abs(mod(a - uGap.x + 3.14159265, 6.2831853) - 3.14159265);
+        float half_ = uGap.y * 0.5;
+        if (d <= half_) {
+          float st = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 16.0));
+          float rail = 1.0 - step(0.16, (half_ - d) * uR);
+          vec3 c = uGold * mix(0.45 + 0.75 * st, 1.4, rail);
+          gl_FragColor = vec4(c * uOpacity, 0.7 * uOpacity);
+        } else {
+          if (rr < 0.92) discard;
+          gl_FragColor = vec4(uColor * uOpacity, 0.55 * uOpacity);
+        }
+      }`,
+    transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide, ...BLEND_ADD,
+  });
+  Object.defineProperty(m, 'opacity', { get: () => u.uOpacity.value, set: (v) => { u.uOpacity.value = v; }, configurable: true });
+  return m;
+}
+
 // Expanding ring wave: hurts the player once when its band crosses them (dash through it).
-// opts: { speed=9, width=0.8, from=2.6, maxR=18, dmg, how, gaps: [{a, w}] (radians; safe arcs), color }
+// opts: { speed=9, width=0.8, from=2.6, maxR=18, dmg, how, gaps: [{a, w}] (radians; safe arcs, not drawn),
+//   gap: { angle, width, spin? } (v5.2: ONE safe walk-through arc, drawn as a gold striped notch; spin rad/s),
+//   color }
 export class RingWave {
   constructor(boss, center, opts) {
     const game = boss.game;
@@ -90,8 +147,18 @@ export class RingWave {
     this.how = opts.how ?? 'ring';
     this.gaps = opts.gaps ?? null;
     this.hit = false;
-    this.mat = blendAddMaterial(opts.color ?? HOSTILE_RED, { hdr: 1.9, occ: 0.55, opacity: 0.95, side: THREE.DoubleSide, depthTest: false });
-    this.mesh = new THREE.Mesh(boss.ringGeo, this.mat);
+    this.gap = null;
+    if (opts.gap) {
+      this.gap = { a: opts.gap.angle, w: opts.gap.width, spin: opts.gap.spin ?? 0 };
+      this.gaps = [...(this.gaps ?? []), this.gap];
+    }
+    if (this.gap) {
+      this.mat = ringGapMaterial(opts.color ?? HOSTILE_RED, this.gap);
+      this.mesh = new THREE.Mesh(boss.ringGapGeo ??= new THREE.RingGeometry(0.86, 1, 96), this.mat);
+    } else {
+      this.mat = blendAddMaterial(opts.color ?? HOSTILE_RED, { hdr: 1.9, occ: 0.55, opacity: 0.95, side: THREE.DoubleSide, depthTest: false });
+      this.mesh = new THREE.Mesh(boss.ringGeo, this.mat);
+    }
     this.mesh.rotation.x = -Math.PI / 2;
     this.mesh.position.set(this.center.x, 0.12, this.center.z);
     this.mesh.renderOrder = 8;
@@ -103,6 +170,11 @@ export class RingWave {
     this.r += this.speed * dt;
     this.mesh.scale.setScalar(this.r);
     this.mat.opacity = 0.95 - 0.5 * Math.min(1, this.r / this.maxR);
+    if (this.gap) {
+      this.gap.a += this.gap.spin * dt;
+      this.mat.uniforms.uGap.value.set(this.gap.a, this.gap.w);
+      this.mat.uniforms.uR.value = this.r;
+    }
     if (!this.hit) {
       const p = game.player;
       if (Math.abs(distXZ(p.pos, this.center) - this.r) <= this.width * 0.5 + p.radius && !this._inGap(p.pos)) {
@@ -261,6 +333,16 @@ export class BossBase {
     this.handles = new Set();
     this.actors = new Set();           // ring waves, zones, etc. owned by this fight
     this.adds = new Set();
+    this.fodder = new Set();           // v5.2 fodder waves (kept out of this.adds so move gates like ready('horn') ignore them)
+    this.objectives = new Set();       // v5.2 marked adds / objects (HUD edge pointers read this)
+    this._marks = new Map();           // e -> { ring, tether, mat }
+    this._markMats = new Map();        // colour -> shared material set
+    this._fodderT = 0;                 // fight-seconds to the next wave (≤ 0 = due)
+    this._fodderWave = 0;
+    this._fodderPending = 0;
+    this._fodderGen = 0;               // bumped on clearField: pending rises from an old wave are dropped
+    this.phaseT = 0;                  // fight-seconds in the current phase (excludes intermissions + Downed)
+    this._gateHeld = false;            // a gate is waiting for cfg.minPhase
     this.objects = new Set();
     this.blockers = [];                // pillars: { x, z, r } that block beams (also world obstacles)
     this.mats = [];
@@ -441,6 +523,139 @@ export class BossBase {
     return e;
   }
 
+  // Fodder wave (v5.2 C1): `count` plain enemies rise from the arena wall (angle spread, kept off the player),
+  // each after a short dust tell. Normal XP, e.isFodder, e.orbChance, e.autoPriority 1, tracked in this.fodder
+  // (never this.adds). Capped so live + pending fodder stays ≤ count × 2. Returns the number scheduled.
+  // o: { types, count = 3, ring = 0.92, orbChance = 0.08, xp = true, onSpawn(e) }
+  spawnWave(o = {}) {
+    const g = this.game;
+    const types = o.types ?? this.cfg.fodder?.types;
+    if (!types?.length || this.dead || !g.player || g.player.dead) return 0;
+    const want = Math.max(1, Math.round(o.count ?? 3));
+    const room = want * 2 - this._liveFodder() - this._fodderPending;
+    const n = Math.min(want, room);
+    if (n <= 0) return 0;
+    const ring = o.ring ?? 0.92, orbChance = o.orbChance ?? 0.08;
+    const pp = g.player.pos;
+    const base = Math.random() * Math.PI * 2;
+    const wave = ++this._fodderWave;
+    for (let i = 0; i < n; i++) {
+      let ang = base + (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      let at = this.arenaPoint(ang, ring);
+      for (let k = 0; k < 6 && distXZ(at, pp) < 7; k++) at = this.arenaPoint((ang += 0.45), ring);   // not on top of the player
+      const typeId = types[(Math.random() * types.length) | 0];
+      g.fx.ring(at, { color: 0x2e2216, radius: 1.5, from: 0.3, life: FODDER_TELL, width: 0.3, hdr: 1, occ: 0.8, blend: 'normal' });
+      g.fx.burst(at, { color: 0x5a4630, count: 8, speed: 2.5, life: 0.6, size: 0.4, up: 1.4, gravity: 5, occ: 0.85, blend: 'normal' });
+      this._fodderPending++;
+      const gen = this._fodderGen;
+      this.after(FODDER_TELL, () => {
+        this._fodderPending = Math.max(0, this._fodderPending - 1);
+        if (gen !== this._fodderGen || this.dead || this._disposed || this.intermissionIdx) return;
+        const act = g.act;
+        const e = createEnemy(g, typeId, at, {
+          hpMult: enemyHpMult(act, 150, g.tier),
+          damageScale: enemyDmgMult(act, 150, g.tier),
+          xpMult: o.xp === false ? 0 : ACTS[act].xp,
+          resist: ACTS[act].resist,
+        });
+        e.isFodder = true;
+        e.owner = this;
+        e.orbChance = orbChance;
+        e.autoPriority = 1;
+        g.addEnemy(e);
+        this.fodder.add(e);
+        o.onSpawn?.(e);
+      }, true);
+    }
+    g.events.emit('bossFodder', { enemy: this, wave, count: n });
+    return n;
+  }
+
+  _liveFodder() {
+    let n = 0;
+    for (const e of this.fodder) { if (e.dead) this.fodder.delete(e); else n++; }
+    return n;
+  }
+
+  // cfg.fodder scheduler (fight branch only: never during intermissions or Downed/Winded). First wave when a
+  // phase starts (after Winded and the 2.5 s landing hold), then every `every` fight-seconds; a wave is
+  // postponed (not dropped) while a Break Check cast runs.
+  _fodderTick(dt) {
+    const f = this.cfg.fodder;
+    if (!f) return;
+    if (this._fodderT > 0) this._fodderT -= dt;
+    if (this._fodderT > 0 || this.cast?.check || this._gatePending) return;
+    const enc = this.game.encounter;
+    if (enc?.active && enc.state === 'fight' && enc.t < FODDER_LAND_HOLD) return;
+    const count = f.count?.[this.phase - 1] ?? f.count?.[f.count.length - 1] ?? 3;
+    const n = this.spawnWave({ types: f.types, count, ring: f.ring, orbChance: f.orbChance, xp: f.xp });
+    this._fodderT = n > 0 ? (f.every ?? 20) : 1.5;
+  }
+
+  // Objective mark (v5.2 C4): ground ring under `e` (follows it) + thin tether to the boss; adds `e` to
+  // this.objectives and sets e.objective = { color, label } for the HUD. Orange by default; never gold or hostile
+  // red. Removed automatically when `e` dies, on clearField / dispose, or via unmarkObjective(e).
+  markObjective(e, o = {}) {
+    if (!e || e.dead) return e;
+    let color = o.color ?? MARK_COLOR;
+    if (color === SAFE_GOLD || color === HOSTILE_RED) color = MARK_COLOR;
+    this.unmarkObjective(e);
+    let mats = this._markMats.get(color);
+    if (!mats) {
+      const mk = (a) => blendAddMaterial(color, { hdr: 1.7, occ: 0.5, opacity: a, side: THREE.DoubleSide, depthTest: false });
+      mats = { ring: mk(1), tether: mk(0.5) };
+      this._markMats.set(color, mats);
+    }
+    const scene = this.game.scene;
+    const ring = new THREE.Mesh(this.ringGeo, mats.ring);
+    ring.rotation.x = -Math.PI / 2;
+    ring.renderOrder = 6;
+    scene.add(ring);
+    let tether = null;
+    if (o.tether !== false) {
+      tether = new THREE.Group();
+      const m = new THREE.Mesh(GEO.plane, mats.tether);
+      m.rotation.x = -Math.PI / 2;
+      m.position.z = 0.5;
+      m.scale.set(0.16, 1, 1);
+      m.renderOrder = 5;
+      tether.add(m);
+      scene.add(tether);
+    }
+    this._marks.set(e, { ring, tether });
+    e.objective = { color, label: o.label ?? null };
+    this.objectives.add(e);
+    return e;
+  }
+
+  unmarkObjective(e) {
+    const m = this._marks.get(e);
+    if (!m) { this.objectives.delete(e); return; }
+    const scene = this.game.scene;
+    scene.remove(m.ring);
+    if (m.tether) scene.remove(m.tether);
+    this._marks.delete(e);
+    this.objectives.delete(e);
+    e.objective = null;
+  }
+
+  _markTick() {
+    if (!this._marks.size) return;
+    const t = this.time, k = 0.75 + 0.25 * Math.sin(t * 5);
+    for (const m of this._markMats.values()) { m.ring.opacity = k; m.tether.opacity = 0.5 * k; }
+    for (const [e, m] of this._marks) {
+      if (e.dead || e._disposed) { this.unmarkObjective(e); continue; }
+      m.ring.position.set(e.pos.x, 0.1, e.pos.z);
+      m.ring.scale.setScalar((e.radius ?? 0.6) + 0.6 + 0.07 * Math.sin(t * 5));
+      if (m.tether) {
+        const dx = e.pos.x - this.pos.x, dz = e.pos.z - this.pos.z;
+        m.tether.position.set(this.pos.x, 0.1, this.pos.z);
+        m.tether.rotation.y = Math.atan2(dx, dz);
+        m.tether.scale.z = Math.max(0.01, Math.hypot(dx, dz));
+      }
+    }
+  }
+
   // A destructible fight object (pod, banner, conduit, pillar). Enemy-contract, inert (no XP, no kill, no
   // statuses/reactions), but targetable (auto-cast / homing may pick it) unless targetable: false.
   // o: { pos, radius, hp, mesh (Object3D, added to scene by this), targetable (auto-cast may target it;
@@ -513,7 +728,7 @@ export class BossBase {
       if (a instanceof Zone && a.hostile && !a.dead && a.contains(p, pad)) d += 1.5;
       else if (a instanceof RingWave && !a.hit) {
         const q = distXZ(p, a.center);
-        if (q > a.r && q - a.r < a.speed * 0.5) d += 2;
+        if (q > a.r && q - a.r < a.speed * 0.5 && !a._inGap(p)) d += 2;
       }
     }
     return d;
@@ -594,10 +809,21 @@ export class BossBase {
       e.dead = true;
     }
     this.adds.clear();
+    // fodder pay their XP out (the player earned the wave's worth) and fade
+    this._fodderGen++;
+    for (const e of this.fodder) {
+      if (e.dead) continue;
+      if (e.xp > 0) this.game.pickups.spawnXP(e.pos, e.xp);
+      this.game.fx.burst(e.pos, { color: 0x9a7cff, count: 4, speed: 3, life: 0.4, size: 0.3, up: 1.4 });
+      e.dead = true;
+    }
+    this.fodder.clear();
+    this._fodderPending = 0;
     for (const o of [...this.objects]) {
       if (o.keepOnClear) continue;
       o.dead = true;
     }
+    for (const e of [...this.objectives]) if (e.dead) this.unmarkObjective(e);
     this.onClearField?.();
   }
 
@@ -621,6 +847,9 @@ export class BossBase {
       this._beginIntermission();
     } else if (mv > 0) {
       this.fightT += dt;
+      this.phaseT += dt;
+      if (this._gateHeld && this.phaseT >= this._minPhase()) { this._gateHeld = false; this.onGate(); }
+      this._fodderTick(dt);
       this._enrageTick();
       this._affixTick(dt);
       if (this.busyT > 0) { this.busyT -= dt; if (this.busyT <= 0) this.gapT = this._gap(); }
@@ -646,6 +875,7 @@ export class BossBase {
     this.pos.addScaledVector(this.knock, dt);
     this.knock.multiplyScalar(Math.exp(-8 * dt));
     game.world.collide(this.pos, this.radius);
+    this._markTick();
     this._visuals(dt, mv);
   }
 
@@ -653,11 +883,16 @@ export class BossBase {
   onGate() {
     if (this.intermissionIdx || this._gatePending) return;
     if (this.gateIdx >= this.gates.length) return;
+    // cfg.minPhase: hp stays pinned at hpFloor until the phase has run long enough (Downed time doesn't count)
+    if (this.phaseT < this._minPhase()) { this._gateHeld = true; return; }
+    this._gateHeld = false;
     this._gatePending = true;
     this.game.fx.flashDisc(this.pos, { color: 0xe8eef8, radius: this.radius + 1, life: 0.25, hdr: 1.6 });
   }
 
   // ================================================================ internals
+  _minPhase() { return this.cfg.minPhase?.[this.phase - 1] ?? 0; }
+
   _teleOpts(o, onDone) {
     return { onDone, safe: !!o.safe, keepColor: !!o.keepColor, color: o.color };
   }
@@ -743,6 +978,7 @@ export class BossBase {
     this.game.events.emit('breakCheckEnd', { enemy: this, name: c.name, success });
     if (success) {
       c.o.onSuccess?.();
+      this._breakOrb();
       this.down((this.cfg.downed?.[this.phase - 1] ?? 4) + 2, 'break');
     } else {
       this.busyT = 0.6;
@@ -750,12 +986,21 @@ export class BossBase {
     }
   }
 
+  // C5: a broken Break Check drops a health orb 30% of the time, at the boss's feet toward the player.
+  _breakOrb() {
+    if (Math.random() >= BREAK_ORB_CHANCE) return;
+    const p = this.game.player.pos, d = dirXZ(this.pos, p, _v);
+    const pos = { x: this.pos.x + d.x * (this.radius + 1.2), z: this.pos.z + d.z * (this.radius + 1.2) };
+    this.game.pickups.spawn('health', pos);
+    this.game.events.emit('bossBreakOrb', { enemy: this, pos });
+  }
+
   _recover() {
     this.downed = false;
     this.busyT = 0;
     this.gapT = 0.8;
     this.poise.lockT = RECOVER_TIME;
-    this.poise.mult *= 1.25;
+    this.poise.mult = Math.min(POISE_MULT_CAP, this.poise.mult * 1.25);
     this.play('recover', 0.6, 0);
     this.game.events.emit('bossRecovered', { enemy: this });
     this.onRecovered?.();
@@ -770,6 +1015,10 @@ export class BossBase {
     this.poise.v = 0;
     this.poise.threshold = 0;
     this.clearField();
+    // C5: the player starts the intermission with every dash charge (the 12% heal lands when it ends)
+    const dash = this.game.player.dash;
+    dash.charges = dash.max; dash.recharge = 0;
+    this._gateHeld = false;
     this.untargetable = true;
     this.intermissionIdx = idx;
     this.musicState = idx === 1 ? 'inter' : 'inter2';
@@ -788,9 +1037,15 @@ export class BossBase {
     this.rotIdx = 0;
     this.musicState = this.phase === 2 ? 'p2' : 'p3';
     this.rig.rage = this.phase >= 2 ? 1 : 0;
-    // the player enters the next phase ready: one dash charge back
-    const d = this.game.player.dash;
-    if (d.charges < d.max) d.charges++;
+    this.phaseT = 0;
+    this._fodderT = 0;
+    // C5: every gate tops the player up by 12% max HP (dash charges were refilled when the intermission began)
+    const pl = this.game.player;
+    if (!pl.dead) {
+      const amount = pl.stats.maxHp * GATE_HEAL;
+      pl.heal(amount);
+      this.game.events.emit('bossGateHeal', { enemy: this, amount, pct: GATE_HEAL });
+    }
     this.game.events.emit('bossPhase', { enemy: this, phase: this.phase });
     this.onPhase?.(this.phase);
     this.down(this.cfg.windedDur ?? 3, 'winded');
@@ -932,6 +1187,9 @@ export class BossBase {
     this.dead = true;
     for (const off of this._offs) off();
     this._cancelPending();
+    for (const e of [...this._marks.keys()]) this.unmarkObjective(e);
+    for (const m of this._markMats.values()) { m.ring.dispose(); m.tether.dispose(); }
+    this._markMats.clear();
     for (const a of this.actors) a._cleared = true;
     for (const o of [...this.objects]) { o.dead = true; o.dispose(game); }
     if (this.rig) {
@@ -945,6 +1203,7 @@ export class BossBase {
     for (const m of this.mats) m.dispose();
     this.mats.length = 0;
     this.ringGeo.dispose();
+    this.ringGapGeo?.dispose();
   }
 }
 

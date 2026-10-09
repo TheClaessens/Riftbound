@@ -20,9 +20,13 @@ import { distXZ, dirXZ, clamp } from '../../core/utils.js';
 
 const CFG = {
   id: 'hollowWarden', name: 'Gorrak, the Troll King', model: GORRAK_MODEL,
-  hp: 14500, radius: 1.8, speed: 2.4, stopGap: 1.4, resist: null, deathColor: 0x6a5aaa,
+  hp: 12000, radius: 1.8, speed: 2.4, stopGap: 1.4, resist: null, deathColor: 0x6a5aaa,
   look: { scale: 1.05, glow: [0.22, 0.4, 0.55] },
   cycle: [1.3, 1.1, 0.9], downed: [4, 5, 6], enrageAt: 75,
+  // v5.2 fodder: his goblin court. Scamps (fast swarmers) and Shamans (ranged). NOT 'husk' (Goblin Grunt):
+  // the Runners are husks and the fodder must never be mistaken for them. They live in this.fodder, not this.adds.
+  fodder: { types: ['imp', 'imp', 'spitter'], count: [3, 4, 5], every: 18 },
+  minPhase: [12, 12],     // each gate holds until the phase has run this many fight-seconds
 };
 
 const POD_RIPEN = [7, 7, 6];     // s: pod → ripe (first use ×1.4 via lead())
@@ -378,16 +382,19 @@ export class Gorrak extends BossBase {
         const sw = 0.85 + 0.5 * k * k + 0.12 * pulse;
         const shake = k > 0.7 ? Math.sin(t * 50) * 0.03 * (k - 0.7) / 0.3 : 0;
         sac.scale.set(sw + shake, sw * 1.32, sw - shake);
-        sacMat.color.setRGB(0.52 + 0.4 * k, 0.69 + 0.2 * k, 0.18 + 0.3 * k);
-        sacMat.emissive.setRGB(0.16 + 0.45 * k + 0.3 * pulse, 0.23 + 0.4 * k + 0.3 * pulse, 0.03 + 0.15 * k);
+        // spore-lime all the way (never pale yellow / amber: gold means "go here")
+        sacMat.color.setRGB(0.52 + 0.14 * k, 0.69 + 0.2 * k, 0.18 + 0.02 * k);
+        sacMat.emissive.setRGB(0.12 + 0.16 * k + 0.2 * pulse, 0.23 + 0.4 * k + 0.3 * pulse, 0.03 + 0.04 * k);
         fill.r.scale.setScalar(0.35 + 1.4 * k);
         fill.m.opacity = 0.55 + 0.4 * (k > 0.8 ? 0.5 + 0.5 * Math.sin(t * 16) : 1);
-        if (k >= 1 && !pod.dead) { pod.ripe = true; pod.dead = true; pod.onDeath(g); }
+        if (k >= 1 && !pod.dead) { pod.ripe = true; pod.dead = true; pod.autoPriority = 0; pod.onDeath(g); }
       },
       onDeath: () => {
         if (pod.ripe) this.sporeCloud(pod.pos); else this.sapPool(pod.pos);
       },
     });
+    pod.autoPriority = 2;                  // the mechanic to kill: auto-cast ranks it above fodder and the boss
+    this.markObjective(pod, { color: 0xb8ff3c, tether: false, label: 'Spore Pod' });
     const d0 = pod.dispose;
     pod.dispose = (game) => { sacMat.dispose(); target.m.dispose(); fill.m.dispose(); d0.call(pod, game); };   // per-pod materials
     g.vfx.emit('gorrakSporeMote', { x: pos.x, y: 0.5, z: pos.z }, { count: 5, scale: 0.8 });
@@ -507,6 +514,8 @@ export class Gorrak extends BossBase {
         } });
         e.isRunner = true;
         e.dustT = 0;
+        e.autoPriority = 3;            // auto-cast goes for goal-seeking adds first
+        this.markObjective(e, { color: 0xff9a3c, label: 'Runner' });
       });
     }
     // dress the runners every frame (rim + dust) until none is left; the actor ends itself
@@ -663,14 +672,23 @@ export class Gorrak extends BossBase {
       for (const o of this.objects) if (o.tag === 'pod' && !o.dead) o.rush = true;
       g.fx.text({ x: this.pos.x, y: 3.6, z: this.pos.z }, 'THE PODS RIPEN', '#d8ff7a', true);
     });
+    // Each ring has a walkable gap (0.7 rad, drawn as a gold striped notch). The first sits on the player's side
+    // (±~1 rad, so a small walk, not a free pass); the lane then rotates 2.1 rad per wave from the previous one,
+    // but is never placed more than 1 rad from where the player stands at the stamp (reachable on foot / one dash).
+    let gapA = null;
+    const angTo = (p) => Math.atan2(p.x - this.pos.x, p.z - this.pos.z);
+    const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     for (let i = 0; i < 3; i++) {
       const t0 = 1.0 + i * 3.2;
       this.after(t0, () => this.play('slam', 1.3, 0.9, null, 0.6));
       this.after(t0 + 0.9, () => {
         const at = this.pos.clone();
+        const pa = angTo(g.player.pos);
+        if (gapA === null) gapA = pa + (Math.random() < 0.5 ? -1 : 1) * (0.55 + Math.random() * 0.45);
+        else gapA = pa + clamp(wrap(gapA + 2.1 - pa), -1, 1);
         this.groundHit(at, 4, { shake: 0.6 });
         g.events.emit('bossImpact', { enemy: this, pos: at, heavy: true });
-        this.ringWave(at, { speed: 8, width: 0.9, maxR: this.arena.r + 2, dmg: 0.6, how: 'kings wrath' });
+        this.ringWave(at, { speed: 8, width: 0.9, maxR: this.arena.r + 2, dmg: 0.5, how: 'kings wrath', gap: { angle: gapA, width: 0.7 } });
       });
     }
     return 9.0;

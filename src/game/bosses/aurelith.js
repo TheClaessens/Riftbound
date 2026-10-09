@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BossBase, POISE, dirFromAngle, GEO, blendAddMaterial, HOSTILE_RED, SAFE_GOLD, segDist } from './core.js';
 import { aurelith as AURELITH_MODEL, AURELITH_MOUTH, AURELITH_TAIL } from '../creatures/bosses/aurelith.js';
-import { distXZ, ELEMENT_CSS } from '../../core/utils.js';
+import { distXZ } from '../../core/utils.js';
 import { HERO_YIELD_GLSL } from '../vfx/heroYield.js';
 import { breakWard as breakWardFx } from '../combat.js';
 
@@ -22,7 +22,12 @@ import { breakWard as breakWardFx } from '../combat.js';
 // =====================================================================================
 
 const TAU = Math.PI * 2;
-const WARD_HEX = { fire: 0xff6a1f, frost: 0x66d9ff, storm: 0xffe14a, arcane: 0xb67cff };
+// v5.2: storm is electric lime (was gold 0xffe14a, which collided with SAFE_GOLD)
+const WARD_HEX = { fire: 0xff6a1f, frost: 0x66d9ff, storm: 0x9cff3a, arcane: 0xb67cff };
+const WARD_CSS = { fire: '#ff7a33', frost: '#7fe0ff', storm: '#aaff55', arcane: '#c9a0ff' };
+const STORM_BOLT = 0xc8ff6a;   // damaging Tempest strikes (not safe gold)
+const PRISM_VIOLET = 0xb08cff;
+const CRASH_CAP = 0.22;        // Prism Crash never takes more than this share of max HP
 const WARD_NAME = { fire: 'FIRE', frost: 'FROST', storm: 'STORM', arcane: 'ARCANE' };
 const WARD_ORDER = ['frost', 'fire', 'storm', 'arcane'];
 const WARD_CYCLE = [10, 10, 7];       // by phase; < 8% HP: 3 s
@@ -37,6 +42,8 @@ const CFG = {
   hp: 86000, radius: 2.4, speed: 2.3, stopGap: 5, resist: null, deathColor: 0x9ff3ff,
   look: { scale: 1.1, glow: [0.35, 0.5, 0.65] },
   cycle: [2.4, 2.0, 1.6], downed: [4, 5, 6], enrageAt: 120, turnRate: 7, windedDur: 4,
+  fodder: { types: ['shardling'], count: [4, 5, 6], every: 22 },
+  minPhase: [30, 30],
 };
 
 const _w = new THREE.Vector3();
@@ -70,7 +77,7 @@ class BeamField {
     this.t = 0; this.hitCd = 0; this.hitSet = new Set();
     this.angle0 = o.base;
     this.mat = blendAddMaterial(HOSTILE_RED, { hdr: 1.15, occ: 0.5, opacity: 0.75, depthTest: false });
-    this.coreMat = blendAddMaterial(0xffd0d0, { hdr: 1.3, occ: 0.25, opacity: 0.8, depthTest: false });
+    this.coreMat = blendAddMaterial(0xffffff, { hdr: 1.3, occ: 0.25, opacity: 0.8, depthTest: false });
     this.beams = [];
     for (let i = 0; i < this.n; i++) {
       const group = new THREE.Group();
@@ -360,7 +367,7 @@ export class Aurelith extends BossBase {
     this.wardT = this.wardCycle;
     this.reformT = 0;
     this.setWard(el);
-    this.game.fx.text({ x: this.pos.x, y: 2.8, z: this.pos.z }, `PRISM WARD: ${WARD_NAME[el]}`, ELEMENT_CSS[el], true);
+    this.game.fx.text({ x: this.pos.x, y: 2.8, z: this.pos.z }, `PRISM WARD: ${WARD_NAME[el]}`, WARD_CSS[el], true);
     this.tickN++;
     if (this.finalStage && this.tickN % 3 !== 0) return;     // the final stagger window: rapid wards, rare specials
     const cap = this.phase === 3 ? 2 : 1;
@@ -401,7 +408,7 @@ export class Aurelith extends BossBase {
       this.reformT -= dt;
       if (this.reformT <= 0 && !this.ward && this.liveConduits() > 0) {
         this.setWard(this.reformEl);
-        this.game.fx.text({ x: this.pos.x, y: 3.0, z: this.pos.z }, 'WARD RE-FORMED', ELEMENT_CSS[this.reformEl], true);
+        this.game.fx.text({ x: this.pos.x, y: 3.0, z: this.pos.z }, 'WARD RE-FORMED', WARD_CSS[this.reformEl], true);
       }
     }
     this.wardT -= dt;
@@ -455,8 +462,8 @@ export class Aurelith extends BossBase {
   spawnConduits() {
     const g = this.game;
     const a0 = Math.PI / 4 + (Math.random() < 0.5 ? 0 : Math.PI / 2);      // a diagonal pair, opposite each other
-    const mat = this.own_mat(new THREE.MeshLambertMaterial({ color: 0xfff0c8, emissive: 0xc8902a }));
-    const lineMat = this.own_mat(blendAddMaterial(SAFE_GOLD, { hdr: 1.5, occ: 0.3, opacity: 0.7, side: THREE.DoubleSide, depthTest: false }));
+    const mat = this.own_mat(new THREE.MeshLambertMaterial({ color: 0xe8dcff, emissive: 0x7a4ad8 }));
+    const lineMat = this.own_mat(blendAddMaterial(PRISM_VIOLET, { hdr: 1.5, occ: 0.3, opacity: 0.7, side: THREE.DoubleSide, depthTest: false }));
     for (let i = 0; i < 2; i++) {
       const pos = this.arenaPoint(a0 + i * Math.PI, 0.9);
       const mesh = new THREE.Group();
@@ -464,24 +471,18 @@ export class Aurelith extends BossBase {
       const a = new THREE.Mesh(GEO.octa, mat); a.scale.set(0.4, 1.0, 0.4); a.position.set(0.7, 1.0, 0.2); a.rotation.z = -0.4;
       const b = new THREE.Mesh(GEO.octa, mat); b.scale.set(0.35, 0.9, 0.35); b.position.set(-0.6, 0.9, -0.3); b.rotation.z = 0.4;
       const base = new THREE.Mesh(GEO.cylinder, mat); base.scale.set(0.9, 0.4, 0.9); base.position.y = 0.2;
-      const pivot = new THREE.Group();
-      const line = new THREE.Mesh(GEO.plane, lineMat);
-      line.rotation.x = -Math.PI / 2; line.renderOrder = 9;
-      pivot.add(line); pivot.position.y = 2.2;
       const orbit = new THREE.Mesh(GEO.torus, lineMat); orbit.scale.setScalar(1.15); orbit.position.y = 2.1; orbit.rotation.x = Math.PI / 2.4; orbit.renderOrder = 9;
-      mesh.add(base, main, a, b, pivot, orbit);
+      mesh.add(base, main, a, b, orbit);
       const obj = this.spawnObject({
         pos, radius: 1.0, hp: 520 * (g.actDef?.hp ?? 1), mesh, name: 'Prism Conduit', tag: 'conduit', solid: true,
         update: (dt, o) => {
-          const dx = this.pos.x - o.pos.x, dz = this.pos.z - o.pos.z, len = Math.hypot(dx, dz);
-          pivot.rotation.y = Math.atan2(dx, dz);
-          line.scale.set(0.2 + 0.05 * Math.sin(this.time * 6), Math.max(0.1, len - 2), 1);
-          line.position.z = len / 2;
           main.rotation.y += dt * 0.8; orbit.rotation.z += dt * 1.6;
         },
         onDeath: (o) => this.onConduitDead(o),
       });
       obj.marker = true;
+      obj.autoPriority = 2;
+      this.markObjective(obj, { color: PRISM_VIOLET, label: 'Conduit' });   // ring + tether to the boss (replaces the old link beam)
       this.conduits.push(obj);
     }
   }
@@ -490,8 +491,8 @@ export class Aurelith extends BossBase {
     if (this.dead || this.intermissionIdx) return;
     const g = this.game;
     g.fx.burst({ x: o.pos.x, y: 1.5, z: o.pos.z }, { color: 0xcfe8ff, count: 26, speed: 6, life: 0.7, size: 0.5, up: 2.5, gravity: 8, hdr: 1.8 });
-    g.fx.flashDisc(o.pos, { color: SAFE_GOLD, radius: 2.4, life: 0.3, hdr: 1.5 });
-    g.fx.text({ x: o.pos.x, y: 3, z: o.pos.z }, 'CONDUIT DOWN', '#ffe9a8', true);
+    g.fx.flashDisc(o.pos, { color: PRISM_VIOLET, radius: 2.4, life: 0.3, hdr: 1.5 });
+    g.fx.text({ x: o.pos.x, y: 3, z: o.pos.z }, 'CONDUIT DOWN', '#d8c8ff', true);
     this.addPoise(POISE.generator, 'generator');
     this.expose(2.5);
     if (this.liveConduits() === 0) {
@@ -646,9 +647,9 @@ export class Aurelith extends BossBase {
     if (i >= 0) this.strikes.splice(i, 1);
     if (s.diverted || this.dead) return;
     const hit = !g.player.dead && distXZ(g.player.pos, s.pos) < 2.2 + g.player.radius * 0.3 && !this.inRod();
-    g.vfx?.bolt({ x: s.pos.x + 1.5, y: 16, z: s.pos.z - 1 }, { x: s.pos.x, y: 0.2, z: s.pos.z }, { color: 0xffe14a, width: 0.6, hdr: 2.4, life: 0.25 });
-    g.fx.flashDisc(s.pos, { color: 0xffe14a, radius: 2.2, life: 0.25, hdr: 1.8 });
-    g.fx.burst({ x: s.pos.x, y: 0.3, z: s.pos.z }, { color: 0xffe14a, count: 16, speed: 6, life: 0.5, size: 0.4, up: 1.6, hdr: 2.2 });
+    g.vfx?.bolt({ x: s.pos.x + 1.5, y: 16, z: s.pos.z - 1 }, { x: s.pos.x, y: 0.2, z: s.pos.z }, { color: STORM_BOLT, width: 0.6, hdr: 2.4, life: 0.25 });
+    g.fx.flashDisc(s.pos, { color: STORM_BOLT, radius: 2.2, life: 0.25, hdr: 1.8 });
+    g.fx.burst({ x: s.pos.x, y: 0.3, z: s.pos.z }, { color: STORM_BOLT, count: 16, speed: 6, life: 0.5, size: 0.4, up: 1.6, hdr: 2.2 });
     g.vfx?.decal('scorch', s.pos, 1.8, 1.4);
     this._resolve(hit, { dmg: 1.1, how: 'tempest' }, s.pos);
   }
@@ -802,7 +803,8 @@ export class Aurelith extends BossBase {
       this.after(6.9, () => this.shadows.hide());
       this.after(7.25, () => {
         this.crashFx(c);
-        this.ringWave(c, { speed: 9, width: 1.1, from: 2.8, maxR: R + 3, dmg: 1.2, how: 'prism crash' });
+        const crash = this.ringWave(c, { speed: 9, width: 1.1, from: 2.8, maxR: R + 3, dmg: 1.2, how: 'prism crash' });
+        crash.damage = Math.min(crash.damage, CRASH_CAP * (g.player.stats?.maxHp ?? Infinity));
       });
       return 8;
     }
@@ -836,8 +838,8 @@ export class Aurelith extends BossBase {
 
   crashFx(c) {
     const g = this.game;
-    g.fx.ring(c, { color: 0xd8d0b8, radius: 6, life: 0.5, width: 0.3, hdr: 0.9 });
-    g.fx.burst({ x: c.x, y: 0.3, z: c.z }, { color: 0xd8d0b8, count: 30, speed: 9, life: 0.7, size: 0.7, up: 1.4, gravity: 5, hdr: 0.9 });
+    g.fx.ring(c, { color: 0xe8e0ff, radius: 6, life: 0.5, width: 0.3, hdr: 0.9 });
+    g.fx.burst({ x: c.x, y: 0.3, z: c.z }, { color: 0xe8e0ff, count: 30, speed: 9, life: 0.7, size: 0.7, up: 1.4, gravity: 5, hdr: 0.9 });
     g.fx.shake(0.9, 'threat');
     g.events.emit('bossImpact', { enemy: this, pos: c, heavy: true });
   }
@@ -922,7 +924,9 @@ export class Aurelith extends BossBase {
       if (this.wyvernCd <= 0) {
         const a = Math.random() * TAU;
         this.wyvern = this.spawnAdd('wraith', this.arenaPoint(a, 0.75), { hpMult: 2.2 });
-        this.game.fx.text(this.wyvern.pos, 'STORM WYVERN', '#ffe14a', true);
+        this.wyvern.autoPriority = 2;
+        this.markObjective(this.wyvern, { color: 0x7fe0ff, label: 'Wyvern' });
+        this.game.fx.text(this.wyvern.pos, 'STORM WYVERN', '#7fe0ff', true);
       }
     }
   }

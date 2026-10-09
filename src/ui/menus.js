@@ -14,12 +14,16 @@ import { ACTS } from '../game/acts.js';
 import { REACTIONS } from '../game/combat.js';
 import { SKILLS, FUSIONS } from '../game/skills/registry.js';
 import { RELICS, RELIC_IDS, RELIC_TAG_COLOR } from '../game/relics.js';
+import { AFFIXES } from '../game/bosses/affixes.js';
 import { icon, hasIcon, ICON } from './icons/index.js';
 
 const GLYPH = { arcanist: '✦', pyromancer: '🜂', cryomancer: '❅', stormcaller: 'ϟ' };
 const DASH_GLYPH = { blink: '✧', flame: '➶', frost: '❄', storm: 'ϟ' };
 const TIER_STEP = { hp: 30, dmg: 12, shards: 25 };   // per Rift Tier, in percent (acts.js / meta.js)
 const DASH_KEY = 'space';
+
+const OB_ICON = { haste: 'obeliskHaste', echo: 'obeliskEcho', wrath: 'obeliskWrath' };
+const OB_COLOR = { haste: '#bfefff', echo: '#b08cff', wrath: '#ff7a33' };
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
@@ -110,8 +114,11 @@ const DEATH_TIPS = [
 ];
 const DEATH_TIP_FALLBACK = 'Dashing recharges. Dying with a dash charge unspent is the usual story.';
 
-function deathRecap(hurt, { el = 'arcane', maxHp = 0 } = {}) {
-  const by = hurt?.by ?? {};
+// fight (stats.fight, game.js _fightRecap) is set when you fell inside a boss encounter: the breakdown then shows
+// only that fight's damage ("This fight") and a "Your bets" block, instead of the run-wide list.
+function deathRecap(hurt, { el = 'arcane', maxHp = 0, fight = null } = {}) {
+  const useFight = !!fight && Object.values(fight.by ?? {}).some((v) => v?.dmg > 0);
+  const by = useFight ? fight.by : (hurt?.by ?? {});
   const entries = Object.entries(by).filter(([, v]) => v && v.dmg > 0).sort((a, b) => b[1].dmg - a[1].dmg);
   const recentAll = Array.isArray(hurt?.recent) ? hurt.recent : [];
   if (!entries.length && !recentAll.length && !hurt?.killer) return null;
@@ -128,8 +135,12 @@ function deathRecap(hurt, { el = 'arcane', maxHp = 0 } = {}) {
   // top 3 sources, with the main "how" when one dominates
   const sources = entries.slice(0, 3).map(([n, v]) => {
     const hows = Object.entries(v.hows ?? {}).sort((a, b) => b[1] - a[1]);
-    const dom = hows[0] && hows[0][1] / v.dmg >= 0.5 ? hows[0][0] : null;
-    return { name: n, dmg: v.dmg, hits: v.hits, share: v.dmg / total, how: dom, killer: !!kill && kill.name === n };
+    let dom = hows[0] && hows[0][1] / v.dmg >= 0.5 ? hows[0][0] : null;
+    const isKiller = !!kill && kill.name === n;
+    // the row names the move that did most of the damage; when the killing move was another one, say so
+    // (round 3: a "prism beam 100%" row under a "Slain by ... prism crash" headline read as a contradiction)
+    if (isKiller && kill.how && kill.how !== dom) dom = dom ? `${dom}, killed by ${kill.how}` : `killed by ${kill.how}`;
+    return { name: n, dmg: v.dmg, hits: v.hits, share: v.dmg / total, how: dom, killer: isKiller };
   });
 
   // last moments: up to 5 hits within 8 s of the final one
@@ -142,7 +153,32 @@ function deathRecap(hurt, { el = 'arcane', maxHp = 0 } = {}) {
   const ctx = { k: { name, how, dmg: kill?.dmg ?? null }, n: entries.length, share: (entries[0]?.[1].dmg ?? 0) / total, el, burst };
   const tip = DEATH_TIPS.find((t) => { try { return t.test(ctx); } catch { return false; } })?.text ?? DEATH_TIP_FALLBACK;
 
-  return { verb, name, how, dmg: kill?.dmg ?? null, sources, recent, hpMax, endT, tip };
+  return { verb, name, how, dmg: kill?.dmg ?? null, sources, recent, hpMax, endT, tip, scope: useFight ? 'fight' : 'run', bets: useFight ? fight : null };
+}
+
+// "Your bets": what was riding on the boss fight you lost (obelisks armed, HP you entered with, shards forfeited)
+function betsHTML(f) {
+  const st = f.stakes ?? {};
+  const chip = (type, label, sub) =>
+    `<span class="mn-bet" style="--acc:${OB_COLOR[type]}">${icon(ICON.ui(OB_ICON[type]))}<span class="mn-bet-t"><b>${esc(label)}</b>${sub ? `<em>${esc(sub)}</em>` : ''}</span></span>`;
+  const chips = [];
+  if (st.haste) chips.push(chip('haste', 'Haste', `skipped ${mmss(st.haste.skipped)}`));
+  if (st.echo) chips.push(chip('echo', 'Echo', 'boss twice, +10% damage taken'));
+  if ((st.heat | 0) > 0) {
+    const names = (st.affixes ?? []).map((id) => AFFIXES[id]?.name).filter(Boolean).join(', ');
+    chips.push(chip('wrath', `Wrath ×${st.heat}`, names));
+  }
+  if (!chips.length) chips.push('<span class="mn-bet none">no obelisks armed</span>');
+  const hp = Math.round((f.entryHp ?? 1) * 100);
+  const lost = f.lost | 0;
+  const boss = BOSS[f.bossId] ?? 'the boss';
+  return `
+      <div class="mn-bets" aria-label="Your bets">
+        <h3 class="mn-bets-h">Your bets<span>${esc(boss)}</span></h3>
+        <div class="mn-bets-row">${chips.join('')}</div>
+        <span class="mn-bet-hp" title="Your health when ${esc(boss)} was summoned"><span>entered at</span><span class="mn-bet-bar"><i style="transform:scaleX(${(hp / 100).toFixed(3)})"></i></span><b class="num">${hp}%</b></span>
+        ${lost > 0 ? `<span class="mn-bet-lost" title="Obelisk shards are paid only if you win the fight">${icon(ICON.ui('shard'), { fallback: '◆' })}<b class="num">${fmt(lost)}</b><span>shards lost</span></span>` : ''}
+      </div>`;
 }
 
 const dmgN = (n) => fmt(Math.round(n));
@@ -180,7 +216,7 @@ function deathRecapHTML(r) {
     <section class="cf-frame mn-recap" aria-label="Why you fell">
       <div class="mn-recap-cols">
         <div class="mn-recap-col mn-recap-src">
-          <h3 class="mn-recap-h">Damage taken</h3>
+          <h3 class="mn-recap-h">${r.scope === 'fight' ? 'This fight' : 'Damage taken'}${r.scope === 'fight' ? '<span class="mn-recap-sum">damage taken</span>' : ''}</h3>
           <ul class="mn-srcs">${src}</ul>
         </div>
         <div class="mn-recap-col mn-recap-last">
@@ -188,6 +224,7 @@ function deathRecapHTML(r) {
           <ul class="mn-hits">${chips}</ul>
         </div>
       </div>
+      ${r.bets ? betsHTML(r.bets) : ''}
       <p class="mn-tip">${icon(ICON.ui('help'), { fallback: '?' })}<span><b>Next time</b> ${esc(r.tip)}</span></p>
     </section>`;
 }
@@ -756,7 +793,7 @@ export class Menus {
     const none = (t, hint = '') => `<p class="mn-none">${t}</p>${hint ? `<p class="mn-hint">${hint}</p>` : ''}`;
 
     // death recap (stats.hurt); the victory screen stays as it was
-    const recap = victory ? null : deathRecap(s.hurt, { el, maxHp: s.maxHp ?? this.game.player?.stats?.maxHp ?? 0 });
+    const recap = victory ? null : deathRecap(s.hurt, { el, maxHp: s.maxHp ?? this.game.player?.stats?.maxHp ?? 0, fight: s.fight });
 
     const sub = [cls?.name, tier > 0 ? `Rift Tier ${tier}` : 'Rift Tier 0'].filter(Boolean).join(' · ');
 

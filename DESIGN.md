@@ -1,4 +1,4 @@
-# RIFTBOUND — Game Design v5 (v2 = vibrant world + creatures; v2.1 = playtest fixes; v3 = Crownforge UI; v4 = heroes on the creature rig + world-grounded spell VFX; v5 = Rift Obelisks + raid-style boss encounters)
+# RIFTBOUND — Game Design v5 (v2 = vibrant world + creatures; v2.1 = playtest fixes; v3 = Crownforge UI; v4 = heroes on the creature rig + world-grounded spell VFX; v5 = Rift Obelisks + raid-style boss encounters; v5.2 = raid sustain & targeting)
 
 > An isometric horde-survival ARPG in three acts. Pick a class, weave elements into reactions, bend your build with relics, and dash through the telegraphs. Descend through the Rift and shatter its Heart.
 
@@ -52,7 +52,7 @@ Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It 
 * Live cap: 320.
 * Elite chance (after 0:45 of an act): 1%.
 * Elites have ×4 HP, ×1.35 radius, ×6 XP (min 10), ×1.3 damage and a rim aura. Random elites drop a Relic Chest 6% of the time (≈ 7 relics per full run, counting surges and bosses).
-* Boss HP (v5): Gorrak 14,500 · Vashkar 24,000 · Aurelith 86,000 (× (1 + 0.3·tier)). Bosses drop a chest (it flies to you during the Rift Shift), a health orb and a magnet. Obelisk payouts are paid only if you win that boss fight (§3b).
+* Boss HP (v5.2): Gorrak 12,000 · Vashkar 21,500 · Aurelith 86,000 (× (1 + 0.3·tier)). Bosses drop a chest (it flies to you during the Rift Shift), a health orb and a magnet. Obelisk payouts are paid only if you win that boss fight (§3b).
 
 ## 3b. Rift Obelisks (v5)
 Three obelisks rise at **0:50** of every act (the same three, always): **Haste**, **Echo**, **Wrath**. Each stands 20–32 u from you, ≥ 100° apart in bearing and ≥ 12 u from each other, inside r 48. Haste is pale cyan `#bfefff` (gold is reserved for safe zones).
@@ -61,7 +61,7 @@ Three obelisks rise at **0:50** of every act (the same three, always): **Haste**
 
 | Obelisk | Effect | Cost | Pay (only if you win that boss fight) |
 |---|---|---|---|
-| **Haste** "Summon now" | 3 s warning ("THE HEART STIRS"; Elite Surge and Swarm don't fire during it), then the boss encounter starts. | The rest of the act's horde (XP, Elite Surge, Swarm). | **Windfall XP** = 40% of the act XP still ahead; **Haste Bounty** = `round(0.25 × seconds skipped × actMult)` shards; the boss chest offers 4 relics instead of 3. |
+| **Haste** "Summon now" | 3 s warning ("THE HEART STIRS"; Elite Surge and Swarm don't fire during it), then the boss encounter starts. | The rest of the act's horde (XP, Elite Surge, Swarm). | **Windfall XP** = 40% of the act XP still ahead; **Haste Bounty** = `round(0.25 × seconds skipped × actMult)` shards (none in Act III, the final act, which also drops the chest line); the boss chest offers 4 relics instead of 3. The card warns below 40% HP. |
 | **Echo** "The boss comes twice" | After the kill: 3 s **Rift Mend** (heal 20%, dash refilled), then the boss returns as an **Echo**: 55% HP, starts at Phase 2, faster. | **Strain**: +10% damage taken for the whole encounter (both bodies). | **Echo Chest**: pick 1 of 3 **Boss Relics** + 25 × actMult shards. |
 | **Wrath** "Heat" (channel up to 3×) | Each channel = +1 Heat = one **boss affix**, pre-rolled and shown on the pillar before you channel (Frenzied, Bulwark, Reverberating, Rift Storm, Vengeful). Heat 2: boss HP +15%. Heat 3: HP +30%, damage +10%. | The affixes; channelling under a Rift Pull. After each heat you must step out of the ring and back in to channel again. | Heat 1: +1 relic choice. Heat 2: + **Wrath Cache** (+1 rank to a skill of your choice). Heat 3: one boss-chest choice is a guaranteed **Boss Relic**. Shards 8 / 20 / 45 × actMult (total at that heat). |
 
@@ -267,27 +267,30 @@ Archetype (behaviour + model) × faction (palette, name, resist).
 * Spawn-in: rises from the ground over 0.35 s in a dust puff. Death: hit-flash, then the creature topples and sinks (0.55 s).
 
 ### Bosses (v5 raid encounters; every attack telegraphed; 3 phases each)
-Each boss runs inside the encounter frame (§9b). HP, arena radius and target fight length are in each heading. Full move specs and rig poses: `design/RAID_PASSES.md` Pass 4 (with the v5.1 changes in Pass 8).
+Each boss runs inside the encounter frame (§9b). HP, arena radius and target fight length are in each heading. Full move specs and rig poses: `design/RAID_PASSES.md` Pass 4 (with the v5.1 changes in Pass 8 and the v5.2 changes in Pass 9).
 
-**Gorrak, the Troll King** (Act I; the teaching boss; HP 14,500; arena R 20; target 60–75 s; Stagger bar 110). Teaches: leave a circle, the safe side of a cone, kill-timer objects, break checks, race adds.
+**Gorrak, the Troll King** (Act I; the teaching boss; HP 12,000; arena R 20; target 60–75 s; Stagger bar 110). Teaches: leave a circle, the safe side of a cone, kill-timer objects, break checks, race adds.
 * **P1 "Club and Pods"**: *Club Slam* (circle r 5 on you, 1.3 → 0.9 s; the club sticks 1.2 s, EXPOSED). *Backhand* (cone 120°, r 9, from him toward you, 1.1 s; safe = behind him or outside r 9). *Spore Pods* (3 pods flung to ring positions; each ripens over 7 s into a red spore cloud r 4 for 8 s; killed early it leaves a gold **Sap Pool**, r 2.4 for 10 s, +25% move speed). *Break Check: War Horn* (5 s, threshold 60; a fail sends 4 Goblin Runners from the wall to him; each one that arrives heals him 3% and gives him +10% damage for 8 s).
+* **Fodder (v5.2)**: goblin scamps and shamans (`imp`, `spitter`), 3 / 4 / 5 per wave in phases 1 / 2 / 3, every 18 s; normal XP, 8% orb chance. Goblin Runners get an orange mark and auto-cast rank 3; ripening pods get a lime mark and rank 2.
 * **Intermission 1 "Timberfall"** (7 s): he leaps to the wall and hurls uprooted trees: line telegraphs (w 3) from alternating sides every 0.9 s, each shown 1 s ahead; ends with a leap onto you (circle r 6). Winded 3 s.
 * **P2 "Spore Rot"**: spore clouds give Spore stacks (1/s inside; +8% damage taken and −5% speed per stack, max 5; 5 stacks roots for 1 s); Sap Pools cleanse them. Pods every 12 s, 2–3 at a time. *Slam → Backhand combo* (the backhand follows 0.85 s later toward where you went). War Horn again, threshold 70.
-* **Intermission 2 "King's Wrath"** (7 s): a roar, then 3 expanding ring-waves 3.2 s apart (dash through them); all live pods ripen at once. Winded 3 s.
+* **Intermission 2 "King's Wrath"** (7 s): a roar, then 3 expanding ring-waves 3.2 s apart (dash through them; each has a 0.7 rad gold gap that tracks your side, ring damage 0.5); all live pods ripen at once. Winded 3 s.
 * **P3 "Troll Rage"** (no new mechanic): cycle −20%, Backhand 180°, War Horn every loop (threshold 70), Runners on a fail. Soft enrage at 75 s.
 
-**Vashkar, the Ashen Warchief** (Act II; resists Fire 50%; HP 24,000; arena R 21; target 80–100 s). Teaches: in/out, generators, lava control, memory.
-* **P1 "Twin Banners"**: *Axe Combo* (circle r 4.5 on him, 1.2 s, then a donut r 4.5–11 0.5 s later; safe = out, then in; each combo adds +25 Axe Heat). *Twin War Banners* at opposite sides (r 0.7 R): each living banner gives Vashkar −20% damage and pulses a ring-wave r 0→6 every 7 s; both down → **Disarmed** (Downed 5 s, +15 Stagger each). *Banner Charge* (line w 3, 0.9 s, leaves a lava trail). *Torchbearers*: when a banner falls, 2 orc thralls run from the wall to relight it (it returns at 50% HP if one arrives). *Break Check: Molten Overswing* (at Axe Heat 100; 5 s, threshold 60; success → "Quenched", heat 0, Downed; fail → cone 200° r 14 that leaves fire for 6 s).
-* **Intermission 1 "Ashfall"** (8 s): he plants the axe at the centre; 3 lava lanes (w 3, full arena) sweep in a shown order 1.6 s apart. Winded 3 s.
+**Vashkar, the Ashen Warchief** (Act II; resists Fire 50%; HP 21,500; arena R 21; target 80–100 s). Teaches: in/out, generators, lava control, memory.
+* **P1 "Twin Banners"**: *Axe Combo* (circle r 4.5 on him, 1.2 s, then a donut r 4.5–11 0.5 s later; safe = out, then in; each combo adds +25 Axe Heat). *Twin War Banners* at opposite sides (r 0.7 R): each living banner gives Vashkar −15% damage and pulses a ring-wave r 0→6 every 7 s; both down → **Disarmed** (Downed 5 s, +15 Stagger each). *Banner Charge* (line w 3, 0.9 s, leaves a lava trail). *Torchbearers*: when a banner falls, 2 orc thralls run from the wall to relight it (it returns at 50% HP if one arrives). *Break Check: Molten Overswing* (at Axe Heat 100; 5 s, threshold 60; success → "Quenched", heat 0, Downed; fail → cone 200° r 14 that leaves fire for 6 s).
+* **Fodder (v5.2)**: cinderlings and magma rams, 3 / 4 / 5 per wave, every 20 s.
+* **Intermission 1 "Ashfall"** (8 s): he plants the axe at the centre; 3 lava lanes (w 2.25, full arena; telegraph hit 0.5, lava tick 0.16) sweep in a shown order 1.6 s apart. Winded 3 s. v5.2 budget: one gold safe pocket (r 2.8) that no lane touches, and the whole intermission takes at most 30% of max HP.
 * **P2 "Cinder Memory"**: an ember mark drops where you stand every 0.5 s for 3 s (6 marks, r 2), then they detonate in drop order 0.35 s apart (first time: 3 marks, 2 s lead). *Double Charge* (the second re-aimed; lava lasts 3.5 s). Banners re-raised rotated 90° at +30% HP; Overswing threshold 70.
-* **Intermission 2 "Molten Tide"** (8 s): lava rises at the rim and the arena becomes R 16 for the rest of the fight (1.5 s gold-ring warning); 4 meteor lanes in sequence. Winded 3 s.
-* **P3 "Warchief's Fury"** (no new mechanic): Meteor Rain (6 circles r 2.5, 1.1 s) in two offset waves; one banner only (+60% HP); Overswing every 30 s. Soft enrage at 95 s.
+* **Intermission 2 "Molten Tide"** (8 s): lava rises at the rim and the arena becomes R 16 for the rest of the fight (1.5 s gold-ring warning); 4 meteor lanes (w 2.55) in sequence. Same v5.2 budget as Ashfall: one gold safe pocket, at most 30% of max HP. Winded 3 s.
+* **P3 "Warchief's Fury"** (no new mechanic): Meteor Rain (6 circles r 2.5, 1.1 s) in two offset waves; one banner only (+60% HP); Overswing every 30 s. Soft enrage at 115 s.
 
 **Aurelith, the Prism Dragon** (Act III final; HP 86,000; arena R 22; target 100–120 s). Teaches: read the ward to predict the attack; line of sight behind pillars; generators; puddle placement.
 * **Ward language**: the Prism Ward colour (cycle 10 s; 7 s in P3) names her *next* special: fire → flame lanes (3 parallel lines); frost → frost ring-waves (3.2 s apart, dash through); storm → Tempest (3 strikes that chase you 1.2 s, then lock; circles r 2.2); arcane → shard circles (6 delayed circles r 2.2). A reaction on her breaks the ward: that family's next cast is cancelled, +10 Stagger.
 * **Arena**: 4 crystal pillars (r 1.2, solid) at 0.55 R. Pillars block beams; the shadow behind each one is a gold safe zone while a beam is live.
-* **P1 "Refraction"**: *Twin Beams* (1.2 s tell, 140° sweep over 3 s; pillars block). Ward specials. *Prism Conduits* (2 crystal generators at the wall, a gold line to her; the ward re-forms 3 s after one breaks; both down → ward down 8 s, Downed 4 s). *Break Check: Prism Nova* (6 s, threshold 60; a fail is an arena-wide nova except inside pillar shadows).
-* **Intermission 1 "Skyward"** (8 s): she lifts to the centre (untargetable); one beam rotates 360° over 5 s with 3 safe gaps, then a crash ring-wave. Winded 4 s.
+* **P1 "Refraction"**: *Twin Beams* (1.2 s tell, 140° sweep over 3 s; pillars block). Ward specials. *Prism Conduits* (2 crystal generators at the wall, a violet tether to her (marked on the HUD); the ward re-forms 3 s after one breaks; both down → ward down 8 s, Downed 4 s). *Break Check: Prism Nova* (6 s, threshold 60; a fail is an arena-wide nova except inside pillar shadows).
+* **Intermission 1 "Skyward"** (8 s): she lifts to the centre (untargetable); one beam rotates 360° over 5 s with 3 safe gaps, then a crash ring-wave (the Prism Crash takes at most 22% of your max HP). Winded 4 s.
+* **Fodder (v5.2)**: shardlings, 4 / 5 / 6 per wave, every 22 s.
 * **P2 "Storm Reach"**: *Stormcaller Wyvern* (one at a time); its death leaves a **Lightning Rod** (gold r 2, 10 s; while you stand in it, Tempest strikes hit the rod instead). *Quadrant Prism* (3 of 4 quadrant cones, 90°, fire in sequence; the safe one is gold). Nova again at threshold 70; pillars crack (3 hits from her beams destroy one).
 * **Intermission 2 "Floodfall"** (8 s): the river rises, arena R 22 → 17 (gold ring 1.5 s warning); shard rain (8 circles every 1.5 s, ×3). Winded 4 s.
 * **P3 "Prismatic Overload"** (no brand-new shapes): ward cycle 7 s, and two families can overlap; Quad Beams (4). Under 8% HP the ward cycles every 3 s and every break gives +15 Stagger (a final stagger). Soft enrage at 120 s.
@@ -304,9 +307,12 @@ Each boss runs inside the encounter frame (§9b). HP, arena radius and target fi
 
 ### Phases and intermissions
 * 3 phases, gated at **66% and 33%** HP. Damage past a gate is absorbed until the intermission ends: you can't skip a phase.
-* **Intermissions** 7–9 s: the boss is untargetable, runs one learned pattern at arena scale, and ends **Winded** (3 s; Aurelith 4 s) with +1 dash charge.
-* **Soft enrage** from 75 s (Gorrak) / 95 s (Vashkar) / 120 s (Aurelith) of active fight: +5% damage and 5% faster per 10 s. No hard enrage.
+* **Intermissions** 7–9 s: the boss is untargetable, runs one learned pattern at arena scale, and ends **Winded** (3 s; Aurelith 4 s). v5.2: all dash charges are refilled when the intermission starts, and ending it heals **12% max HP** (`bossGateHeal`).
+* **Soft enrage** from 75 s (Gorrak) / 115 s (Vashkar) / 120 s (Aurelith) of active fight: +5% damage and 5% faster per 10 s. No hard enrage.
 * A boss can't be re-frozen for 4 s after a freeze, and can't be stunned more than once per 1.5 s.
+
+* **Phase minimum (v5.2)**: a gate holds at its HP floor until the phase has run Gorrak 12 s, Vashkar 18 s or Aurelith 30 s of fight time. Downed time doesn't count.
+* **Fodder waves (v5.2)**: each phase opens with a small wave of its boss's own minions at the arena wall, then one every 18 s (Gorrak), 20 s (Vashkar) or 22 s (Aurelith). Never in an intermission; postponed during a Break Check. Gorrak and Vashkar waves are 3–5, Aurelith's 4–6.
 
 ### Stagger (Poise)
 A 0–100 bar under the nameplate (Gorrak 110), filled by play, not raw damage:
@@ -318,13 +324,13 @@ A 0–100 bar under the nameplate (Gorrak 110), filled by play, not raw damage:
 | Superconduct / Arc Flash | +8 |
 | Frozen | +6 |
 | Stunned | +4 |
-| Perfect Dodge of a boss attack | +10 |
-| Rift Crystal blast catching the boss | +10 |
+| Perfect Dodge of a boss attack | +20 |
+| Rift Crystal blast catching the boss | +20 |
 | Generator destroyed (banner, conduit) | +15 |
 | Status pressure: boss carries Burn / Chill / Shock | +1.5 every 0.5 s |
 | Chain bonus on any reaction | +0.5 × Chain (max +5) |
 
-* **Fatigue**: reactions on a boss are scaled by `1 / (1 + fatigue / 4)`. Each reaction adds +1 fatigue; fatigue decays with τ 4 s.
+* **Fatigue**: reactions on a boss are scaled by `1 / (1 + fatigue / 3)` (v5.2: was / 4). Each reaction adds +1 fatigue; fatigue decays with τ 4 s.
 * Vashkar halves Stagger from fire-led reactions (Combust, Steam).
 * Decay 3/s, starting 3 s after the last gain (paused during Break Checks). Rift Tier: gains × (1 − 0.05·tier).
 * **DOWNED** (bar full): the boss drops into its stagger pose for **4 / 5 / 6 s** (P1/P2/P3), takes **+40% damage**, and its current cast and hostile telegraphs are cancelled (lingering zones stay). Then **Recovery** 8 s: the bar is locked at 0 and the next threshold × 1.25 (reset each phase).
@@ -333,11 +339,12 @@ A 0–100 bar under the nameplate (Gorrak 110), filled by play, not raw damage:
 ### Break Checks
 * Once per phase, the boss's signature cast (4.5–6 s), shown as a named cast bar with a threshold marker on the Stagger bar ("WAR HORN — 60").
 * Target = max(base, current bar + base), capped at the bar.
+* v5.2: the target is shown as a % of the bar (`break 60%`), never as an absolute number. The growth per Down is capped at ×1.5 within a phase. A broken Break Check drops a health orb 30% of the time.
 * **Success** (bar past the marker before the cast ends) → cast cancelled and Downed +2 s. **Failure** → the cast resolves: a survivable but costly effect, never instant death.
 
 ### Telegraph grammar
 * **Hostile red** (one colour) = danger.
-* **Gold** `SAFE_GOLD` `#ffc83a`, a solid rim with diagonal stripes = "go here" (sap pools, lightning rods, pillar shelters, safe quadrants). Gold is never used for anything else.
+* **Gold** `SAFE_GOLD` `#ffc83a`, a solid rim with diagonal stripes = "go here" (sap pools, lightning rods, pillar shelters, safe quadrants, King's Wrath gaps, Vashkar's safe pocket). Gold is never used for anything else. v5.2: objective marks are never gold (orange runners and torchbearers, cyan banners, lime pods, violet conduits, pale cyan wyvern).
 * **Dashed rims** = Rift Crystals and friendly things.
 * Lead times: first use ×1.4 (the teaching rule), normal 0.9 s, announced follow-ups ≥ 0.6 s (Gorrak's combo backhand 0.85 s). Dash-through ring patterns are ≥ 3.2 s apart. At most 3 hostile shapes live at once.
 
@@ -451,6 +458,6 @@ While the primer runs it **holds the act clock** at 0:00, at most 150 s. The shr
 
 ## 13. Balance targets
 * Levels: L5 at 1:00, L10 at the Act I boss, L18 at Act II's end, L26+ at the final boss. XP to next level: `8 + 10L` for L ≤ 4, L ≥ 12 `25 + 28L + 0.55L²`; L5–L11 blend linearly from `48 + 40(L−4)` into that curve. Queued level-ups are drafted hand after hand in one modal ("N of M").
-* Player base: 100 HP, 0.3 HP/s regen. Health orb drop 1% (elites 25%). The playable arena is a circle of radius 55 inside the octagonal rift wall.
-* Boss fight length (default lane, sim n ≥ 8): Gorrak 60–75 s, Vashkar 80–100 s, Aurelith 100–120 s (v4 bands were 30–45 / 45–60 / 60–90 s). Poise: about 1 natural Downed per 25–30 s for a reaction build. Haste at 1:30: fight length ≤ 1.35× the target. Bot death rate not worse than v4.2 by more than 10 points in a god-off A/B.
+* Player base: 100 HP, 0.3 HP/s regen. Health orb drop 1% (elites 25%; boss fodder 8%; a broken Break Check 30%; each intermission end heals 12% max HP). The playable arena is a circle of radius 55 inside the octagonal rift wall.
+* Boss fight length (default lane, sim n ≥ 8): Gorrak 60–75 s, Vashkar 80–100 s, Aurelith 100–120 s (v4 bands were 30–45 / 45–60 / 60–90 s). v5.2 sims after the HP cut (auto-cast bot, no obelisks): Gorrak 76 s mean and Vashkar 108 s, Vashkar above target; see `design/RAID_PASSES.md` Pass 9. Poise: about 1 natural Downed per 25–30 s for a reaction build. Haste at 1:30: fight length ≤ 1.35× the target. Bot death rate not worse than v4.2 by more than 10 points in a god-off A/B.
 * Average FPS ≥ 55 with 320 enemies on mid hardware.

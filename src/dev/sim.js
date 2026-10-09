@@ -274,6 +274,7 @@ export function jumpToBoss(act = 0, { god = true, echo = false, affixes = [], he
   if (b && phase > 1 && b.gates) {
     // fast-forward through the gates (intermissions run synchronously)
     for (let ph = 1; ph < phase; ph++) {
+      b.phaseT = 999;                 // minPhase (v5.2) holds the gate until the phase has run long enough
       b.hp = b.hpFloor + 1;
       b.onGate?.(game);
       for (let i = 0; i < 30 * 12 && b.phase === ph; i++) game.update(1 / 30);

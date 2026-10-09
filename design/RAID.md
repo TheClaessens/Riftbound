@@ -38,7 +38,7 @@ Chests: `combat.killEnemy` passes `enemy.chestSpec` to the pickup; `game.queueCh
 ## Events (new / changed)
 | Event | Payload | Notes |
 |---|---|---|
-| `encounterStart` | `{ bossId, act, arena, stakes, reason }` | the Seal begins (music: cut act theme, riser) |
+| `encounterStart` | `{ bossId, act, arena, stakes, reason, entryHp: { hp, maxHp, pct } }` | the Seal begins (music: cut act theme, riser). `entryHp` is the HP at the Seal, for the death screen's "Your bets" |
 | `bossSpawned` | `{ enemy, final, echo }` | the landing (music: intro stinger) |
 | `bossIntermission` | `{ enemy, index: 1\|2, dur }` | boss untargetable for `dur` |
 | `bossPhase` | `{ enemy, phase: 2\|3 }` | end of an intermission (then `bossDowned` reason `winded`) |
@@ -49,7 +49,10 @@ Chests: `combat.killEnemy` passes `enemy.chestSpec` to the pickup; `game.queueCh
 | `poise` | `{ enemy, amount, src }` | src = reaction type / 'frozen' / 'perfect' / 'crystal' / 'generator' … |
 | `bossEnrage` | `{ enemy, level }` | first soft-enrage step |
 | `bossImpact` | `{ enemy, pos, heavy }` | every resolved hostile shape (music ducks, SFX thud) |
-| `echoMend` | `{ enemy, dur }` | the first body died; the Echo rises after `dur` |
+| `echoMend` | `{ enemy, dur }` | the first body died; the Echo rises after `dur`. Announced as "Rift Mend: +20% HP, dash refilled" (encounter.js) |
+| `bossFodder` | `{ enemy, wave, count }` | a fodder wave was telegraphed at the wall (C1) |
+| `bossGateHeal` | `{ enemy, amount, pct }` | an intermission ended: the player healed `pct` (0.12) of max HP (C5). Dash charges were refilled at the intermission's start |
+| `bossBreakOrb` | `{ enemy, pos }` | a broken Break Check dropped a health orb at `pos` (C5, 30%) |
 | `encounterEnd` | `{ victory: true, enemy, final, bossId }` | victory beat begins |
 | `bossKilled` | `{ enemy, final }` | **now emitted by encounter.js after the victory beat** |
 | `obelisksRisen` | `{ obelisks }` | obelisks.js |
@@ -59,7 +62,7 @@ Chests: `combat.killEnemy` passes `enemy.chestSpec` to the pickup; `game.queueCh
 Boss scripts may also emit `bossTell { enemy, kind, lead }` (big tells: music/SFX accents) and `bossWard { enemy, ward }` (Aurelith).
 
 ## Boss fields (HUD / audio read these on `game.boss`)
-`name, hp, maxHp, phase (1..3), phases (3), gates [0.66, 0.33] (echo: [1, 0.5]), hpFloor, intermissionIdx (0|1|2), untargetable, downed, downedT, downedDur, exposedT (> 0 = EXPOSED), armor (0..0.9 generator DR), takenMult, poise { v, max, mult (threshold = max × mult), lockT (> 0 = recovering), threshold (Break Check mark, 0 = none) }, cast { name, t, dur, threshold, check } | null, enrage (0 = calm), affixes [defs {id,name,icon,desc}], isEcho, musicState ('p1'|'inter'|'p2'|'inter2'|'p3'), objects (Set of fight objects; obj.marker = true → HUD edge marker, obj.name, obj.hp/maxHp), ward / wardT / wardCycle (Aurelith)`. A legacy boss has only `phase 1|2` and no poise — guard with `?.`.
+`name, hp, maxHp, phase (1..3), phases (3), gates [0.66, 0.33] (echo: [1, 0.5]), hpFloor, intermissionIdx (0|1|2), untargetable, downed, downedT, downedDur, exposedT (> 0 = EXPOSED), armor (0..0.9 generator DR), takenMult, poise { v, max, mult (threshold = max × mult), lockT (> 0 = recovering), threshold (Break Check mark, 0 = none) }, cast { name, t, dur, threshold, check } | null, enrage (0 = calm), affixes [defs {id,name,icon,desc}], isEcho, musicState ('p1'|'inter'|'p2'|'inter2'|'p3'), objects (Set of fight objects; obj.marker = true → HUD edge marker, obj.name, obj.hp/maxHp), ward / wardT / wardCycle (Aurelith), fodder (Set of live fodder, C1), objectives (Set of marked adds and objects, C4)`. A legacy boss has only `phase 1|2` and no poise — guard with `?.`.
 
 ## BossBase API (src/game/bosses/core.js) — what a boss script uses
 ```js
@@ -77,7 +80,7 @@ class MyBoss extends BossBase {
 ```
 * **Shapes** (resolve after `lead`; the player is hit if inside then; `o = { dmg (× base), how, onResolve(hit), safe, noEcho }`):
   `circle(at, r, lead, o)`, `cone(origin, dir, angle, r, lead, o)`, `donut(at, inner, outer, lead, o)`, `line(from, dir, len, width, lead, o)`; return handles (`cancel()`, `.mesh` to move a chasing telegraph). `safe: true` draws the gold "go here" style and never damages.
-* `ringWave(center, { speed, width, from, maxR, dmg, how, gaps: [{ a, w }] })` — expanding dash-through ring (gaps = safe arcs).
+* `ringWave(center, { speed, width, from, maxR, dmg, how, gaps: [{ a, w }], gap: { angle, width, spin? } })` — expanding dash-through ring (gaps = safe arcs; `gap` = one safe walk-through arc, drawn as a gold striped notch, C7).
 * `zone(pos, 'hostile'|'safe', { radius, inner?, angle?, dir?, life, onInside(dt, z), onEnter, onExit, onExpire, tag })` — persistent decal zone actor; `z.setRadius(r)`, `z.end()`.
 * `spawnAdd(typeId, pos, { hpMult, speedMult, goal, goalR, onGoal(game, e), elite, keepOnClear })` — 0 XP; `goal` makes a chaser run to a point (race adds).
 * `spawnObject({ pos, radius, hp, mesh, targetable, solid, blocker, onDeath, onHit, update, keepOnClear, name, tag })` — destructible inert fight object (pods, banners, conduits, pillars); `blocker` → `shadowed(p, src)` line-of-sight test. Set `obj.marker = true` for an HUD edge marker.
@@ -86,8 +89,35 @@ class MyBoss extends BossBase {
 * Timers and pending telegraphs are cancelled by Downed and intermissions (zones and in-flight ring waves stay). Use `after(…, keep = true)` only for clean-up.
 * Rig poses: every new move needs a body tell synced to its telegraph. Add actions to your boss's `*_ACT` table in `src/game/creatures/bosses/<boss>.js` — at least **`downed`** (staggered / slumped, readable from the iso camera), **`recover`** (0.6 s), and one pose per new move. Unknown action names are ignored (weight 0) — never leave a move without a pose.
 
+## v5.2 contracts (round 3; `design/playtest/round-3/PLAN-v5.2.md`, C1–C7)
+Frozen before the content waves. Constants live at the top of `core.js` (`POISE_MULT_CAP`, `BREAK_ORB_CHANCE`, `GATE_HEAL`, `FODDER_LAND_HOLD`, `FODDER_TELL`, `FATIGUE_K`).
+
+**C1 Fodder waves (`core.js`, scheduled by `_fodderTick`).**
+```js
+// cfg.fodder = { types: [typeId…], count: [p1, p2, p3], every: s, ring?, orbChance?, xp? }
+//   Scheduler: one wave at each phase start (after Winded and the 2.5 s landing hold), then every `every` fight-seconds.
+//   Never in an intermission, Downed or Winded. Postponed (not dropped) while a Break Check cast runs.
+//   Count is indexed by phase; live + pending fodder is capped at count × 2.
+this.spawnWave({ types, count = 3, ring = 0.92, orbChance = 0.08, xp = true, onSpawn(e) })   // → number scheduled
+```
+`spawnWave` itself only checks the boss and player state and the cap. Each spawn: `e.isFodder = true`, `e.orbChance`, `e.autoPriority = 1`, tracked in `this.fodder` (never `this.adds`), normal XP, paid out on `clearField`. Shipped: Gorrak `imp, imp, spitter` 3/4/5 every 18 s; Vashkar `cinderling, cinderling, magmaRam` 3/4/5 every 20 s; Aurelith `shardling` 4/5/6 every 22 s.
+
+**C2 Orb chance (`combat.js` `killEnemy`).** `enemy.orbChance` (a number) replaces the default roll on kill (1% normal, 25% elite, 100% boss). `game.encounter`'s Seal stays XP-only.
+
+**C3 Auto-cast priority (`player.js` `_pickAuto`).** `e.autoPriority` (higher wins; 0 or undefined = plain). With a boss up, the rank is: goal adds (`e.goal`, default 3, runners and torchbearers set 3 on spawn) > a Rift Crystal (`geode`) inside the boss's blast radius 2.5 > mechanic objects with `autoPriority` 2 (ripening pods, banners, conduits, wyvern) > fodder 1 > the boss 0.5 > plain 0. Ties go to the nearer target. Skips `untargetable`, `targetable: false` and dead targets. With no boss it is `nearestEnemy`, unchanged.
+
+**C4 Objective marks (`core.js` `markObjective`, `unmarkObjective`; read by `hud.js`).** `markObjective(e, { color, tether = true, label })` draws a ground ring under `e` (it follows `e`; never gold, never `HOSTILE_RED`) and a thin tether to the boss while `tether`. It adds `e` to `boss.objectives` (a Set). Cleaned up on death, on `unmarkObjective(e)`, on `clearField` and on dispose. The HUD draws one edge arrow per off-screen objective, in its colour, and none when it is on screen. Shipped colours: runners and torchbearers `0xff9a3c`, banners `0x7fd8ff`, pods `0xb8ff3c`, conduits `0xb08cff`, wyvern `0x7fe0ff`.
+
+**C5 Earned heals (`core.js`).** A broken Break Check drops a health orb 30% of the time (`_breakOrb`, at the boss's feet offset toward the player; emits `bossBreakOrb`). `_beginIntermission` refills **all** dash charges. `_endIntermission` heals `GATE_HEAL` (12%) of max HP and emits `bossGateHeal`.
+
+**C6 Break Check readability (`core.js` `_recover`; `hud.js` label).** Within a phase the bar's threshold multiplier is `poise.mult = min(POISE_MULT_CAP 1.5, mult × 1.25)`. The HUD label reads the target as a percentage of the bar (`break 60%`), never as the absolute number.
+
+**C7 Ring gap (`core.js` `ringWave`).** `ringWave(c, { gap: { angle, width, spin? } })` leaves an arc of `width` radians (centred on `angle`) that does no damage, drawn as a gold striped notch. `spin` (rad/s) rotates it. Gorrak's King's Wrath sets a 0.7 rad gap per ring and steers it toward the player's side wave by wave.
+
+**Phase minimum (`cfg.minPhase`, `core.js` `_minPhase`).** `cfg.minPhase = [s1, s2]` (one entry per gate): the gate holds (HP pinned at `hpFloor`) until the phase has run that many fight-seconds. Downed time does not count. Shipped: Gorrak `[12, 12]`, Vashkar `[18, 18]`, Aurelith `[30, 30]`.
+
 ## Readability rules (all agents)
-* Hostile = one red (`HOSTILE_RED`), shapes from the shared telegraph shader. Gold `SAFE_GOLD 0xffc83a` (solid rim + diagonal stripes; telegraph `{ safe: true }` / `zone(…, 'safe', …)`) = "go here" only (safe pockets, cleanse pools, shelters, pillar shadows). Never gold for things to kill; dashed rims are crystals / friendly. Dash-through ring patterns ≥ 3.2 s apart. Steel-white `#e8eef8` = stagger/poise.
+* Hostile = one red (`HOSTILE_RED`), shapes from the shared telegraph shader. Gold `SAFE_GOLD 0xffc83a` (solid rim + diagonal stripes; telegraph `{ safe: true }` / `zone(…, 'safe', …)`) = "go here" only (safe pockets, cleanse pools, shelters, pillar shadows). Never gold for things to kill or for objectives: conduits, pods, the storm ward, tempest bolts and the big XP gem are not gold, and objective adds take their `markObjective` colour. Dashed rims are crystals / friendly. Dash-through ring patterns ≥ 3.2 s apart. Steel-white `#e8eef8` = stagger/poise.
 * Lead times: first use 1.3 s (use `lead()`), normal 0.9 s, announced follow-ups ≥ 0.6 s. ≤ 3 hostile shapes live at once. Dash-through patterns ≥ 2.2 s apart.
 * Every add/object states its purpose in a code comment and in the design doc; adds give 0 XP.
 * Never instant death; no single hit > `HIT_CAP` (player.js caps it anyway).

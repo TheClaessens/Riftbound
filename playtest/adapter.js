@@ -26,6 +26,8 @@ const srcName = (s) => !s ? 'unknown' : s.type === 'hazard' ? `map hazard: ${s.k
 const _v = new THREE.Vector3();
 // v5: the obelisk the playtester asked the hands to walk to and channel (PT.channel)
 let OB_GOAL = null;
+// round 3: PT.autoCast(true) = the game's own auto-cast (T) picks targets; the hands only move and dash
+let AUTO_CAST = false;
 
 // ---------------------------------------------------------------- hands
 const hands = createTopdownHands({
@@ -69,7 +71,8 @@ const hands = createTopdownHands({
   apply: ({ move, aim, dash }) => {
     const g = G(), p = g.player, inp = g.input;
     p.botMove = move;
-    if (aim) {
+    if (AUTO_CAST) inp.mouseButtons.clear();
+    else if (aim) {
       inp.mouseGround.set(aim.x, 0, aim.z);
       inp.mouseButtons.add(0);
       if (g.boss) inp.mouseButtons.add(2); else inp.mouseButtons.delete(2);
@@ -358,6 +361,8 @@ const PT = createPlaytest({
       return { walking: type, distance: Math.round(Math.hypot(o.pos.x - g.player.pos.x, o.pos.z - g.player.pos.z)), note: "PT.play({ seconds: 20, until: 'channelled' })" };
     },
     cancelChannel() { OB_GOAL = null; return { ok: true }; },
+    // round 3: play with the game's auto-cast (the T toggle) instead of the hands' manual aim
+    autoCast(ctx, on = true) { AUTO_CAST = !!on; const g = G(); g.autoCast = AUTO_CAST; g.events.emit('autoCastChanged', { on: AUTO_CAST }); return { autoCast: AUTO_CAST }; },
     buy(ctx, id) {
       const g = G(), ok = buyAttunement(g.meta, id);
       if (ok && g.state === 'title') g.ui.showTitle?.();   // the real button re-renders too

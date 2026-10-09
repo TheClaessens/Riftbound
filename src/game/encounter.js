@@ -5,6 +5,7 @@ import { createArenaWall, warmArenaWall } from './arena/wall.js';
 
 // =====================================================================================
 //  Encounter director (v5, design/RAID.md): turns a boss summon into an isolated raid encounter.
+//    encounterStart payload: { bossId, act, arena, stakes, reason, entryHp: { hp, maxHp, pct } } (HP at the Seal)
 //    summon(reason)  'timer' (spawner, 3:00) | 'haste' (Obelisk of Haste) | 'dev'
 //    Seal 1.5 s (wall rises, horde reaped into XP, spawner/hazards/shrines off) → boss lands →
 //    fight → [Echo: Rift Mend 3 s → Echo rises] → victory: wall sinks 2.4 s → bossKilled → Rift Shift.
@@ -105,7 +106,10 @@ export class Encounter {
     if (this.stakes.echo) {
       g.player.addBuff('strain', 99999, { name: 'Strain', icon: 'strain', color: '#b08cff', apply: (s) => { s.dmgTaken *= 1.1; } });
     }
-    g.events.emit('encounterStart', { bossId: this.bossId, act: g.act, arena: this.arena, stakes: this.stakes, reason });
+    // entryHp: the player's HP at the Seal (the death screen compares it to the HP they died with)
+    const pl = g.player;
+    const entryHp = { hp: pl.hp, maxHp: pl.stats.maxHp, pct: pl.stats.maxHp > 0 ? pl.hp / pl.stats.maxHp : 1 };
+    g.events.emit('encounterStart', { bossId: this.bossId, act: g.act, arena: this.arena, stakes: this.stakes, reason, entryHp });
     return true;
   }
 
@@ -204,7 +208,7 @@ export class Encounter {
       p.heal(p.stats.maxHp * 0.2);
       p.dash.charges = p.dash.max;
       g.events.emit('echoMend', { enemy, dur: MEND_TIME });
-      g.events.emit('announce', { kind: 'boss', text: 'IT STIRS AGAIN', sub: 'The Echo rises', color: '#b08cff' });
+      g.events.emit('announce', { kind: 'boss', text: 'IT STIRS AGAIN', sub: 'Rift Mend: +20% HP, dash refilled', color: '#b08cff' });
       return;
     }
     this.state = 'victory';

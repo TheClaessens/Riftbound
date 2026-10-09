@@ -422,7 +422,7 @@ export class Player {
       let target = null;
       if (held) target = input.mouseGround.clone();
       else if (game.autoCast && !s.def.noAuto) {
-        const e = game.nearestEnemy(this.pos, s.def.range ?? 14);
+        const e = this._autoTarget(s.def.range ?? 14);
         if (e) target = e.pos.clone();
       }
       if (!target) continue;
@@ -445,6 +445,56 @@ export class Player {
     this.model.channel(game.state === 'shift' || !!(sh && sh.progress > 0 && sh.progress < 1 && Math.hypot(sh.pos.x - this.pos.x, sh.pos.z - this.pos.z) < 2.4));
     this.model.update(dt, { player: this, moving, dashing });
     HERO_FX.update(game, this, dt);
+  }
+
+  // Auto-cast target (design/playtest/round-3 contract C3). No live boss: exactly game.nearestEnemy.
+  // Boss up: highest rank in skill range wins, ties by distance. Rank = e.autoPriority, else 3 for goal
+  // adds (runners / torchbearers), 1 for fodder, 0 plain; the boss counts 0.5 (never when untargetable);
+  // a Rift Crystal counts 2.5 while the boss stands inside its blast. Best rank 0 -> boss if in range,
+  // else nearest. Runs once per range bucket per frame (cached; no allocations in the hot path).
+  _autoTarget(range) {
+    const game = this.game, boss = game.boss;
+    if (!boss || boss.dead) return game.nearestEnemy(this.pos, range);
+    const c = this._autoCache ??= { t: -1, n: 0, r: [0, 0, 0, 0, 0, 0], e: [null, null, null, null, null, null], tmp: [] };
+    if (c.t !== game.time) { c.t = game.time; c.n = 0; }
+    for (let i = 0; i < c.n; i++) {
+      if (c.r[i] === range) { const e = c.e[i]; return e && e.dead ? (c.e[i] = this._pickAuto(range, boss, c)) : e; }
+    }
+    const e = this._pickAuto(range, boss, c);
+    if (c.n < c.r.length) { c.r[c.n] = range; c.e[c.n++] = e; }
+    return e;
+  }
+
+  _pickAuto(range, boss, c) {
+    const px = this.pos.x, pz = this.pos.z, r2 = range * range;
+    const bossOk = !boss.untargetable && boss.targetable !== false;
+    const burstR = 4.5 + (boss.radius ?? 0);
+    let best = null, bestRank = -1, bestD = Infinity;      // ranked picks
+    let near = null, nearD = Infinity, bossIn = false;     // plain fallback
+    const list = this.game.queryEnemies(this.pos, range, c.tmp);
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e.dead) continue;
+      const dx = e.pos.x - px, dz = e.pos.z - pz, d = dx * dx + dz * dz;
+      if (d >= r2) continue;
+      let rank;
+      if (e === boss) {
+        if (!bossOk) continue;
+        bossIn = true; rank = 0.5;
+      } else if (e.type === 'geode') {
+        const bx = e.pos.x - boss.pos.x, bz = e.pos.z - boss.pos.z;
+        if (!(bossOk && bx * bx + bz * bz <= burstR * burstR)) continue;
+        rank = 2.5;
+      } else {
+        if (e.untargetable || e.targetable === false || (e.inert && !e.targetable)) continue;
+        rank = e.autoPriority ?? (e.goal ? 3 : e.isFodder ? 1 : 0);
+        if (rank <= 0) { if (d < nearD) { nearD = d; near = e; } continue; }
+      }
+      if (rank > bestRank || (rank === bestRank && d < bestD)) { bestRank = rank; bestD = d; best = e; }
+    }
+    if (best && bestRank > 0.5) return best;
+    if (bossIn) return boss;
+    return best ?? near;
   }
 
   // Death / victory pose after the run ended (game.js keeps calling this behind the end screen).

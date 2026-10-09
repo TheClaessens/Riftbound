@@ -398,6 +398,33 @@
 }
 .hud-mk-d:empty { display: none; }
 
+/* Objective pointers (v5.2): a coloured edge arrow toward an off-screen add / object (boss.objectives) */
+.hud-ptr { position: absolute; left: 0; top: 0; display: none; will-change: transform; --acc: #ff9a3c; pointer-events: none; }
+.hud-ptr.on { display: block; }
+.hud-ptr-a { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.hud-ptr-a::before {   /* the arrow: rotated about the clamp point, so it points out at the objective */
+  content: ""; position: absolute; left: round(calc(-14 * var(--u)), 1px); top: round(calc(-12 * var(--u)), 1px);
+  width: round(calc(26 * var(--u)), 1px); height: round(calc(24 * var(--u)), 2px);
+  background: var(--acc); clip-path: polygon(0 0, 100% 50%, 0 100%, 26% 50%); z-index: 1;
+}
+.hud-ptr-a::after {   /* void keyline under the arrow */
+  content: ""; position: absolute; left: calc(round(calc(-14 * var(--u)), 1px) - 3px); top: calc(round(calc(-12 * var(--u)), 1px) - 4px);
+  width: calc(round(calc(26 * var(--u)), 1px) + 7px); height: calc(round(calc(24 * var(--u)), 2px) + 8px);
+  background: var(--cf-void); clip-path: polygon(0 0, 100% 50%, 0 100%, 26% 50%);
+}
+
+/* Earned heals (v5.2): "+12% HP" rising off the player bar, and a note hanging under the boss frame */
+.hud-hp-fl { position: absolute; left: 50%; top: 0; height: 0; width: 0; pointer-events: none; z-index: 5; }
+.hud-hp-fl > span {
+  position: absolute; left: 0; top: calc(-6 * var(--u)); font: 800 calc(22 * var(--u)) / 1 var(--font-body); color: #ffc3cc; white-space: nowrap;
+  -webkit-text-stroke: max(3px, round(calc(4 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill;
+}
+.hud-boss > .hud-boss-note {
+  position: absolute; z-index: 6; top: calc(100% + 14 * var(--u)); left: 50%; translate: -50% 0; display: none; white-space: nowrap;
+  padding: calc(5 * var(--u)) calc(16 * var(--u)); font: 800 calc(16 * var(--u)) / 1 var(--font-label); letter-spacing: .1em; text-transform: uppercase; color: #ffc3cc;
+}
+.hud-boss > .hud-boss-note.on { display: block; }
+
 /* ===================================================================
    BOTTOM · the action bar (Tier 1)
    =================================================================== */
