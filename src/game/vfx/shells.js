@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RAMP_GLSL } from './textures.js';
+import { HERO_YIELD_GLSL } from './heroYield.js';
 
 // =====================================================================================
 //  Shells: noise-scrolled mesh effects (fire pillar, snow veil, tornado / vortex funnel,
@@ -38,7 +39,7 @@ const VS = /* glsl */`
 const FS = /* glsl */`
   uniform sampler2D uNoise;
   uniform vec4 uProfile;          // per geometry kind: base fade-in [x..y], top fade-out [z..w] on uv.y
-  uniform vec4 uHeroView;         // hero chest in view space; shell parts in front of the hero fade to 30%
+  ${HERO_YIELD_GLSL}              // uHeroView: hero chest in view space; shell parts in front of the hero fade to 30%
   ${RAMP_GLSL}
   varying vec2 vUv; varying vec4 vS0; varying vec4 vS1; varying vec4 vS2; varying vec4 vS3;
   varying float vAge; varying vec3 vNrmV; varying vec3 vPV;
@@ -62,6 +63,7 @@ const FS = /* glsl */`
     float front = gl_FrontFacing ? mix(1.0, vS3.w, facing * facing) : 1.0;
     float hk = 1.0;
     if (uHeroView.w > 0.5 && vPV.z > uHeroView.z - 0.6) hk = mix(0.3, 1.0, smoothstep(0.45, 1.0, length((vPV.xy - uHeroView.xy) / vec2(0.85, 1.25))));
+    hk *= heroYield(vPV);
     float a = c.a * m * front * hk;
     if (vS2.w > 0.5) gl_FragColor = vec4(c.rgb * a, a);          // paint (premultiplied)
     else gl_FragColor = vec4(c.rgb * vS3.z * m * front * hk, a);  // glow: rgb emits, alpha occludes
@@ -98,7 +100,7 @@ class ShellPool {
     ['iS0', 'iS1', 'iS2', 'iS3'].forEach((name, i) => geo.setAttribute(name, this.attrs[i]));
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uTime: shared.uTime, uNoise: { value: shared.noise }, uHeroView: shared.uHeroView,
+        uTime: shared.uTime, uNoise: { value: shared.noise }, uHeroView: shared.uHeroView, uHeroYield: shared.uHeroYield,
         uRamp: { value: shared.ramps.tex }, uRampRows: { value: shared.ramps.rows },
         uProfile: { value: new THREE.Vector4(...PROFILE[kind]) },
       },

@@ -55,6 +55,120 @@ function fusionByName(name) {
   return FUSIONS.find((f) => f.def?.name === name)?.def ?? null;
 }
 
+// ---------------------------------------------------------------- death recap (playtest round 1, #6)
+// Input is stats.hurt (player.js hitSourceName / game.js _onPlayerHit):
+//   by { [name]: { dmg, hits, hows } } · recent [{ name, how, dmg, t, hp }] · killer { name, how, dmg } | null
+const HAZARDS = new Set(['Fissure Geyser', 'Lightning Strike']);
+const CHARGERS = new Set(['War Boar', 'Crag Drake']);
+const SHOOTERS = new Set(['Goblin Shaman', 'Orc Spirit-Shaman', 'Naga Tidecaller']);
+const SWARMERS = new Set(['Goblin Scamp', 'Warg', 'Dragon Whelp', 'Spiderling']);
+const TROLLS = new Set(['Forest Troll', 'Ogre', 'Stone River Troll']);
+const FIRE_RESISTERS = new Set(['Orc Raider', 'Warg', 'Ogre', 'Orc Spirit-Shaman', 'War Boar', 'Goblin Sapper']);
+const BOSS = Object.fromEntries(ACTS.map((a) => [a.boss, String(a.bossName).split(',')[0]]));   // hollowWarden -> Gorrak
+
+// First match wins: specific tips (how / killer) first, situational ones next, a generic line last.
+// ctx: { k: killer { name, how, dmg }, n: distinct sources, share: top source share 0..1,
+//        el: class element, burst: hits within 1.5 s of the end }
+const DEATH_TIPS = [
+  { id: 'charge',   test: (c) => c.k.how === 'charge' && CHARGERS.has(c.k.name), text: 'Chargers mark their run with a red line. Dash across it, not along it.' },
+  { id: 'bolt',     test: (c) => c.k.how === 'projectile' || SHOOTERS.has(c.k.name), text: 'Shaman bolts are slow. Strafe sideways instead of backing away.' },
+  { id: 'sapper',   test: (c) => c.k.how === 'explosion' || c.k.name === 'Goblin Sapper', text: 'Sappers pop when their fuse ends. Kill them at range, or dash clear.' },
+  { id: 'geyser',   test: (c) => c.k.name === 'Fissure Geyser', text: 'Red rings with glowing cracks erupt a second later. Step out.' },
+  { id: 'storm',    test: (c) => c.k.name === 'Lightning Strike', text: 'A blue ring marks each lightning strike. It lands a second later, so keep moving.' },
+  { id: 'gorrak',   test: (c) => c.k.name === BOSS.hollowWarden, text: 'Gorrak slams and rains meteors inside red circles. Leave the circle before it fills.' },
+  { id: 'vashkar',  test: (c) => c.k.name === BOSS.vashkar, text: 'Vashkar charges along a red line and leaves burning ground. Step aside, and leave flame rings as they swell.' },
+  { id: 'aurelith', test: (c) => c.k.name === BOSS.riftHeart, text: 'Aurelith sweeps beams across a half circle. Slip through the gap, and strafe the prism volley.' },
+  { id: 'wyvern',   test: (c) => c.k.name === 'Storm Wyvern', text: 'Storm Wyverns blink in beside you. Keep a dash ready, or kill them on arrival.' },
+  { id: 'orcs',     test: (c) => c.el === 'fire' && FIRE_RESISTERS.has(c.k.name), text: 'Act II orcs resist Fire 50%. Lean on reactions.' },
+  { id: 'swarm',    test: (c) => SWARMERS.has(c.k.name), text: 'Swarmers die in one hit and surround you. Clear them with area skills and keep to open ground.' },
+  { id: 'troll',    test: (c) => TROLLS.has(c.k.name), text: 'Trolls hit hard but plod. Kite them, and never trade blows at point blank.' },
+  { id: 'burst',    test: (c) => c.burst >= 3, text: 'Three hits in a blink. Dash on the first one, because the next two are already on their way.' },
+  { id: 'crowd',    test: (c) => c.n >= 4 && c.share < 0.45, text: 'No single foe killed you, the crowd did. Thin it with area skills and fight with open ground behind you.' },
+];
+const DEATH_TIP_FALLBACK = 'Dashing recharges. Dying with a dash charge unspent is the usual story.';
+
+function deathRecap(hurt, { el = 'arcane', maxHp = 0 } = {}) {
+  const by = hurt?.by ?? {};
+  const entries = Object.entries(by).filter(([, v]) => v && v.dmg > 0).sort((a, b) => b[1].dmg - a[1].dmg);
+  const recentAll = Array.isArray(hurt?.recent) ? hurt.recent : [];
+  if (!entries.length && !recentAll.length && !hurt?.killer) return null;
+  const total = entries.reduce((n, [, v]) => n + v.dmg, 0) || 1;
+  const topName = entries[0]?.[0] ?? recentAll[recentAll.length - 1]?.name ?? 'Unknown';
+
+  // headline: the killing blow, else the biggest source
+  const kill = hurt.killer ?? null;
+  const topHow = Object.entries(entries[0]?.[1]?.hows ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const name = kill?.name ?? topName;
+  const how = kill ? (kill.how ?? null) : topHow;
+  const verb = !kill ? 'Worn down by' : (HAZARDS.has(name) ? 'Caught by' : 'Slain by');
+
+  // top 3 sources, with the main "how" when one dominates
+  const sources = entries.slice(0, 3).map(([n, v]) => {
+    const hows = Object.entries(v.hows ?? {}).sort((a, b) => b[1] - a[1]);
+    const dom = hows[0] && hows[0][1] / v.dmg >= 0.5 ? hows[0][0] : null;
+    return { name: n, dmg: v.dmg, hits: v.hits, share: v.dmg / total, how: dom, killer: !!kill && kill.name === n };
+  });
+
+  // last moments: up to 5 hits within 8 s of the final one
+  const endT = recentAll.length ? recentAll[recentAll.length - 1].t : 0;
+  let recent = recentAll.filter((h) => endT - h.t <= 8).slice(-5);
+  if (!recent.length) recent = recentAll.slice(-1);
+  const hpMax = Math.max(maxHp || 0, ...recent.map((h) => h.hp + h.dmg), 1);
+  const burst = recentAll.filter((h) => endT - h.t <= 1.5).length;
+
+  const ctx = { k: { name, how, dmg: kill?.dmg ?? null }, n: entries.length, share: (entries[0]?.[1].dmg ?? 0) / total, el, burst };
+  const tip = DEATH_TIPS.find((t) => { try { return t.test(ctx); } catch { return false; } })?.text ?? DEATH_TIP_FALLBACK;
+
+  return { verb, name, how, dmg: kill?.dmg ?? null, sources, recent, hpMax, endT, tip };
+}
+
+const dmgN = (n) => fmt(Math.round(n));
+
+// "Slain by War Boar · charge · 41"
+function killerLineHTML(r) {
+  return `<p class="mn-killer"><span class="mn-killer-v">${esc(r.verb)}</span><b class="mn-killer-n">${esc(r.name)}</b>${r.how ? `<span class="mn-killer-how">${esc(r.how)}</span>` : ''}${r.dmg != null ? `<span class="mn-killer-dmg num">${dmgN(r.dmg)}</span>` : ''}</p>`;
+}
+
+function deathRecapHTML(r) {
+  const src = r.sources.map((s) => `
+      <li class="mn-src${s.killer ? ' is-killer' : ''}" title="${esc(`${dmgN(s.dmg)} damage in ${s.hits} hit${s.hits === 1 ? '' : 's'}`)}">
+        <span class="mn-src-name">${esc(s.name)}${s.how ? `<em>${esc(s.how)}</em>` : ''}</span>
+        <span class="mn-src-bar"><i style="transform:scaleX(${Math.max(0.02, s.share).toFixed(3)})"></i></span>
+        <span class="num mn-src-pct">${Math.round(s.share * 100)}%</span>
+      </li>`).join('');
+  const last = r.recent.length - 1;
+  const chips = r.recent.map((h, i) => {
+    const gap = r.endT - h.t;
+    const when = i === last ? 'the end' : `−${gap.toFixed(1)}s`;
+    return `
+      <li class="mn-hit${i === last ? ' is-last' : ''}" title="${esc(`${h.name}${h.how ? ` · ${h.how}` : ''}: ${dmgN(h.dmg)} damage, ${dmgN(h.hp)} HP left`)}">
+        <span class="mn-hit-top"><b class="num mn-hit-dmg">−${dmgN(h.dmg)}</b><span class="mn-hit-t">${when}</span></span>
+        <span class="mn-hit-name">${esc(h.name)}</span>
+        <span class="mn-hit-how">${esc(h.how ?? (HAZARDS.has(h.name) ? 'hazard' : 'contact'))}</span>
+        <span class="mn-hit-hp"><i style="transform:scaleX(${Math.max(0, Math.min(1, h.hp / r.hpMax)).toFixed(3)})"></i></span>
+        <span class="mn-hit-hpn num">${dmgN(h.hp)} hp</span>
+      </li>`;
+  }).join('');
+  // "3 hits in 1.2 s": the tight cluster at the end (last 4 s), not the whole chip row
+  const cluster = r.recent.filter((h) => r.endT - h.t <= 4);
+  const n = cluster.length;
+  const burst = n > 1 ? `${n} hits in ${(r.endT - cluster[0].t).toFixed(1)} s` : 'one hit';
+  return `
+    <section class="cf-frame mn-recap" aria-label="Why you fell">
+      <div class="mn-recap-cols">
+        <div class="mn-recap-col mn-recap-src">
+          <h3 class="mn-recap-h">Damage taken</h3>
+          <ul class="mn-srcs">${src}</ul>
+        </div>
+        <div class="mn-recap-col mn-recap-last">
+          <h3 class="mn-recap-h">The last moments<span class="mn-recap-sum">${esc(burst)}</span></h3>
+          <ul class="mn-hits">${chips}</ul>
+        </div>
+      </div>
+      <p class="mn-tip">${icon(ICON.ui('help'), { fallback: '?' })}<span><b>Next time</b> ${esc(r.tip)}</span></p>
+    </section>`;
+}
+
 // "+4% damage per rank" -> { sign, n, pct, what }
 function parseAttune(def) {
   const m = /^([+−-])(\d+)(%?)\s+(.*?)\s+per rank$/.exec(def.desc ?? '');
@@ -618,6 +732,9 @@ export class Menus {
     }).join('');
     const none = (t, hint = '') => `<p class="mn-none">${t}</p>${hint ? `<p class="mn-hint">${hint}</p>` : ''}`;
 
+    // death recap (stats.hurt); the victory screen stays as it was
+    const recap = victory ? null : deathRecap(s.hurt, { el, maxHp: s.maxHp ?? this.game.player?.stats?.maxHp ?? 0 });
+
     const sub = [cls?.name, tier > 0 ? `Rift Tier ${tier}` : 'Rift Tier 0'].filter(Boolean).join(' · ');
 
     this.endEl.innerHTML = `
@@ -627,7 +744,7 @@ export class Menus {
           ${victory ? '<span class="mn-end-crown" aria-hidden="true"></span>' : ''}
           <div class="mn-eyebrow"><i></i><span>${victory ? 'victory' : 'fallen'}</span><i></i></div>
           <h1 class="mn-end-hero">${esc(hero)}</h1>
-          ${victory ? '<div class="cf-prism mn-end-prism" aria-hidden="true"></div>' : '<div class="mn-end-rule" aria-hidden="true"></div>'}
+          ${victory ? '<div class="cf-prism mn-end-prism" aria-hidden="true"></div>' : (recap ? killerLineHTML(recap) : '<div class="mn-end-rule" aria-hidden="true"></div>')}
           <div class="mn-end-sub" data-el="${esc(el)}">${icon(ICON.cls(s.classId), { el, fallback: GLYPH[s.classId] ?? '✦' })}<span>${esc(sub)}</span></div>
         </header>
 
@@ -639,6 +756,8 @@ export class Menus {
           </div>
           ${callouts.join('')}
         </div>
+
+        ${recap ? deathRecapHTML(recap) : ''}
 
         <div class="mn-end-grid">
           <section class="cf-frame mn-end-card mn-end-ledger">

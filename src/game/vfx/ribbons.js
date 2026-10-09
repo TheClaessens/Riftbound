@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HERO_YIELD_GLSL } from './heroYield.js';
 
 // =====================================================================================
 //  Ribbons: projectile trails AND lightning bolts in ONE pre-allocated dynamic mesh.
@@ -15,13 +16,14 @@ import * as THREE from 'three';
 const SEG = 16;
 const VS = /* glsl */`
   attribute vec4 aSide; attribute vec4 aCol;
-  varying vec4 vSide; varying vec4 vCol;
-  void main() { vSide = aSide; vCol = aCol; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  varying vec4 vSide; varying vec4 vCol; varying vec3 vPV;
+  void main() { vSide = aSide; vCol = aCol; vec4 pv = modelViewMatrix * vec4(position, 1.0); vPV = pv.xyz; gl_Position = projectionMatrix * pv; }`;
 const FS = /* glsl */`
   uniform sampler2D uNoise; uniform float uTime;
-  varying vec4 vSide; varying vec4 vCol;
+  varying vec4 vSide; varying vec4 vCol; varying vec3 vPV;
+  ${HERO_YIELD_GLSL}
   void main() {
-    float u = vSide.x, s = abs(vSide.y), a = vSide.z;
+    float u = vSide.x, s = abs(vSide.y), a = vSide.z * heroYield(vPV);
     if (a < 0.003) discard;
     if (vSide.w < 0.5) {
       float n = texture(uNoise, vec2(u * 1.5 - uTime * 1.3, vSide.y * 0.2 + 0.37)).r;
@@ -71,7 +73,7 @@ export class RibbonSystem {
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     this.geo = geo;
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uNoise: { value: shared.noise }, uTime: shared.uTime },
+      uniforms: { uNoise: { value: shared.noise }, uTime: shared.uTime, uHeroView: shared.uHeroView, uHeroYield: shared.uHeroYield },
       vertexShader: VS, fragmentShader: FS,
       transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide, ...shared.blend,
     });

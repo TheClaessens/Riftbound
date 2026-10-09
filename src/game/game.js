@@ -68,6 +68,7 @@ export class Game {
     this.pendingLevelUps = 0;
     this.pendingChests = 0;
     this.events.on('levelUp', () => { this.pendingLevelUps++; });
+    this.events.on('playerHit', (e) => this._onPlayerHit(e));
     this.events.on('playerDied', () => this._end('dead'));
     this.events.on('bossSpawned', () => { if (this.phase === 'horde') this.phase = 'boss'; });
     this.events.on('bossKilled', () => this._onBossKilled());
@@ -123,12 +124,23 @@ export class Game {
     this.events.emit('actStart', { act: 0, def: ACTS[0] });
   }
 
+  _onPlayerHit({ amount, how, name }) {
+    const h = this.stats.hurt;
+    const b = h.by[name] ?? (h.by[name] = { dmg: 0, hits: 0, hows: {} });
+    b.dmg += amount; b.hits++;
+    if (how) b.hows[how] = (b.hows[how] ?? 0) + amount;
+    h.recent.push({ name, how: how ?? null, dmg: amount, t: this.time, hp: Math.max(0, this.player?.hp ?? 0) });
+    if (h.recent.length > RECENT_HITS) h.recent.shift();
+    if (this.player && this.player.hp <= 0) h.killer = { name, how: how ?? null, dmg: amount };
+  }
+
   _end(state) {
     if (this.state === 'dead' || this.state === 'victory') return;
     this.state = state;
     if (state === 'dead') this.player.model.die(); else this.player.model.victory();
     const s = this.stats;
     s.level = this.player.level;
+    s.maxHp = this.player.stats.maxHp;   // death recap hp bars
     s.time = this.time;
     s.act = this.act;
     s.victory = state === 'victory';
@@ -366,25 +378,32 @@ export class Game {
   // ------------------------------------------------------------------ level-up / chests
   _openLevelUp() {
     this.state = 'levelup';
-    let cards = rollCards(this, 3);
     const run = this.run;
+    let index = 1;                               // hand number inside this burst of level-ups
     const ctl = {
       get rerolls() { return run.rerolls; },
       get banishes() { return run.banishes; },
-      // Both return a fresh set of cards (or null when not allowed).
-      reroll: () => { if (run.rerolls <= 0) return null; run.rerolls--; cards = rollCards(this, 3); return cards; },
+      // Both return a fresh set of cards (or null when not allowed). They act on the current hand only.
+      reroll: () => { if (run.rerolls <= 0) return null; run.rerolls--; return rollCards(this, 3); },
       banish: (card) => {
         if (run.banishes <= 0 || card.type === 'heal') return null;
         run.banishes--; run.banished.add(card.id);
-        cards = rollCards(this, 3); return cards;
+        return rollCards(this, 3);
       },
     };
-    this.ui.showLevelUp(cards, (card) => {
+    // Multi-pick: while level-ups are still queued the modal stays open and the next hand is dealt in
+    // place (one ui.showLevelUp call per hand: the playtest adapter wraps it to offer decisions).
+    const deal = () => {
+      this.ui.showLevelUp(rollCards(this, 3), onPick, ctl, { index, total: index - 1 + this.pendingLevelUps });
+    };
+    const onPick = (card) => {
       applyCard(this, card);
       this.pendingLevelUps--;
+      if (this.pendingLevelUps > 0 && this.state === 'levelup') { index++; deal(); return; }
       this.ui.hideLevelUp();
       this.state = 'playing';
-    }, ctl);
+    };
+    deal();
   }
 
   // Called by pickups when a Relic Chest is collected.
@@ -406,9 +425,17 @@ export class Game {
 
 const _origin = new THREE.Vector3();
 
+// stats.hurt: the death recap's data (contract: design/playtest/round-1/NEXT.md §Death recap)
+//   by:     { [sourceName]: { dmg, hits, hows: { [how]: dmg } } }   whole run
+//   recent: [{ name, how, dmg, t, hp }]                             last RECENT_HITS hits, oldest first
+//   killer: { name, how, dmg } | null                               the hit that ended the run
 function freshStats() {
-  return { kills: 0, damageDealt: 0, reactions: {}, fusions: [], level: 1, time: 0, maxChain: 0, bossesKilled: 0, act: 0 };
+  return {
+    kills: 0, damageDealt: 0, reactions: {}, fusions: [], level: 1, time: 0, maxChain: 0, bossesKilled: 0, act: 0,
+    hurt: { by: {}, recent: [], killer: null },
+  };
 }
+const RECENT_HITS = 8;
 function freshRun(meta) {
   return { rerolls: 2 + (meta.attune.fortune ?? 0), banishes: 1 + (meta.attune.exile ?? 0), banished: new Set() };
 }

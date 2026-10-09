@@ -17,6 +17,19 @@ export const SLOT_KEYS = [
 ];
 export const MAX_AUTOS = 2;
 
+// Damage taken (playtest round 1, issues #4 and #5)
+export const HIT_CAP = 0.3;            // max share of max HP one hit can take
+const FROST_ARMOR_BLOCK = 0.6;         // Permafrost armour absorbs 60% of a hit
+const FROST_ARMOR_CD = 1.2;            // seconds between armour gains (from freezing foes)
+const FROST_ARMOR_MAX = 3;
+
+// Player-facing name of whatever hurt the player: enemies, bosses ("Vashkar, the Ashen
+// Warchief" -> "Vashkar"), projectiles (their shooter) and map hazards all carry .name.
+export function hitSourceName(source) {
+  const n = source?.name ?? source?.boss?.name;
+  return n ? String(n).split(',')[0] : 'Unknown';
+}
+
 const _hits = [];
 
 export class Player {
@@ -165,9 +178,9 @@ export class Player {
       }));
     } else if (this.traitId === 'permafrost') {
       this._offs.push(ev.on('enemyFrozen', () => {
-        if (this._armorCd > 0 || this.frostArmor >= 3) return;
+        if (this._armorCd > 0 || this.frostArmor >= FROST_ARMOR_MAX) return;
         this.frostArmor++;
-        this._armorCd = 1.2;
+        this._armorCd = FROST_ARMOR_CD;
         HERO_FX.armorGain(this.game, this, this.frostArmor);
       }));
     }
@@ -221,20 +234,24 @@ export class Player {
     if (this.hp - before >= 1) this.game.fx.number(this.pos, this.hp - before, { color: '#6dff8a' });
   }
 
-  takeDamage(amount, source) {
+  // source: the enemy / boss / projectile / hazard (its .name is player-facing); how: optional
+  // attack label for the death recap ('charge', 'slam', 'projectile', ...).
+  takeDamage(amount, source, how = null) {
     const game = this.game;
     if (this.dead || game.state !== 'playing') return;
     // Perfect Dodge: anything that would land early in a dash is negated and rewarded.
     if (this.dash.window > 0 && !this.dash.perfectUsed) { this._perfectDodge(source); return; }
     if (this.invuln > 0) return;
+    let dmg = amount * (1 - this.stats.armor) * this.stats.dmgTaken * this.relicDmgTaken;
+    // No single hit takes more than HIT_CAP of max HP (Act II War Boar charges took 40-50%).
+    dmg = Math.min(dmg, this.stats.maxHp * HIT_CAP);
     if (this.frostArmor > 0) {
+      // Permafrost armour softens a hit instead of erasing it (it made the Cryomancer untouchable)
       this.frostArmor--;
-      this.invuln = 0.3;
       HERO_FX.armorBreak(game, this);
       game.fx.text(this.pos, 'ARMOR', '#7fe0ff');
-      return;
+      dmg *= 1 - FROST_ARMOR_BLOCK;
     }
-    let dmg = amount * (1 - this.stats.armor) * this.stats.dmgTaken * this.relicDmgTaken;
     if (this.shield > 0) {
       const a = Math.min(this.shield, dmg);
       this.shield -= a; dmg -= a;
@@ -246,7 +263,7 @@ export class Player {
     this.model.hit();
     game.fx.shake(0.25, 'threat');
     game.engine.pulse?.('hit');
-    game.events.emit('playerHit', { amount: dmg, source });
+    game.events.emit('playerHit', { amount: dmg, source, how, name: hitSourceName(source) });
     if (this.hp <= 0) {
       if (this.secondWind) {
         this.secondWind = false;
@@ -481,7 +498,12 @@ class FirePatch {
 }
 
 // Fitted to DESIGN §13: ~L5 at 1:00, L10 at the Act I boss, L18 by Act II's end, L27 at the Heart.
+// L5-L11 ease from the early ramp into the main curve: it used to jump 48 -> 178 XP at L5,
+// which left players stuck at L7 for over a minute (playtest round 1, #12).
 export function xpForLevel(L) {
   if (L <= 4) return 8 + 10 * L;
-  return Math.floor(25 + 28 * L + 0.55 * L * L);
+  const main = Math.floor(25 + 28 * L + 0.55 * L * L);
+  if (L >= 12) return main;
+  const k = (L - 4) / 8;
+  return Math.floor((48 + 40 * (L - 4)) * (1 - k) + main * k);
 }

@@ -29,7 +29,7 @@ Then open http://localhost:8080. To play every class at any Rift Tier, tick **Un
 | 1–3 / F / X | Level-up: pick a card / reroll / banish |
 
 ## Docs
-* [DESIGN.md](DESIGN.md): the locked v1.0 game design spec
+* [DESIGN.md](DESIGN.md): the game design spec (v4)
 * [design/PASSES.md](design/PASSES.md): the 10 design passes that produced it
 * [ARCHITECTURE.md](ARCHITECTURE.md): module contracts
 * [design/UI.md](design/UI.md): the v3 "Crownforge" UI spec (tokens, primitives, icons, screens); [design/UI_PASSES.md](design/UI_PASSES.md): the UI design passes
@@ -54,3 +54,25 @@ await runSim({ classId: 'cryomancer', seconds: 700 });
 * ~95 hand-authored SVG icons in one sprite (`src/ui/icons/`), no emoji. Gallery: http://localhost:8080/dev/icons.html?filter=relic- · primitives: http://localhost:8080/dev/ui-kit.html
 * UI harness (console): `const U = await import('/src/dev/uishots.js'); await U.hud({ act: 2, boss: true, chain: 30 }); U.levelUp(); U.relicPick(4); U.pause('codex'); U.title(); U.victory();`
 * Research behind it: `design/research/05–07`. The v2.1 UI is archived in `backup/riftbound-v2.1-preui.zip`.
+
+## Heroes + spell VFX (v4)
+* **Heroes** are rigged characters on the same instanced rig as the monsters. Each class is one order of Vael:
+  * Cinderwright Pyromancer
+  * Stillwater Warden Cryomancer
+  * Tempest Rider Stormcaller
+  * Loomwarden Arcanist
+
+  They have a twin-stick aim split (legs follow the movement, chest follows the aim), stance-plus-recoil rapid casting, heavy/throw/nova/dash poses, death into a Rift recall, and victory. The selected hero stands in the world on the title screen. Code: `src/game/heroes/`. Contract: [design/HEROES.md](design/HEROES.md).
+* **Spell VFX**: every ability is drawn as a real phenomenon. `game.vfx` (`src/game/vfx/`) provides:
+  * stateless GPU particles with an ink-outlined sprite atlas
+  * debris
+  * noise shells
+  * one-draw ground decals
+  * ribbons and forked bolts
+  * toon clouds
+  * enemy status looks in the rig shader
+
+  Per-element looks live in `vfx/elements/*` and hero effects in `vfx/hero/*`. Contract: [design/VFX.md](design/VFX.md).
+* Hero viewer: http://localhost:8080/dev/creatures.html?set=../heroes/pyromancer&poses=idle,run:1.6,strafe:1.6,shot:0,heavy:0.36,dash:0.5,death:0.6,victory:1
+* Headless frames (pane hidden): start the `riftbound-shots` server (port 8097), open http://localhost:8097/?unlockall, then run `const S = await import('/src/dev/shot.js'); await S.stage({ classId: 'cryomancer', act: 0 }); await S.castAt('blizzard', 5, 4, -2); S.step(1); await S.shot('blizzard')`. Frames are saved to `dev/shots/`.
+* Design passes: [design/HERO_PASSES.md](design/HERO_PASSES.md). Research: `design/research/08–10`. Before/after frames: `design/shots-v4/`. The v3.0 build is archived in `backup/riftbound-v3.0-preheroes.zip`.

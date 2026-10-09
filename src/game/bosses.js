@@ -109,7 +109,7 @@ class FlameRing {
       const p = game.player;
       if (Math.abs(distXZ(p.pos, this.center) - this.r) <= this.width * 0.5 + p.radius) {
         this.hit = true;
-        p.takeDamage(this.damage, this);
+        p.takeDamage(this.damage, this, 'flame ring');
         game.fx.burst(p.pos, { color: HOSTILE_RED, count: 12, speed: 5, life: 0.4, size: 0.35, backing: true });
       }
     }
@@ -158,7 +158,7 @@ class LavaTrail {
       const p = game.player;
       for (const pt of this.points) {
         if (distXZ(p.pos, pt.pos) < LAVA_R) {
-          p.takeDamage(8 * this.dmgScale, this.boss);
+          p.takeDamage(8 * this.dmgScale, this.boss, 'lava trail');
           this.tickT = 0.5;
           break;
         }
@@ -227,7 +227,7 @@ class BeamSweep {
         const d = segDist(p.pos.x, p.pos.z, o.x, o.z, o.x + Math.sin(a) * BEAM_LEN, o.z + Math.cos(a) * BEAM_LEN);
         if (d <= BEAM_W * 0.5 + p.radius) {
           this.hitCd = 0.5;
-          p.takeDamage(this.damage, this.boss);
+          p.takeDamage(this.damage, this.boss, 'beam');
         }
       }
     }
@@ -519,7 +519,7 @@ class Boss {
       const at = new THREE.Vector3(game.player.pos.x, 0, game.player.pos.z);
       this._circle(game, at, 5, 1.0, RED, () => {
         const p = game.player;
-        if (distXZ(p.pos, at) < 5) p.takeDamage(this.damage * 1.6, this);
+        if (distXZ(p.pos, at) < 5) p.takeDamage(this.damage * 1.6, this, 'slam');
         game.fx.ring(at, { color: RED, radius: 5, life: 0.25, width: 0.2 });
         game.fx.burst(at, { color: RED, count: 20, speed: 6, life: 0.5, size: 0.4 });
         game.fx.shake(0.5, 'threat');
@@ -542,7 +542,7 @@ class Boss {
     for (let i = 0; i < n; i++) {
       const dir = dirFromAngle((Math.PI * 2 * i) / n);
       const start = this.pos.clone().addScaledVector(dir, this.radius + 0.5);
-      game.addActor(new EnemyBullet(game, start, dir, this.damage * 0.6, { speed: 7.5, radius: 0.28, life: 4, color: BULLET_COLOR, size: 0.3 }));
+      game.addActor(new EnemyBullet(game, start, dir, this.damage * 0.6, { speed: 7.5, radius: 0.28, life: 4, color: BULLET_COLOR, size: 0.3, owner: this.name }));
       this._podSpark(game, start, i, n);
     }
   }
@@ -594,7 +594,7 @@ class Boss {
     const p = game.player;
     if (!this.chargeHit && distXZ(this.pos, p.pos) < this.radius + p.radius + 0.3) {
       this.chargeHit = true;
-      p.takeDamage(this.damage * 1.2, this);
+      p.takeDamage(this.damage * 1.2, this, 'charge');
     }
     if (this.chargeT <= 0 || moved < step * 0.4) this._endCharge(game);
   }
@@ -631,7 +631,7 @@ class Boss {
       const fire = () => {
         this._play('slam', 1.0, 0.5, null, 0.9);
         return this._circle(game, origin, 2.6, 0.5, ORANGE, () => {
-          game.addActor(new FlameRing(game, origin, this.damage));
+          game.addActor(Object.assign(new FlameRing(game, origin, this.damage), { name: this.name }));
           this._axeImpact(game);
         });
       };
@@ -698,7 +698,7 @@ class Boss {
     const mouth = new THREE.Vector3(this.pos.x + Math.sin(aim) * fwd, 0, this.pos.z + Math.cos(aim) * fwd);
     for (let j = -2; j <= 2; j++) {
       const dir = dirFromAngle(aim + j * 0.16);
-      game.addActor(new EnemyBullet(game, mouth, dir, this.damage * 0.6, { speed: 8, radius: 0.28, life: 4, color: BULLET_COLOR, size: 0.3, y: 1.3 }));
+      game.addActor(new EnemyBullet(game, mouth, dir, this.damage * 0.6, { speed: 8, radius: 0.28, life: 4, color: BULLET_COLOR, size: 0.3, y: 1.3, owner: this.name }));
     }
     const m = this._world(AURELITH_MOUTH, _w);
     game.fx.burst(m, { color: BULLET_COLOR, count: 8, speed: 4, life: 0.25, size: 0.35, up: -0.3, hdr: 2.6 });

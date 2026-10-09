@@ -8,11 +8,11 @@ export const CLASSES = {
     id: 'arcanist', name: 'Arcanist', title: 'Weaver of the Rift', element: 'arcane', color: '#c08cff', hex: 0xb67cff,
     starter: 'arcaneBolt',
     dash: { name: 'Phase Step', kind: 'blink', cd: 2.4, dist: 5.5, dur: 0.06, charges: 1, desc: 'Blink forward. Arrival burst detonates statuses.' },
-    trait: { id: 'resonance', name: 'Resonance', desc: '+2% damage and +1% cooldown reduction per Chain (max 25). Your Chain holds for 4s instead of 2.5s.' },
+    trait: { id: 'resonance', name: 'Resonance', desc: 'Every 3rd Arcane Bolt volley is Prismatic: it carries Fire, Storm or Frost in turn. +2% damage and +1% cooldown reduction per Chain (max 25). Your Chain holds for 4s.' },
     playstyle: 'Weave elements. Keep the Chain alive.',
     tilt: 'Balanced',
     apply: () => {},
-    unlock: { id: 'killWarden', text: 'Defeat Gorrak, the Troll King' },
+    unlock: { id: 'reactions4', text: 'Discover 4 reactions' },
   },
   pyromancer: {
     id: 'pyromancer', name: 'Pyromancer', title: 'Kindler of Ruin', element: 'fire', color: '#ff7a33', hex: 0xff6a1f,
@@ -28,11 +28,13 @@ export const CLASSES = {
     id: 'cryomancer', name: 'Cryomancer', title: 'Keeper of Stillness', element: 'frost', color: '#7fe0ff', hex: 0x66d9ff,
     starter: 'iceShard',
     dash: { name: 'Glacial Slide', kind: 'frost', cd: 2.8, dist: 5, dur: 0.2, charges: 1, desc: 'Slide, chilling everything you pass.' },
-    trait: { id: 'permafrost', name: 'Permafrost', desc: 'Frozen foes take +35% damage. Freezing grants Frost Armor (max 3).' },
+    trait: { id: 'permafrost', name: 'Permafrost', desc: 'Frozen foes take +35% damage. Freezing grants Frost Armor (max 3): each absorbs 60% of a hit.' },
     playstyle: 'Control the field. Shatter what is still.',
     tilt: '+30 max HP, −5% move speed',
     apply: (s) => { s.maxHp += 30; s.moveSpeed *= 0.95; },
-    unlock: { id: 'reactions4', text: 'Discover 4 reactions' },
+    // the forgiving class is the first unlock; the Arcanist (reactions4) waits until reactions
+    // are understood (playtest round 1, #4: the Arcanist was a trap as the first unlock)
+    unlock: { id: 'killWarden', text: 'Defeat Gorrak, the Troll King' },
   },
   stormcaller: {
     id: 'stormcaller', name: 'Stormcaller', title: 'Rider of the Tempest', element: 'storm', color: '#ffe45c', hex: 0xffe14a,
@@ -46,5 +48,5 @@ export const CLASSES = {
   },
 };
 
-export const CLASS_ORDER = ['pyromancer', 'arcanist', 'cryomancer', 'stormcaller'];
+export const CLASS_ORDER = ['pyromancer', 'cryomancer', 'arcanist', 'stormcaller'];   // unlock order
 export const STARTER_IDS = new Set(Object.values(CLASSES).map((c) => c.starter));

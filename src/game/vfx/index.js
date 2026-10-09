@@ -10,6 +10,7 @@ import { PARTICLES, SHELLS } from './presets.js';
 import { RECIPES } from './recipes.js';
 import { StatusVFX } from './status.js';
 import { DEBRIS } from './debris.js';
+import { HERO_YIELD } from './heroYield.js';
 import * as FIRE from './elements/fire.js';
 import * as FROST from './elements/frost.js';
 import * as STORM from './elements/storm.js';
@@ -67,10 +68,12 @@ export class VFX {
     this.time = 0;
     this.uTime = { value: 0 };
     this.uHeroView = { value: new THREE.Vector4(0, 0, 0, 0) };   // painted particles fade over the hero
+    // own-VFX yield around the hero (heroYield.js): r0, r1, floor, strength (0 calm .. 1 busy)
+    this.uHeroYield = { value: new THREE.Vector4(HERO_YIELD.r0, HERO_YIELD.r1, HERO_YIELD.floor, 0) };
     this.atlas = buildSpriteAtlas();
     this.noise = buildNoiseTexture();
     this.ramps = new RampAtlas(384);
-    const shared = { uTime: this.uTime, uHeroView: this.uHeroView, atlas: this.atlas, noise: this.noise, ramps: this.ramps, blend: BLEND_ADD };
+    const shared = { uTime: this.uTime, uHeroView: this.uHeroView, uHeroYield: this.uHeroYield, atlas: this.atlas, noise: this.noise, ramps: this.ramps, blend: BLEND_ADD };
     this.paint = new ParticleLayer(this.scene, shared, { capacity: 8192, renderOrder: 9, name: 'vfx-paint' });
     this.glow = new ParticleLayer(this.scene, shared, { capacity: 8192, renderOrder: 13, name: 'vfx-glow' });
     this.debrisSys = new DebrisSystem(this.scene);
@@ -231,6 +234,10 @@ export class VFX {
     const hp = this.game.player?.pos, hv = this.uHeroView.value;
     if (hp && this.camera) { _hv.set(hp.x, 1.1, hp.z).applyMatrix4(this.camera.matrixWorldInverse); hv.set(_hv.x, _hv.y, _hv.z, 1); } else hv.w = 0;
     this.heat *= Math.exp(-3 * dt);
+    // yield strength follows spawn pressure (smoothed over ~0.25 s so it never flickers)
+    const hy = this.uHeroYield.value, H = HERO_YIELD;
+    const busy = Math.min(1, Math.max(0, (this.heat - H.heatLo) / (H.heatHi - H.heatLo)));
+    hy.w += (busy * busy * (3 - 2 * busy) - hy.w) * (1 - Math.exp(-4 * dt));
     for (let i = this.zones.length - 1; i >= 0; i--) {
       const z = this.zones[i];
       if (z.update(dt) === false) this.zones.splice(i, 1);
@@ -273,5 +280,9 @@ export class VFX {
     this.paint.clear(); this.glow.clear();
     this.debrisSys.clear(); this.shells.clear(); this.decals.clear();
     this.ribbons.clear(); this.clouds.clear(); this.status.clear();
+    // the arcane kit draws immediate-mode instances: drop its records AND hide last frame's instances,
+    // or a new run keeps the previous run's glyphs frozen on screen until the next arcane cast
+    const k = this._arcaneKit;
+    if (k) { k._revive(); k._flush(); }
   }
 }

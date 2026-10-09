@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ELEMENT_COLOR } from '../../core/utils.js';
+import { HERO_LAYER } from '../../core/engine.js';
 import { CreatureRenderer } from '../creatures/renderer.js';
 import { newHeroState } from './hero.js';
 import { pyromancerHero } from './pyromancer.js';
@@ -69,6 +70,10 @@ export class HeroModel {
     this.notch = this.ring.userData.notch;
     this.root.add(this.ring);
     game.scene.add(this.root);
+    // readability layer (engine HeroMaskPass): the ring and the rig also render on HERO_LAYER; the light
+    // band of the covered-hero rim is the class element's pale highlight
+    this.root.traverse((o) => o.layers.enable(HERO_LAYER));
+    this.readRim = new THREE.Color(ELEMENT_HI[this.element]).multiplyScalar(1.15);
   }
 
   // ---------------------------------------------------------------- events
@@ -127,6 +132,8 @@ export class HeroModel {
     const now = this.time;
     this.pos.copy(p.pos);
     this.root.position.copy(p.pos);
+    // the renderer re-creates its meshes when it grows: keep them on the readability layer
+    for (const b of this.renderer.batches.values()) { b.mesh?.layers.enable(HERO_LAYER); b.hull?.layers.enable(HERO_LAYER); }
 
     // ---- action clock
     if (A.name) {
@@ -236,9 +243,16 @@ function groundRing(color) {
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.04;
   ring.scale.setScalar(1.15);
   ring.renderOrder = 20;
-  const outline = new THREE.Mesh(RING_GEO.outline, new THREE.MeshBasicMaterial({ color: 0x0a0812, opacity: 0.55, ...blend }));
+  // readability (playtest round 1 #3): a darker ink outline and a thin near-white inner line make the ring
+  // crisp on every ground (orange on the dirt road, cyan on water). Opacity stays < 1: the engine's hero mask
+  // tells ring (alpha ~0.9) from rig (alpha 1) by it.
+  const outline = new THREE.Mesh(RING_GEO.outline, new THREE.MeshBasicMaterial({ color: 0x0a0812, opacity: 0.78, ...blend }));
   outline.renderOrder = 19; outline.position.z = -0.005;
   ring.add(outline);
+  const hot = new THREE.Mesh(RING_GEO.hot, new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.7), opacity: 0.95, ...blend }));
+  hot.material.color.multiplyScalar(1.1);
+  hot.renderOrder = 20; hot.position.z = 0.002;
+  ring.add(hot);
   const disc = new THREE.Mesh(RING_GEO.disc, new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.25, ...blend }));
   disc.renderOrder = 19;
   disc.scale.setScalar(0.62 / 1.15); disc.position.z = -0.01;
@@ -268,6 +282,7 @@ const RING_GEO = (() => {
   return {
     ring: new THREE.RingGeometry(0.6, 0.75, 32),
     outline: new THREE.RingGeometry(0.55, 0.8, 32),
+    hot: new THREE.RingGeometry(0.6, 0.645, 48),
     disc: new THREE.CircleGeometry(1, 24),
     notch: crown(1, 0.78),
     notchOutline: crown(1.35, 0.74),

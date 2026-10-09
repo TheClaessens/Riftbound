@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RAMP_GLSL } from './textures.js';
+import { HERO_YIELD_GLSL } from './heroYield.js';
 
 // =====================================================================================
 //  ParticleLayer: stateless GPU particles drawn as ONE instanced quad mesh.
@@ -25,7 +26,7 @@ export const ORIENT = { camera: 0, ground: 1, orbit: 2 };
 const VS = /* glsl */`
   attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; attribute vec4 iD;
   uniform float uTime;
-  uniform vec4 uHeroView;   // hero chest in view space (xyz), w = 1 when there is a hero
+  ${HERO_YIELD_GLSL}
   ${RAMP_GLSL}
   varying vec2 vUv; varying vec4 vColor; varying vec4 vShape; varying vec3 vShade; varying float vMode;
   vec2 rot2(vec2 q, float a) { float c = cos(a), s = sin(a); return vec2(q.x * c - q.y * s, q.x * s + q.y * c); }
@@ -105,6 +106,7 @@ const VS = /* glsl */`
       float hd = length((mc.xy - uHeroView.xy) / vec2(0.85, 1.25)) - 0.5 * size;
       col.a *= mix(0.12, 1.0, smoothstep(0.55, 1.25, hd));   // low floor: billows stack
     }
+    col.a *= heroYield(mc.xyz);                    // busy screen: every own sprite yields near the hero
     vColor = col; vShape = shp; vMode = mode;
     vShade = mode > 0.5 ? ramp(iC.w + 2.0, t).rgb : vec3(0.0);   // paint: shadow colour over life
   }`;
@@ -154,6 +156,7 @@ export class ParticleLayer {
       uniforms: {
         uTime: shared.uTime,
         uHeroView: shared.uHeroView,
+        uHeroYield: shared.uHeroYield,
         uAtlas: { value: shared.atlas },
         uRamp: { value: shared.ramps.tex },
         uRampRows: { value: shared.ramps.rows },

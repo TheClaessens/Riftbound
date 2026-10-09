@@ -60,6 +60,15 @@
 .md-stamp .cf-label { color: #3a2a18; font-size: calc(16 * var(--u)); }
 .md-stamp b { font-size: calc(26 * var(--u)); line-height: 1; }
 .md-stamp-ico { font-size: calc(24 * var(--u)); }
+/* multi-pick: "2 of 3" beside the level stamp: a dark plate so it reads as progress, not a second level */
+.md-stamp[hidden] { display: none; }
+.md-stamp-multi {
+  background: linear-gradient(160deg, var(--cf-plate-2) 0 50%, var(--cf-plate-1) 50%) padding-box,
+              linear-gradient(160deg, #fff4d2, var(--cf-bronze-lo)) border-box;
+  box-shadow: 0 0 0 1px var(--cf-void), inset 1px 1px 0 rgb(255 255 255 / .14), 0 calc(3 * var(--u)) 0 var(--cf-bronze-lo);
+}
+.md-stamp-multi b { color: var(--cf-gilt); text-shadow: 0 1px 0 var(--cf-void); }
+.md-stamp-multi .cf-label { color: var(--cf-text); opacity: .75; }
 
 /* ---------------------------------------------------------------------
    CARD (shared by level-up and relic chest)

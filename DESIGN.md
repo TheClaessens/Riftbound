@@ -72,9 +72,9 @@ Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It 
 | Element / colour | arcane `#c08cff` | fire `#ff7a33` | frost `#7fe0ff` | storm `#ffe45c` |
 | Starter (LMB) | Arcane Bolt | Cinder Bolt | Ice Shard | Spark |
 | Dash | **Phase Step**: instant blink, 5.5 u, cd 2.4 s, arcane burst at arrival (r 2, 10 dmg, *detonates statuses*) | **Flame Dash**: 5 u / 0.16 s, cd 3.0 s, leaves a fire trail (2 s, 4 fire dmg / 0.4 s, r 1.2) | **Glacial Slide**: 5 u / 0.2 s, cd 2.8 s, chills foes along the path (r 1.6, 6 frost dmg, statusPower 2) | **Lightning Dash**: 6 u / 0.12 s, **2 charges**, cd 1.8 s each, shocks foes along the path (r 1.3, 8 storm dmg) |
-| Trait | **Resonance**: +2% dmg and +1% CDR per Chain (max 25); the Chain window is 4 s instead of 2.5 s | **Wildfire**: a burning foe that dies explodes (r 2.2 × area, 50% reaction base, fire, can react) | **Permafrost**: Frozen foes take +35% dmg; freezing a foe grants 1 Frost Armor (max 3, ≥ 1.2 s apart; each armor fully absorbs one hit) | **Momentum**: Charge 0–100 (+28/s moving, −60/s still); +0.5% dmg per Charge |
+| Trait | **Resonance**: every 3rd Arcane Bolt volley is *Prismatic* (carries Fire → Storm → Frost in turn, so the Arcanist sets up its own reactions); +2% dmg and +1% CDR per Chain (max 25); the Chain window is 4 s instead of 2.5 s | **Wildfire**: a burning foe that dies explodes (r 2.2 × area, 50% reaction base, fire, can react) | **Permafrost**: Frozen foes take +35% dmg; freezing a foe grants 1 Frost Armor (max 3, ≥ 1.2 s apart; each armor absorbs 60% of one hit) | **Momentum**: Charge 0–100 (+28/s moving, −60/s still); +0.5% dmg per Charge |
 | Stat tilt | — | +10% dmg, −10 HP | +30 HP, −5% move | +10% move, −10 HP |
-| Unlock | defeat Gorrak, the Troll King | **free (starter)** | discover 4 reactions | reach Act III |
+| Unlock | discover 4 reactions | **free (starter)** | defeat Gorrak, the Troll King | reach Act III |
 
 **Why the Pyromancer starts (playtest v2.1).** The Arcanist's trait pays out per Chain, which a new player who hasn't learned reactions yet never builds. Wildfire works from the first kill: a burning foe dies and the blast spreads Burn. Act I crystals (frost, arcane) react with fire (Steam Burst, Combust), so a new player's first reactions happen on their own. The Arcanist moved to the Gorrak unlock and got a longer Chain window to make Resonance easier to hold.
 
@@ -157,7 +157,7 @@ Reaction base = `(18 + 7·level) × stats.reaction`. A reaction can't trigger a 
 | **Tempest** | Spark + Static Field (Stormcaller) | active (LMB) | Spark chains up to 6 foes (r3: 8), 14 dmg per jump; each jump has a 25% chance to call a sky strike (30 storm). r2 +30% dmg |
 
 ### 7.4 Passives (rank 1–5, max 5 different)
-Might +12% dmg · Haste −7% cd · Swiftness +8% move · Vitality +20 HP and +0.4 regen · Magnetism +30% pickup and +6% XP · Amplify +10% area · Catalyst +25% reaction dmg · Precision +6% crit · **Volley** +1 projectile (max rank 2).
+Might +12% dmg · Haste −7% cd · Swiftness +6% move and −6% dash cd · Vitality +20 HP and +0.4 regen · Magnetism +25% pickup, +5% XP and +15% reaction-kill XP · Amplify +8% area and +2% cast echo · Catalyst +25% reaction dmg · Precision +6% crit and +3% dmg · **Volley** +1 projectile (max rank 2).
 
 ### 7.5 Level-up
 3 cards. A guaranteed fusion card if one is available. **Reroll** (2 per run + Fortune) and **Banish** (1 per run + Exile; the card's id is removed from this run's pool). "Rift Essence" (heal 40%) is the filler.
@@ -360,7 +360,7 @@ While the primer runs it **holds the act clock** at 0:00, at most 150 s. The shr
 * Saved in `localStorage['riftbound.meta.v1']`. `?unlockall` in the URL unlocks all classes (for testing).
 
 ## 13. Balance targets
-* Levels: L5 at 1:00, L10 at the Act I boss, L18 at Act II's end, L26+ at the final boss. XP to next level: `8 + 10L` for L ≤ 4, else `25 + 28L + 0.55L²`.
+* Levels: L5 at 1:00, L10 at the Act I boss, L18 at Act II's end, L26+ at the final boss. XP to next level: `8 + 10L` for L ≤ 4, L ≥ 12 `25 + 28L + 0.55L²`; L5–L11 blend linearly from `48 + 40(L−4)` into that curve. Queued level-ups are drafted hand after hand in one modal ("N of M").
 * Player base: 100 HP, 0.3 HP/s regen. Health orb drop 1% (elites 25%). The playable arena is a circle of radius 55 inside the octagonal rift wall.
 * Boss time-to-kill: 30–45 s / 45–60 s / 60–90 s.
 * Average FPS ≥ 55 with 320 enemies on mid hardware.

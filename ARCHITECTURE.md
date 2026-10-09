@@ -1,4 +1,4 @@
-# Riftbound — Architecture & Module Contracts (v2.0 — vibrant world)
+# Riftbound — Architecture & Module Contracts (v4.0 — heroes on the rig + world-grounded spell VFX)
 
 Read `DESIGN.md` for the game design (numbers are there). This file is the **contract** every module must respect.
 
@@ -14,7 +14,7 @@ Read `DESIGN.md` for the game design (numbers are there). This file is the **con
 * Readability palette:
   * Player spells use element colours (`ELEMENT_COLOR`).
   * **Enemy projectiles are hot magenta `0xff2a6d`**: opaque body, white-hot core, dark outline shell, ground shadow dot.
-  * **Hostile telegraphs are one red, `HOSTILE_RED = 0xff2a3d`** (`fx.telegraph` ignores other colours unless `{ keepColor: true }`; player-cast telegraphs pass `{ friendly: true }` → dashed element-coloured rim). Ground decals use `depthTest: false` so grass never hides them.
+  * **Hostile telegraphs are one red, `HOSTILE_RED = 0xff2a3d`** (`fx.telegraph` ignores other colours unless `{ keepColor: true }`; player-cast telegraphs pass `{ friendly: true }` → dashed element-coloured rim). Ground decals use `depthTest: false` so grass never hides them, and render in the **opaque** pass (custom blending, renderOrder 1–2) after the grass and BEFORE creatures (3) and heroes (21), so they never wash over units.
   * The world is bright and mid-value: no red / pink / magenta props or flowers in the playfield (telegraph and bullet colours).
 * `window.__game` exposes the game for debugging. A simulation harness drives `player.botMove = {x,z}` and `player.botDash = true`.
 
@@ -26,10 +26,17 @@ src/core/engine.js                renderer, iso camera, bloom, atmosphere + GRAD
 src/core/input.js, events.js, utils.js
 src/game/game.js                  state machine, acts, chain, hit-stop, level-up/chest flow   (core)
 src/game/player.js                class, dash, perfect dodge, traits, buffs, relics           (core)
-src/game/models.js                buildPlayerModel(classId)                                  (graphics)
+src/game/heroes/hero.js           defineHero, layer writer L, pose/keys/addKeys/twoKey, shared layers (gait, aimTwist, cloth…)  (heroes core)
+src/game/heroes/index.js          HEROES registry, HeroModel controller (h.hero channels), ground ring + aim notch          (heroes core)
+src/game/heroes/{pyromancer,cryomancer,stormcaller,arcanist}.js   the four hero models + animate (design/HEROES.md)  (heroes)
 src/game/combat.js                damage, statuses, 6 reactions, ward/resist/barrier          (core)
 src/game/classes.js, acts.js, meta.js, relics.js, progression.js                              (core)
-src/game/fx.js                    particles, rings, lightning, telegraphs, corpse, texts      (core; graphics may extend)
+src/game/fx.js                    classic FX: round particles, rings, discs, lightning, telegraphs, lights, shake, texts (core)
+src/game/vfx/index.js             game.vfx toolkit: particles, debris, shells, decals, ribbons, clouds, status overlays (design/VFX.md) (vfx core)
+src/game/vfx/{textures,particles,debris,shells,decals,ribbons,clouds,presets,recipes}.js   toolkit systems + reference presets/recipes (vfx core)
+src/game/vfx/elements/{fire,frost,storm,arcane,mixed}.js   per-element presets/recipes/debris/shells + shared helpers (vfx bundles)
+src/game/vfx/hero/{fire,frost,storm,arcane}.js + heroFx.js   dashes, traits, idle element FX, cast flashes (dispatcher: heroFx.js)  (vfx bundles)
+src/game/vfx/reactions.js, status.js   reaction / freeze / ward / kill visuals; status overlays on enemies (vfx bundle E)
 src/game/pickups.js               xp, health, magnet, chest                                   (core)
 src/game/enemies.js               archetypes × factions, EnemyBullet; drives creature rigs    (enemies)
 src/game/bosses.js                createBoss(game, id, pos, opts): 3 bosses on boss rigs      (bosses)
@@ -44,9 +51,11 @@ src/game/env/biome.js             buildBiome(def): ground, grass, water, props, 
 src/game/env/common.js            ENV uniforms, patchEnv (wind, haze, clouds, dither), noise   (env)
 src/game/env/{ground,field,water,props,motes,lighting}.js   env systems                         (env)
 src/game/env/biomes/{forest,barrens,river}.js + props_*.js  the three biome definitions        (env)
-src/dev/sim.js, src/dev/viewer.js, dev/creatures.html        balance sim, snap(), creature viewer (dev)
+src/dev/sim.js, src/dev/viewer.js, dev/creatures.html        balance sim, snap(), creature + hero viewer (dev)
+src/dev/shot.js                   headless frames (pinned 1280×720) → dev/shots/*.png via the shots server (8097); stage/castAt/step (dev)
 src/game/audio.js                 procedural SFX + music                                      (audio)
-src/game/skills/*.js              skills; registry.js (core)
+src/game/skills/*.js              skills (gameplay + their visuals); registry.js, common.js (Projectile), fusionCommon.js (core)
+src/game/skills/fusions/*.js      one file per fusion skill
 css/theme.css, src/ui/scale.js    Crownforge tokens + primitives (.cf-plate/-frame/-socket/-bar/-btn…), root unit   (ui-core)
 src/ui/icons/index.js + set-*.js  SVG icon sprite: icon(id), ICON.*; sets: skills, relics, react, misc           (ui-icons)
 src/ui/hud.js, hud-fx.js, hud-util.js + css/hud.css   in-run HUD, event overlays, cached DOM setters + Meter (ui-hud)
@@ -64,7 +73,8 @@ src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, 
 | `time` | total run seconds |
 | `act` (0..2), `actTime`, `actDef` | current act index, seconds into the act, and `ACTS[act]` (acts.js) |
 | `tier` | Rift Tier 0..5 |
-| `player`, `enemies`, `boss`, `fx`, `world`, `pickups`, `spawner`, `ui`, `audio` | |
+| `player`, `enemies`, `boss`, `fx`, `vfx`, `world`, `pickups`, `spawner`, `ui`, `audio` | `vfx` = the world-grounded spell VFX toolkit (src/game/vfx/, design/VFX.md) |
+| `creatures`, `heroes` | CreatureRenderers: enemies + bosses (renderOrder 3), the player hero (2.0 px outline, renderOrder 21) |
 | `chain` | current reaction Chain (0 = none) |
 | `stats` | `{ kills, damageDealt, reactions:{type:n}, fusions:[names], level, time, maxChain, bossesKilled, act, classId, tier, … }`. At run end it also has `shardsEarned, unlocks:[classIds], tierUnlocked, totalShards, victory, relics:[names]` |
 | `meta` | persistent save (meta.js): `{ shards, attune:{id:rank}, unlocked:{classId:true}, codex:{reactions,fusions,relics}, stats, maxTier, lastClass, lastTier, unlockAll, shake (1/0.5/0), tutorialDone, tips:[ids] }` |
@@ -123,6 +133,8 @@ Anything with `update(dt, game) → boolean` (return `false` when finished) and 
 * `cls` (CLASSES entry), `classId`, `traitId`, `skills`, `slots[0..4]` (slot 0 = starter), `passives`, `relics:[defs]`, `buffs: Map(id → {t, dur, name, icon, color, apply})`
 * `shield`, `frostArmor` (0..3), `charge` (Momentum 0..100), `traitDamage`, `traitCdr`
 * `dash = { def:{name,kind,cd,dist,dur,charges}, max, charges, recharge, t, window }`
+* `model` (HeroModel, heroes/index.js): the rig body. The player calls `model.cast(def, slot)`, `dashStart(kind)`, `hit()`, `perfect()`, `channel(on)`; game calls `die()` / `victory()`. Visual world points: `player.muzzle(out)`, `player.hand(out)`, `player.model.emitter(name, out)`.
+* Hero visuals go through `HERO_FX` (vfx/heroFx.js → vfx/hero/<element>.js): dashStart/dashTrail/dashHit, firePatch*, wildfire, armorGain/Break, perfectDodge, cast (flash), shieldBlock, death, update (idle element FX). Visual only.
 * Methods:
   * `takeDamage(amount, source)`: handles perfect dodge, i-frames, armor, shield.
   * `heal(n)`, `gainXP(n)`
@@ -159,7 +171,11 @@ export const mySkill = {
 * Helpers in `skills/common.js`: `Projectile` (opts: `pos, dir, speed, range, radius, damage, element, pierce, knockback, statusPower, color, size, height, mesh, trail, homing, homingRange, onHit, onExpire, hitCooldown, spin`), `timed(game, dur, fn(dt,t,k), onEnd)`, `damageArea(game, pos, r, dmg, opts)` → enemies hit, `fanDirections(dir, n, spread)`.
 * Scale areas by `game.player.stats.area`. Add `game.player.stats.projectiles` to projectile counts.
 * Target-at-cursor skills: clamp the target to the skill's range from `ctx.origin`.
-* Reference skills: `arcaneBolt.js` (projectile), `fireball.js`, `frostNova.js`, `chainLightning.js`, `spiritOrbs.js` (auto), `fusions.js`.
+* Visuals: draw with `game.vfx` (design/VFX.md) and the element helpers in `vfx/elements/<element>.js`. `Projectile` opts `mesh: null`, `ribbon`, `onUpdate`, `onDispose` for custom looks. Gameplay numbers live in the skill; never change them for looks.
+* Reference skills: `cinderBolt.js` (projectile), `meteor.js`, `blizzard.js`, `singularity.js`, `staticField.js` (auto), `fusions/thunderhead.js`.
+
+## VFX toolkit (`game.vfx`, `src/game/vfx/`)
+The world-grounded spell VFX: stateless GPU particles with an ink-outlined sprite atlas, instanced debris and sprouting crystals, noise shells, one-draw ground decals (frost, scorch, rune, crater, wet, shadow), pooled ribbons and forked bolts, toon clouds, status looks in the rig shader (`h.stat` = burn/cold/shock) plus overlays. ~12–14 draw calls total, all pooled. API and rules: **`design/VFX.md`**; tech: `design/research/08-spell-vfx-tech.md`; direction per ability: `design/research/10-ability-vfx-bible.md`. Shaders are warmed up at boot (`vfx.warmup()`).
 
 ## FX (`src/game/fx.js`)
 Everything is tuned for **bright ground**: the default blend is "blend-add" (`BLEND_ADD`: rgb adds glow, alpha darkens what is behind), so effects keep saturation and contrast on green, ochre and blue.
@@ -184,6 +200,11 @@ Every enemy and boss body is a **creature rig**: a procedurally modelled, proced
 * `game.creatures` (`CreatureRenderer`): `add(def, { pos, yaw, scale, seed })` → handle `h` with `pos` (shared Vector3), `yaw`, `scale`, `lift`, `action`/`k` (0..1), `glow`, `tint`, `rim`, `accent`, `elite`, `frozen`, `flash()`; `remove(h, { corpse })`; `setRim(hex, strength)`; `update(dt, time)` (game.js calls it every frame, dt 0 = hold pose).
 * Enemy → creature mapping: `creatures/index.js` `creatureFor(typeId)`; bosses: `bossCreatureFor(bossId)`.
 * Dev viewer: `/dev/creatures.html?set=<module>&poses=idle,walk:0,attack:0.2&zoom=1..6&bg=forest|barrens|river&rim=elite&ward=frost&yaw=..&layout=rows`.
+
+* Rig v4 additions: negative `emis` = fixed-colour glow (ignores accent and glow ramp); `h.stat = [burn, cold, shock]` drives the status looks in the shader (`iMisc.yzw`); `h.hidden`; `add(def, { track: true })` + `boneWorld(h, bone, local, out)`; `new CreatureRenderer(scene, camera, { outlinePx, renderOrder })`.
+
+## Heroes (`src/game/heroes/`)
+The four playable heroes are creature-rig instances on their own renderer (`game.heroes`). Each class file declares its bones (18 fixed core bone names + extras, ≤ 32) and a stateless `animate(L, s, B, H)` built from the layer library in `hero.js`. `HeroModel` (index.js) owns all state and writes the channels in `h.hero`: aim / move split (ψ, μ, backpedal), stance + per-shot recoil, actions (`throw`, `heavy`, `nova`, `channel`, `dash`, `arrive`, `death`, `victory`), class meter, fidgets, stomp, Perfect Dodge. It also drives glow, accent (last-cast element), rim, i-frame tint pulse, and the ground ring with the aim notch. Contract: **`design/HEROES.md`**; art bible: `design/research/09-hero-bible.md`; quality-bar reference: `pyromancer.js`. Viewer: `/dev/creatures.html?set=../heroes/<class>&poses=idle,run:1.6,strafe:1.6,shot:0,heavy:0.36,dash:0.5,death:0.6,victory:1`.
 
 ## Enemy contract (`src/game/enemies.js`)
 ```js

@@ -14,6 +14,7 @@ import { SLOT_KEYS, MAX_AUTOS } from '../game/player.js';
 import { saveMeta, computeShards } from '../game/meta.js';
 
 const LEVELUP_IGNORE_MS = 300;    // a held click from combat can never pick a card
+const LEVELUP_SWAP_IGNORE_MS = 260; // the next hand of a multi-pick burst: long enough that a double click cannot take it
 const RELIC_IGNORE_MS = 350;
 const CLOSE_MS = 180;
 const MAX_PASSIVES = 5;
@@ -57,7 +58,7 @@ function numDelta(prev, cur) {
 }
 
 // Passive descs are per rank ("+12% damage."); show the running total before → after.
-const COMPOUND = { swiftness: [0], magnetism: [0] };   // number indices that multiply per rank
+const COMPOUND = {};   // passive id -> number indices that multiply per rank (none: every passive stacks additively)
 function passiveTotal(id, rank, idx, n) {
   if (COMPOUND[id]?.includes(idx)) return Math.round((Math.pow(1 + n / 100, rank) - 1) * 100);
   return Math.round(n * rank * 10) / 10;
@@ -553,7 +554,7 @@ export class UI {
       <div class="md-stage">
         <header class="md-head">
           <h2 class="md-hero">The Rift offers…</h2>
-          <div class="md-head-rule"><span class="md-stamp"><span class="cf-label">level</span><b class="num" data-ref="level">1</b></span></div>
+          <div class="md-head-rule"><span class="md-stamp"><span class="cf-label">level</span><b class="num" data-ref="level">1</b></span><span class="md-stamp md-stamp-multi" data-ref="multi" hidden><b class="num" data-ref="mi">1</b><span class="cf-label">of</span><b class="num" data-ref="mt">1</b></span></div>
         </header>
         <div class="md-cards" data-ref="cards"></div>
         <p class="md-tip" data-ref="tip" aria-live="polite"></p>
@@ -565,7 +566,7 @@ export class UI {
       </div>`;
     this.luEl = el;
     const q = (ref) => el.querySelector(`[data-ref="${ref}"]`);
-    this.luRefs = { level: q('level'), cards: q('cards'), tip: q('tip'), reroll: q('reroll'), banish: q('banish'), rr: q('rr'), bb: q('bb'), loadout: q('loadout') };
+    this.luRefs = { level: q('level'), multi: q('multi'), mi: q('mi'), mt: q('mt'), cards: q('cards'), tip: q('tip'), reroll: q('reroll'), banish: q('banish'), rr: q('rr'), bb: q('bb'), loadout: q('loadout') };
 
     const R = this.luRefs;
     R.cards.addEventListener('click', (e) => {
@@ -585,7 +586,13 @@ export class UI {
     R.banish.addEventListener('click', () => this._luToggleBanish());
   }
 
-  showLevelUp(cards, onPick, ctl) {
+  // extra: { index, total } when this is hand `index` of a burst of `total` level-ups. A hand shown while
+  // the modal is already open (multi-pick) is swapped in place: no close / reopen.
+  showLevelUp(cards, onPick, ctl, extra) {
+    const wasOpen = !!this._lu && this.luEl.classList.contains('is-open');
+    if (!extra && wasOpen) extra = { index: this._lu.index, total: this._lu.total };   // a re-offer of the same hand (reroll / banish)
+    const total = Math.max(1, extra?.total ?? 1);
+    const index = Math.min(total, Math.max(1, extra?.index ?? 1));
     this._lu = {
       cards,
       ctl: ctl ?? {},
@@ -593,16 +600,31 @@ export class UI {
       banishMode: false,
       focus: -1,
       held: this._heldNow(),
-      ignoreUntil: performance.now() + LEVELUP_IGNORE_MS,
+      ignoreUntil: performance.now() + (wasOpen ? LEVELUP_SWAP_IGNORE_MS : LEVELUP_IGNORE_MS),
+      index, total,
     };
-    this.luRefs.level.textContent = String(this.game.player?.level ?? '');
-    this.luRefs.loadout.innerHTML = loadoutHTML(this.game.player);
-    this._luRender(cards);
+    const R = this.luRefs;
+    // the burst grants consecutive levels; the player is already at the last one
+    const lvl = (this.game.player?.level ?? 0) - (total - index);
+    R.level.textContent = String(lvl > 0 ? lvl : '');
+    const multi = total > 1;
+    R.multi.hidden = !multi;
+    this.luEl.classList.toggle('is-multi', multi);
+    if (multi) {
+      R.mi.textContent = String(index);
+      R.mt.textContent = String(total);
+      R.multi.setAttribute('aria-label', `level-up ${index} of ${total}`);
+      if (wasOpen && !REDUCED.matches && R.multi.animate) R.multi.animate([{ transform: 'scale(1.18)' }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,1.4,.4,1)' });
+    }
+    R.loadout.innerHTML = loadoutHTML(this.game.player);
+    this._luRender(cards, wasOpen && this._luTook ? `Took <b>${esc(this._luTook)}</b>.` : '');
+    this._luTook = '';
     this._open(this.luEl);
   }
 
   hideLevelUp() {
     this._lu = null;
+    this._luTook = '';
     this.levelUpTip = '';   // tutorial tips are for one level-up only
     this._close(this.luEl);
   }
@@ -713,6 +735,7 @@ export class UI {
     }
     const els = [...this.luRefs.cards.children];
     els.forEach((c, i) => c.classList.add(i === idx ? 'is-picked' : 'is-dropped'));
+    this._luTook = card.type === 'heal' ? '' : card.name;
     L.onPick(card);
   }
 

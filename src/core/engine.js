@@ -4,9 +4,15 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { clamp } from './utils.js';
 
 const _col = new THREE.Color();
+
+// Hero readability layer (playtest round 1, issue #3). Everything that forms the player's "mark" (the hero rig
+// and its ground ring) also lives on this layer; HeroMaskPass re-renders just that layer into one extra render
+// target, and the grade pass compares it with the finished frame to see where the hero is covered.
+export const HERO_LAYER = 5;
 
 // Sun: front-left of the iso camera, ~52° elevation, so camera-facing sides are lit and shadows fall
 // screen-right / up (a 6 m tree throws a ~4.7 m shadow). SUN_VIEW is the light's rotation (texel snap).
@@ -46,6 +52,13 @@ const GRADE_SHADER = {
     uAberration: { value: 0 },
     uTime: { value: 0 },
     uResolution: { value: new THREE.Vector2(1, 1) },
+    // hero readability layer (HeroMaskPass)
+    tHero: { value: null },
+    tBloom: { value: null },                                // UnrealBloomPass composite (what bloom added)
+    uHeroOn: { value: 0 },                                  // 1 while the mask is valid this frame
+    uHeroBox: { value: new THREE.Vector4(0, 0, 0, 0) },     // mask region in uv (min.xy, max.xy)
+    uHeroRim: { value: new THREE.Vector3(1, 1, 1) },        // light rim colour (class element, near white)
+    uHeroPx: { value: new THREE.Vector2(1.6, 3.4) },        // rim radii in pixels (light band, dark band)
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -66,7 +79,26 @@ const GRADE_SHADER = {
     uniform float uAberration;
     uniform float uTime;
     uniform vec2 uResolution;
+    uniform sampler2D tHero;
+    uniform sampler2D tBloom;
+    uniform float uHeroOn;
+    uniform vec4 uHeroBox;
+    uniform vec3 uHeroRim;
+    uniform vec2 uHeroPx;
     varying vec2 vUv;
+
+    // Hero mask (HeroMaskPass): a = 1 on the hero rig (opaque), ~0.9 on the ground ring's band;
+    // rgb = PRE-BLOOM scene − the hero's own unoccluded colour (signed), i.e. what covers the hero.
+    const float HERO_A = 0.985;
+    const float RING_A = 0.8;
+
+    // 0..1: how much a pixel differs from the hero's own colour, relative to the hero's brightness.
+    // d = the difference to judge; own = the hero's own colour there.
+    float heroCover(vec3 d, vec3 own) {
+      float dm = max(abs(d.r), max(abs(d.g), abs(d.b)));
+      float ref = max(own.r, max(own.g, own.b));
+      return smoothstep(0.45, 1.1, dm / (0.5 * ref + 0.1));
+    }
 
     void main() {
       vec2 centered = vUv - 0.5;
@@ -86,11 +118,80 @@ const GRADE_SHADER = {
         col = texture2D(tDiffuse, vUv).rgb;
       }
 
+      // Low-HP beat, about 2 Hz (edge glow + hero outline).
+      float beat = 0.55 + 0.45 * sin(uTime * 12.566371);
+
+      // ---- Hero readability layer (HeroMaskPass). Only inside the hero's screen box, so a calm frame is
+      // untouched: where the hero is covered (own VFX, bloom wash, a cloud), its own colour is restored at
+      // ~80 % and a thin two-tone rim (light, then dark ink) traces the covered silhouette. At low HP the
+      // whole silhouette gets the rim and its light band pulses red with the edge glow.
+      if (uHeroOn > 0.5 && vUv.x > uHeroBox.x && vUv.y > uHeroBox.y && vUv.x < uHeroBox.z && vUv.y < uHeroBox.w) {
+        vec2 px = 1.0 / uResolution;
+        // Per sample: diff = pre-bloom − hero (mask rgb), b = bloom added there, post = finished pixel.
+        // own = post − b − diff (the hero's colour); "pre" cover = diff only (spell VFX, clouds, bodies in
+        // front), "post" cover = diff + b (also the bloom wash from big blasts, but also the hero's own glow).
+        // (1) one coverage estimate for the whole box (coherent fetches) gates everything, so grass over a
+        // boot, a passing enemy's arm or the hero's own crystal glow never draws a rim.
+        float hn = 0.0, hpre = 0.0, hpost = 0.0;
+        for (int j = 0; j < 10; j++) {
+          for (int i = 0; i < 6; i++) {
+            vec2 q = mix(uHeroBox.xy, uHeroBox.zw, (vec2(float(i), float(j)) + 0.5) / vec2(6.0, 10.0));
+            vec4 m = texture2D(tHero, q);
+            if (m.a > HERO_A) {
+              vec3 b = texture2D(tBloom, q).rgb;
+              vec3 own = max(texture2D(tDiffuse, q).rgb - b - m.rgb, vec3(0.0));
+              hn += 1.0; hpre += heroCover(m.rgb, own); hpost += heroCover(m.rgb + b, own);
+            }
+          }
+        }
+        // measured fractions: calm (all classes, own glow + cast flash) pre 0.01–0.02 / post ≤ 0.28;
+        // peak-VFX cases pre 0.1–0.8 / post 0.24–0.93
+        float gate = hn > 1.5 ? max(smoothstep(0.05, 0.2, hpre / hn), smoothstep(0.36, 0.55, hpost / hn)) : 0.0;
+        float lowRim = clamp(uLowHp * 2.5, 0.0, 1.0) * (0.75 + 0.25 * beat);   // full outline at low HP
+        // (2) this pixel: restore the hero / its ring through whatever covers it (col − diff − b = hero)
+        vec4 m0 = texture2D(tHero, vUv);
+        float isHero = step(HERO_A, m0.a);
+        float isRing = step(RING_A, m0.a) * (1.0 - isHero);
+        vec3 b0 = texture2D(tBloom, vUv).rgb;
+        vec3 cov0 = m0.rgb + b0 * isHero;
+        float c0 = heroCover(cov0, max(col - cov0, vec3(0.0)));
+        float rk = c0 * (isHero * 0.8 * gate + isRing * 0.65);
+        float cm = max(abs(cov0.r), max(abs(cov0.g), abs(cov0.b)));
+        // keep a hint of the cover, compressed by its brightness: 20 % of an HDR blast would still bleach a
+        // dark coat, so the remainder is ~(1 − rk) / (1 + 3·rk·|cover|)
+        col = max(col - cov0 + cov0 * (1.0 - rk) / (1.0 + 3.0 * rk * cm), vec3(0.0));
+        // (3) rim just outside the silhouette (12 directions, light band then dark band)
+        if (isHero < 0.5 && (gate > 0.0 || lowRim > 0.0)) {
+          float hin = 0.0, hout = 0.0, rc = 0.0, rn = 0.0;
+          for (int i = 0; i < 12; i++) {
+            float a = float(i) * 0.5235988;
+            vec2 dir = vec2(cos(a), sin(a)) * px;
+            vec4 mi = texture2D(tHero, vUv + dir * uHeroPx.x);
+            vec2 qo = vUv + dir * uHeroPx.y;
+            vec4 mo = texture2D(tHero, qo);
+            float hi = step(HERO_A, mi.a), ho = step(HERO_A, mo.a);
+            hin = max(hin, hi); hout = max(hout, ho);
+            if (ho > 0.5) {
+              vec3 cv = mo.rgb + texture2D(tBloom, qo).rgb;
+              rc += heroCover(cv, max(texture2D(tDiffuse, qo).rgb - cv, vec3(0.0))); rn += 1.0;
+            }
+          }
+          float local = rn > 0.0 ? smoothstep(0.1, 0.5, rc / rn) : 0.0;
+          float rimK = max(local * gate, lowRim);
+          // low HP: the light band beats from the class colour to a saturated red, in time with the edge glow
+          float redK = clamp(uLowHp * 2.5, 0.0, 1.0) * (0.3 + 0.7 * (0.5 + 0.5 * sin(uTime * 12.566371)));
+          vec3 lightC = mix(uHeroRim, vec3(1.25, 0.05, 0.035), redK);
+          col = mix(col, lightC, hin * rimK);
+          col = mix(col, vec3(0.012, 0.01, 0.02), max(hout - hin, 0.0) * rimK * 0.92);
+        }
+      }
+
       // Per-act tint (linear multiply).
       col *= uTint;
 
-      // Saturation around luminance. Low HP pulls it toward 40 %.
-      float sat = uSaturation * mix(1.0, 0.4, uLowHp);
+      // Saturation around luminance. Low HP drains colour only at the outer edge (the centre and the
+      // hero stay fully readable; the old full-frame 40 % pull hid everything exactly when it mattered).
+      float sat = uSaturation * (1.0 - 0.45 * uLowHp * smoothstep(0.55, 1.05, d));
       float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col = mix(vec3(lum), col, sat);
 
@@ -102,7 +203,6 @@ const GRADE_SHADER = {
       col *= 1.0 - uVignette * vig;
 
       // Low-HP red edge glow, pulsing at about 2 Hz.
-      float beat = 0.55 + 0.45 * sin(uTime * 12.566371);
       float redEdge = smoothstep(0.45, 1.0, d) * uLowHp * beat;
       col += vec3(0.55, 0.02, 0.015) * redEdge;
 
@@ -164,6 +264,10 @@ export class Engine {
     // Post processing: render -> bloom -> grade -> output (tone mapping + sRGB).
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Hero mask (readability layer): re-renders the hero layer into one extra target, scissored to the hero.
+    this.heroRead = true;                                  // dev A/B switch: false = no mask, no composite
+    this.heroPass = new HeroMaskPass(this);
+    this.composer.addPass(this.heroPass);
     // Bloom thresholds the PEAK channel of pre-exposure linear HDR with a soft knee: sunlit ground
     // (peak ≲ 0.7) never blooms, HDR spells (×1.4+) do. See design/research/04-vfx-readability.md §3.2.
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.7, 0.35, 1.1);
@@ -171,6 +275,8 @@ export class Engine {
     this.composer.addPass(this.bloom);
     this.grade = new ShaderPass(GRADE_SHADER);
     this.gradeU = this.grade.uniforms;
+    this.gradeU.tHero.value = this.heroPass.rt.texture;
+    this.gradeU.tBloom.value = this.bloom.renderTargetsHorizontal[0].texture;   // its final composite (r170)
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
 
@@ -337,6 +443,7 @@ export class Engine {
 
   // Per-frame (real dt). game may be in any state.
   update(dt, game) {
+    this._game = game;
     if (this._skyBoost) { this.hemi.intensity -= this._skyBoost; this._skyBoost = 0; }
     this._stepAtmos(dt);
     if (this._skyFlash > 0.001) {
@@ -370,6 +477,96 @@ function lowHpAmount(game) {
   if (!p || !LOW_HP_STATES.has(game.state)) return 0;
   const max = p.stats?.maxHp || 1;
   return clamp((0.3 - p.hp / max) / 0.3, 0, 1);
+}
+
+// Hero readability mask. After the main render pass (so this frame's shadow map is reused, not redrawn),
+// re-render only HERO_LAYER (hero rig + outline hull + ground ring, lit by the same lights) into one
+// half-float target, scissored to the hero's screen box, then subtract it from the pre-bloom frame in
+// place. The grade pass reads that difference: where it is large, the hero is covered.
+// Cost: one scissored draw of ~5 small meshes + one scissored quad.
+const _hb = new THREE.Vector3();
+const _hc = new THREE.Color();
+class HeroMaskPass extends Pass {
+  constructor(engine) {
+    super();
+    this.engine = engine;
+    this.needsSwap = false;
+    this.rt = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.HalfFloatType, depthBuffer: true, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false,
+    });
+    this.rt.texture.name = 'HeroMask';
+    this.rt.scissorTest = true;
+    this._w = 1; this._h = 1;
+    this._frame = 0;
+    // second step, same target: rgb = pre-bloom scene − hero colour (FUNC_SUBTRACT on a signed half-float
+    // target), alpha kept. Comparing BEFORE bloom keeps the hero's own glow halo from counting as cover.
+    this.diff = new FullScreenQuad(new THREE.ShaderMaterial({
+      uniforms: { tScene: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: 'uniform sampler2D tScene; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(tScene, vUv).rgb, 0.0); }',
+      depthTest: false, depthWrite: false, transparent: true,
+      blending: THREE.CustomBlending, blendEquation: THREE.SubtractEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+      blendEquationAlpha: THREE.AddEquation, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+    }));
+  }
+
+  setSize(w, h) { this._w = w; this._h = h; this.rt.setSize(w, h); }
+  dispose() { this.rt.dispose(); this.diff.dispose(); }
+
+  render(renderer, writeBuffer, readBuffer) {
+    const e = this.engine, u = e.gradeU;
+    u.uHeroOn.value = 0;
+    const p = e._game?.player, model = p?.model;
+    if (!e.heroRead || !model || model.h?.hidden || !model.root?.visible) return;
+    const cam = e.camera, scene = e.scene, W = this._w, H = this._h;
+
+    // screen box: hero (≤ 2.9 m with raised arms / hats) + ground ring (r ≈ 1 m)
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      _hb.set(p.pos.x + (i & 1 ? 1.15 : -1.15), i & 2 ? 2.9 : 0, p.pos.z + (i & 4 ? 1.15 : -1.15)).project(cam);
+      const sx = (_hb.x * 0.5 + 0.5) * W, sy = (_hb.y * 0.5 + 0.5) * H;
+      if (sx < x0) x0 = sx; if (sx > x1) x1 = sx;
+      if (sy < y0) y0 = sy; if (sy > y1) y1 = sy;
+    }
+    const pr = renderer.getPixelRatio();
+    const rIn = 1.6 * pr, rOut = 3.4 * pr;
+    u.uHeroPx.value.set(rIn, rOut);
+    // the composite box is padded by the rim; the scissor by twice that, so rim taps never read stale texels
+    const pb = rOut + 2, ps = 2 * rOut + 4;
+    const sx0 = Math.max(0, Math.floor(x0 - ps)), sy0 = Math.max(0, Math.floor(y0 - ps));
+    const sx1 = Math.min(W, Math.ceil(x1 + ps)), sy1 = Math.min(H, Math.ceil(y1 + ps));
+    if (sx1 - sx0 < 2 || sy1 - sy0 < 2) return;          // off screen
+
+    // every light also lights the hero layer (fixed light set; re-checked now and then)
+    if ((this._frame++ % 120) === 0) scene.traverse((o) => { if (o.isLight) o.layers.enable(HERO_LAYER); });
+
+    const prevRT = renderer.getRenderTarget();
+    const autoClear = renderer.autoClear, shadowAuto = renderer.shadowMap.autoUpdate;
+    const bg = scene.background, layers = cam.layers.mask;
+    renderer.getClearColor(_hc); const clearA = renderer.getClearAlpha();
+    this.rt.scissor.set(sx0, sy0, sx1 - sx0, sy1 - sy0);
+    renderer.setRenderTarget(this.rt);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear(true, true, false);
+    renderer.autoClear = false;
+    renderer.shadowMap.autoUpdate = false;
+    scene.background = null;
+    cam.layers.set(HERO_LAYER);
+    renderer.render(scene, cam);
+    cam.layers.mask = layers;
+    scene.background = bg;
+    this.diff.material.uniforms.tScene.value = readBuffer.texture;   // the main render, before bloom
+    this.diff.render(renderer);
+    renderer.shadowMap.autoUpdate = shadowAuto;
+    renderer.autoClear = autoClear;
+    renderer.setClearColor(_hc, clearA);
+    renderer.setRenderTarget(prevRT);
+
+    u.uHeroBox.value.set((x0 - pb) / W, (y0 - pb) / H, (x1 + pb) / W, (y1 + pb) / H);
+    const rim = model.readRim;
+    if (rim) u.uHeroRim.value.set(rim.r, rim.g, rim.b);
+    u.uHeroOn.value = 1;
+  }
 }
 
 // Replace UnrealBloomPass's luminance high-pass with a peak-channel, soft-knee one that only

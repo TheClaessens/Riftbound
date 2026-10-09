@@ -27,6 +27,7 @@ const CHARGE_LEN = 10;
 const CHARGE_SPEED = 18;
 const CHARGE_RECOVER = 1.2;
 const CHARGE_COOLDOWN = 3;
+const CHARGE_STAGGER = 0.6;                                // min seconds between any two charge wind-ups
 const FUSE_RANGE = 2.2;
 const FUSE_TIME = 1.0;
 const BOMB_RADIUS = 2.8;
@@ -316,7 +317,7 @@ function bomberBoom(game, e, hurtPlayer) {
   cancelTele(e);
   const c = e.pos.clone();
   if (hurtPlayer && distXZ(game.player.pos, c) <= BOMB_RADIUS) {
-    game.player.takeDamage(e.damage * 2, e);
+    game.player.takeDamage(e.damage * 2, e, 'explosion');
   }
   const dmg = 60 + 20 * game.act;
   const hits = game.queryEnemies(c, BOMB_RADIUS, []).slice();
@@ -401,12 +402,12 @@ function fireRanged(game, e) {
   if (e.type === 'voidSpitter') {
     for (const a of VOID_SPREAD) {
       rotateXZ(_to, a, _dir);
-      game.addActor(new EnemyBullet(game, mz, _dir, e.damage, { y }));
+      game.addActor(new EnemyBullet(game, mz, _dir, e.damage, { y, owner: e.name }));
     }
   } else if (e.type === 'emberSpitter') {
-    game.addActor(new EnemyBullet(game, mz, _to, e.damage, { trail: 0x1fe0c2, y }));
+    game.addActor(new EnemyBullet(game, mz, _to, e.damage, { trail: 0x1fe0c2, y, owner: e.name }));
   } else {
-    game.addActor(new EnemyBullet(game, mz, _to, e.damage, { y }));
+    game.addActor(new EnemyBullet(game, mz, _to, e.damage, { y, owner: e.name }));
   }
 }
 
@@ -442,8 +443,11 @@ function behaveCharger(e, game, dt, mv) {
     const d = aimPlayer(e, game, _to);
     if (mv <= 0) return;
     e.aiCd -= dt;
-    if (e.aiCd <= 0 && d <= CHARGE_TRIGGER) {
-      // stop and telegraph a line toward the player's current position
+    const wait = (game._nextChargeT ?? 0) - game.time;   // a stale value from an earlier run is > CHARGE_STAGGER away
+    if (e.aiCd <= 0 && d <= CHARGE_TRIGGER && !(wait > 0 && wait <= CHARGE_STAGGER)) {
+      // stop and telegraph a line toward the player's current position. Charges across all
+      // chargers start CHARGE_STAGGER apart: packs of War Boars used to land 2-3 charges at once.
+      game._nextChargeT = game.time + CHARGE_STAGGER;
       e.ai = 'windup';
       e.aiT = CHARGE_WINDUP;
       e.aiDir.copy(_to);
@@ -484,7 +488,7 @@ function behaveCharger(e, game, dt, mv) {
       const dx = p.x - e.pos.x, dz = p.z - e.pos.z;
       const rr = e.radius + game.player.radius + 0.15;
       if (dx * dx + dz * dz < rr * rr) {
-        game.player.takeDamage(e.damage * 1.5, e);
+        game.player.takeDamage(e.damage * 1.5, e, 'charge');
         e.aiHit = true; // contact damage once per charge
       }
     }
@@ -777,6 +781,7 @@ export class EnemyBullet {
     this.life = opts.life ?? 3;
     this.age = 0;
     this.onHit = opts.onHit ?? null;
+    this.name = opts.owner ?? 'Enemy projectile';   // the shooter, for the death recap
 
     const color = opts.color ?? 0xff2a6d;
     this.trailColor = opts.trail ?? color;
@@ -815,7 +820,7 @@ export class EnemyBullet {
     const dx = p.x - this.pos.x, dz = p.z - this.pos.z;
     const hr = this.radius + game.player.radius;
     if (dx * dx + dz * dz < hr * hr) {
-      game.player.takeDamage(this.damage, this);
+      game.player.takeDamage(this.damage, this, 'projectile');
       this.onHit?.(game, this);
       return false;
     }

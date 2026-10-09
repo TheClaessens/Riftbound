@@ -35,8 +35,8 @@ const SHRINE_BUFF_TIME = 25;
 const SHRINE_TILES = 48;
 const LAVA_EVERY = 2.5, LAVA_COUNT = 2, LAVA_R = 14;
 const STRIKE_EVERY = 1.6, STRIKE_COUNT = 3, STRIKE_R = 12;
-const HAZ_LAVA = { type: 'hazard', kind: 'lava' };
-const HAZ_STORM = { type: 'hazard', kind: 'lightning' };
+const HAZ_LAVA = { type: 'hazard', kind: 'lava', name: 'Fissure Geyser' };
+const HAZ_STORM = { type: 'hazard', kind: 'lightning', name: 'Lightning Strike' };
 const FISSURES = 8;              // pooled fissure-geyser decals (Act II hazard visual)
 
 // Game biome ids (acts.js) -> environment definitions.

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HERO_YIELD_GLSL } from '../heroYield.js';
 
 // =====================================================================================
 //  ARCANE element VFX (owner: arcane VFX implementer; design/VFX.md, bible 10 §2.3 / §4).
@@ -131,7 +132,7 @@ const K_STAR = 0, K_ORB = 1, K_HORIZON = 2, K_GLYPH = 3, K_RAYS = 4, K_FLASH = 5
 
 const BODY_VS = /* glsl */`
   attribute vec4 iP; attribute vec4 iR; attribute vec4 iC; attribute vec4 iV; attribute vec4 iX;
-  varying vec2 vUv; varying vec4 vR; varying vec4 vC; varying vec4 vX; varying float vAsp;
+  varying vec2 vUv; varying vec4 vR; varying vec4 vC; varying vec4 vX; varying float vAsp; varying vec3 vPV;
   void main() {
     vR = iR; vC = iC; vX = iX;
     vec2 q = position.xy;
@@ -164,13 +165,15 @@ const BODY_VS = /* glsl */`
       vUv = q * 2.0;
       vAsp = iR.y;
     }
+    vPV = mv.xyz;
     gl_Position = projectionMatrix * mv;
   }`;
 
 const BODY_FS = /* glsl */`
   uniform float uTime;
   uniform vec3 uVoid; uniform vec3 uDusk; uniform vec3 uHi;
-  varying vec2 vUv; varying vec4 vR; varying vec4 vC; varying vec4 vX; varying float vAsp;
+  varying vec2 vUv; varying vec4 vR; varying vec4 vC; varying vec4 vX; varying float vAsp; varying vec3 vPV;
+  ${HERO_YIELD_GLSL}
   ${GLSL_COMMON}
   void main() {
     float kind = vR.z, alpha = vR.w;
@@ -316,7 +319,7 @@ const BODY_FS = /* glsl */`
       emit = col * hdr * (0.2 + 0.8 * rim) * m * hem;
       paint = col * 0.6; pa = m * 0.18 * hem;
     }
-    gl_FragColor = vec4(paint * pa + emit, pa) * alpha;
+    gl_FragColor = vec4(paint * pa + emit, pa) * alpha * heroYield(vPV);
   }`;
 
 // ---------------------------------------------------------------- rings (ground / air discs)
@@ -325,17 +328,19 @@ const R_RUNE = 0, R_SWIRL = 1, R_ACCRETION = 2, R_WAVE = 3, R_SEAL = 4;
 
 const RING_VS = /* glsl */`
   attribute vec4 iA; attribute vec4 iB; attribute vec4 iD; attribute vec4 iE;
-  varying vec2 vP; varying float vS; varying vec4 vA; varying vec4 vB; varying vec4 vD; varying vec4 vE;
+  varying vec2 vP; varying float vS; varying vec4 vA; varying vec4 vB; varying vec4 vD; varying vec4 vE; varying vec3 vPV;
   void main() {
     vP = position.xz;
     vS = length(instanceMatrix[0].xyz);
     vA = iA; vB = iB; vD = iD; vE = iE;
-    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    vec4 pv = modelViewMatrix * instanceMatrix * vec4(position, 1.0); vPV = pv.xyz;
+    gl_Position = projectionMatrix * pv;
   }`;
 
 const RING_FS = /* glsl */`
   uniform float uTime; uniform vec3 uVoid; uniform vec3 uDusk; uniform vec3 uHi;
-  varying vec2 vP; varying float vS; varying vec4 vA; varying vec4 vB; varying vec4 vD; varying vec4 vE;
+  varying vec2 vP; varying float vS; varying vec4 vA; varying vec4 vB; varying vec4 vD; varying vec4 vE; varying vec3 vPV;
+  ${HERO_YIELD_GLSL}
   ${GLSL_COMMON}
   void main() {
     float kind = vA.x;
@@ -435,7 +440,11 @@ const RING_FS = /* glsl */`
       pa = back * vD.y * max(vis, 0.3) + s * 0.25;
     }
     if (pa < 0.002 && max(emit.r, max(emit.g, emit.b)) < 0.002) discard;
-    gl_FragColor = vec4(paint * pa + emit, pa) * alpha;
+    #ifdef AIR
+    gl_FragColor = vec4(paint * pa + emit, pa) * alpha * heroYield(vPV);
+    #else
+    gl_FragColor = vec4(paint * pa + emit, pa) * alpha * heroYieldGround(vPV);
+    #endif
   }`;
 
 // ---------------------------------------------------------------- matter geometry
@@ -511,7 +520,7 @@ class ArcaneKit {
     const scene = vfx.scene;
     this.t = 0;
     this.lastTick = -1;
-    const U = { uTime: vfx.uTime, uVoid: { value: new THREE.Vector3(...COL.void) }, uDusk: { value: new THREE.Vector3(...COL.dusk) }, uHi: { value: new THREE.Vector3(...COL.hi) } };
+    const U = { uTime: vfx.uTime, uHeroView: vfx.uHeroView, uHeroYield: vfx.uHeroYield, uVoid: { value: new THREE.Vector3(...COL.void) }, uDusk: { value: new THREE.Vector3(...COL.dusk) }, uHi: { value: new THREE.Vector3(...COL.hi) } };
 
     // ---- bodies
     const quad = new THREE.PlaneGeometry(1, 1);
@@ -540,7 +549,7 @@ class ArcaneKit {
         const a = new THREE.InstancedBufferAttribute(new Float32Array(CAP_R * 4), 4).setUsage(THREE.DynamicDrawUsage);
         geo.setAttribute(n, a); attrs[n] = a;
       }
-      const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: RING_VS, fragmentShader: RING_FS,
+      const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: RING_VS, fragmentShader: RING_FS, defines: depthTest ? { AIR: 1 } : {},
         // ground rings go in the OPAQUE list (custom blending still applies) at renderOrder 2: after the grass,
         // before creatures (3) and heroes (21), so they never wash over units (same rule as vfx decals)
         transparent: depthTest, depthWrite: false, depthTest, side: THREE.DoubleSide, ...vfx.blend });

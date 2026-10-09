@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HERO_YIELD_GLSL } from './heroYield.js';
 
 // =====================================================================================
 //  Ground decals: ONE instanced draw for every live decal of every kind. Each instance is a
@@ -25,7 +26,7 @@ export const DECAL = { frost: 0, scorch: 1, rune: 2, crater: 3, wet: 4, shadow: 
 
 const VS = /* glsl */`
   attribute vec4 iD0; attribute vec4 iD1; attribute vec4 iD2; attribute vec4 iD3;
-  varying vec2 vP; varying vec2 vW; varying float vR;
+  varying vec2 vP; varying vec2 vW; varying float vR; varying vec3 vPV;
   varying vec4 vD0; varying vec4 vD1; varying vec4 vD2; varying vec4 vD3;
   void main() {
     vec4 wp = instanceMatrix * vec4(position, 1.0);
@@ -33,13 +34,15 @@ const VS = /* glsl */`
     vW = wp.xz;
     vR = length(instanceMatrix[0].xyz);
     vD0 = iD0; vD1 = iD1; vD2 = iD2; vD3 = iD3;
-    gl_Position = projectionMatrix * modelViewMatrix * wp;
+    vec4 pv = modelViewMatrix * wp; vPV = pv.xyz;
+    gl_Position = projectionMatrix * pv;
   }`;
 
 const FS = /* glsl */`
   uniform float uTime; uniform sampler2D uNoise; uniform vec2 uSunXZ;
-  varying vec2 vP; varying vec2 vW; varying float vR;
+  varying vec2 vP; varying vec2 vW; varying float vR; varying vec3 vPV;
   varying vec4 vD0; varying vec4 vD1; varying vec4 vD2; varying vec4 vD3;
+  ${HERO_YIELD_GLSL}
   const float TAU = 6.2831853;
   float hash1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
   float sdSeg(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0); return length(pa - ba * h); }
@@ -194,7 +197,7 @@ const FS = /* glsl */`
     else if (kind < 4.5) o = wet(p, r, age, grow, fadeK, seed);
     else o = shadow(p, r, age, grow, fadeK, seed);
     if (o.a < 0.002 && max(o.r, max(o.g, o.b)) < 0.002) discard;
-    gl_FragColor = o;
+    gl_FragColor = o * heroYieldGround(vPV);   // busy screen: ground marks yield around the hero
   }`;
 
 // Per-kind defaults: grow / fade seconds, colour A (paint, alpha), colour B (accent, hdr), intensity, extra.
@@ -222,7 +225,7 @@ export class DecalSystem {
     // the sun's ground direction (toward the sun) from engine.js SUN_OFFSET (-12, 34, 24)
     this.sun = new THREE.Vector2(-12, 24).normalize();
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uTime: shared.uTime, uNoise: { value: shared.noise }, uSunXZ: { value: this.sun } },
+      uniforms: { uTime: shared.uTime, uNoise: { value: shared.noise }, uSunXZ: { value: this.sun }, uHeroView: shared.uHeroView, uHeroYield: shared.uHeroYield },
       vertexShader: VS, fragmentShader: FS,
       // OPAQUE list (custom blending still applies): drawn after the grass (renderOrder 0) and BEFORE the
       // creatures (3) and heroes (21). depthTest off so grass never hides it; units always draw over it.

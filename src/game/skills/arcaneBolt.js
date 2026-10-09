@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { Projectile, fanDirections } from './common.js';
 import { StarBolt } from '../vfx/elements/arcane.js';
+import { ELEMENT_COLOR } from '../../core/utils.js';
 
 // ARCANE BOLT (Arcanist starter). Look (bible 10 §4.1): a sliver of starlight (velocity-aligned
 // diamond over a void underlay) with a tapered tail that leaves a dotted constellation and tiny
 // runes; impacts converge, then pop. r3 adds a leading needle (pierce), r5 a white-hot head,
 // a longer tail, denser constellation with prism glints. The cast flash is vfx/hero/arcane.js.
 const _hand = new THREE.Vector3();
+const PRISM_EVERY = 3;
+const PRISM_CYCLE = ['fire', 'storm', 'frost'];
 
 export const arcaneBolt = {
   id: 'arcaneBolt',
@@ -39,14 +42,26 @@ export const arcaneBolt = {
       hand = { x: _hand.x - ctx.origin.x, y: _hand.y - 0.9, z: _hand.z - ctx.origin.z };
       if (!(Math.abs(hand.x) < 3 && Math.abs(hand.y) < 3 && Math.abs(hand.z) < 3)) hand = null;
     }
+    // Arcanist (Resonance): every PRISM_EVERY-th volley is Prismatic and carries Fire, Storm or
+    // Frost in turn, so the class can set up its own reactions from level 1 (playtest round 1, #4:
+    // a run with zero reactions).
+    const p = game.player;
+    let element = 'arcane';
+    if (p.traitId === 'resonance') {
+      p._prismN = (p._prismN ?? 0) + 1;
+      if (p._prismN % PRISM_EVERY === 0) {
+        element = PRISM_CYCLE[(p._prismI = ((p._prismI ?? -1) + 1) % PRISM_CYCLE.length)];
+        game.fx.burst({ x: ctx.origin.x, y: 1, z: ctx.origin.z }, { color: ELEMENT_COLOR[element], count: 8, speed: 3, life: 0.3, size: 0.25, hdr: 1.6 });
+      }
+    }
     for (const d of fanDirections(ctx.dir, count, 0.12 * (count - 1))) {
       const v = new StarBolt(game, {
         scale: count >= 3 ? 0.85 : 1, len: r >= 5 ? 1.3 : 0.9, needle: r >= 3, hot: r >= 5,
-        dots: r >= 5 ? 18 : 12, prism: r >= 5, hand,
+        dots: r >= 5 ? 18 : 12, prism: r >= 5 || element !== 'arcane', hand,
       });
       game.addActor(new Projectile(game, {
         pos: ctx.origin, dir: d, speed: r >= 5 ? 26 : 21, range: 16,
-        radius: 0.45, damage: dmg, element: 'arcane', pierce, knockback: 1.5,
+        radius: 0.45, damage: dmg, element, pierce, knockback: 1.5,
         mesh: null,
         onUpdate: (g, p, dt) => v.update(g, p, dt),
         onHit: (g, e, p) => v.hit(g, e, p),

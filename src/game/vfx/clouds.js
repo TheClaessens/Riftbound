@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HERO_YIELD_GLSL } from './heroYield.js';
 
 // =====================================================================================
 //  Clouds: stacked low-poly puffs, toon-lit (2 bands from the real sun direction, darker
@@ -24,7 +25,7 @@ const BAYER = /* glsl */`
 const VS = /* glsl */`
   attribute vec4 iCl0; attribute vec4 iCl1;   // lit rgb + flash, shadow rgb + alpha
   uniform float uTime; uniform float uOutline;
-  varying vec3 vN; varying vec4 vC0; varying vec4 vC1;
+  varying vec3 vN; varying vec4 vC0; varying vec4 vC1; varying vec3 vPV;
   void main() {
     float ph = float(gl_InstanceID) * 1.73;
     vec3 p = position + normal * 0.06 * sin(uTime * 2.2 + position.y * 4.0 + position.x * 3.0 + ph);
@@ -35,15 +36,18 @@ const VS = /* glsl */`
     vec4 wp = instanceMatrix * vec4(p, 1.0);
     vN = normalize(mat3(instanceMatrix) * normal);
     vC0 = iCl0; vC1 = iCl1;
-    gl_Position = projectionMatrix * modelViewMatrix * wp;
+    vec4 pv = modelViewMatrix * wp; vPV = pv.xyz;
+    gl_Position = projectionMatrix * pv;
   }`;
 
 const FS = /* glsl */`
   uniform vec3 uSunDir;
-  varying vec3 vN; varying vec4 vC0; varying vec4 vC1;
+  varying vec3 vN; varying vec4 vC0; varying vec4 vC1; varying vec3 vPV;
   ${BAYER}
+  ${HERO_YIELD_GLSL}
   void main() {
-    if (vC1.a < 0.999 && vC1.a < bayer4(gl_FragCoord.xy)) discard;
+    float ca = vC1.a * heroYield(vPV);          // busy screen: screen-door the puffs near the hero too
+    if (ca < 0.999 && ca < bayer4(gl_FragCoord.xy)) discard;
     #ifdef HULL
       gl_FragColor = vec4(vC1.rgb * 0.26 + vec3(1.0, 0.97, 0.85) * vC0.a * 0.15, 1.0);
     #else
@@ -75,7 +79,7 @@ export class CloudSystem {
     geo.setAttribute('iCl1', this.a1);
     // sun direction (toward the sun) from engine.js SUN_OFFSET
     const sun = new THREE.Vector3(-12, 34, 24).normalize();
-    const common = { uTime: shared.uTime, uSunDir: { value: sun }, uOutline: { value: 0.06 }};
+    const common = { uTime: shared.uTime, uSunDir: { value: sun }, uOutline: { value: 0.06 }, uHeroView: shared.uHeroView, uHeroYield: shared.uHeroYield };
     this.uniforms = common;
     this.body = new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({ uniforms: common, vertexShader: VS, fragmentShader: FS }), cap);
     this.hull = new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({ uniforms: common, vertexShader: VS, fragmentShader: FS, side: THREE.BackSide, defines: { HULL: 1 } }), cap);

@@ -69,7 +69,7 @@ export const RELICS = {
     apply: (s) => { s.xpMult += 0.3; s.chestChoices = 4; } },
   riftMagnet: { id: 'riftMagnet', name: 'Rift Magnet', icon: '⋒', tag: 'economy',
     desc: 'Foes killed by reactions drop double XP.', flavour: 'Chaos pays dividends.',
-    apply: (s) => { s.reactionXp = 2; } },
+    apply: (s) => { s.reactionXp += 1; } },   // additive: Magnetism also raises reactionXp
   echoStone: { id: 'echoStone', name: 'Echo Stone', icon: '◈', tag: 'cast',
     desc: 'Slotted skills have a 15% chance to cast twice.', flavour: 'It repeats what it hears.',
     apply: (s) => { s.echo += 0.15; } },

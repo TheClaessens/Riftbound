@@ -5,7 +5,7 @@
 //    U.levelUp();               // 3 cards: new skill, rank-up, fusion (or pass { cards })
 //    U.relicPick(4);            // a chest with 4 relics
 //    U.pause('codex');          // pause screen on the 'build' or 'codex' tab
-//    U.title(); U.gameOver(); U.victory();
+//    U.title(); U.gameOver('boar' / 'geyser' / 'vashkar' / 'crowd' / 'none'); U.victory();
 //    U.freeze(); U.thaw();      // freeze the simulation (HUD keeps updating) / resume
 //    U.restoreMeta();           // put the saved meta back exactly as it was before the first call
 //  Nothing here writes the save: end screens get synthetic stats, and the meta is snapshotted
@@ -193,7 +193,58 @@ export function title() {
   return game.state;
 }
 
-function fakeStats(victory) {
+// stats.hurt fixtures for the death recap (shape: design/playtest/round-1/NEXT.md "Damage data").
+// U.gameOver('boar' | 'geyser' | 'vashkar' | 'crowd' | 'none')
+const HURT = {
+  // War Boar charge finishing a run that Spirit-Shaman bolts had been grinding down
+  boar: {
+    by: {
+      'War Boar': { dmg: 118, hits: 4, hows: { charge: 118 } },
+      'Orc Spirit-Shaman': { dmg: 164, hits: 15, hows: { projectile: 164 } },
+      'Orc Raider': { dmg: 72, hits: 12, hows: {} },
+      'Fissure Geyser': { dmg: 30, hits: 2, hows: {} },
+    },
+    recent: [
+      { name: 'Orc Spirit-Shaman', how: 'projectile', dmg: 11, t: 364.1, hp: 74 },
+      { name: 'Orc Raider', how: null, dmg: 8, t: 366.4, hp: 66 },
+      { name: 'Orc Spirit-Shaman', how: 'projectile', dmg: 11, t: 369.8, hp: 55 },
+      { name: 'War Boar', how: 'charge', dmg: 24, t: 370.9, hp: 31 },
+      { name: 'War Boar', how: 'charge', dmg: 41, t: 371.6, hp: 0 },
+    ],
+    killer: { name: 'War Boar', how: 'charge', dmg: 41 },
+  },
+  geyser: {
+    by: { 'Fissure Geyser': { dmg: 90, hits: 3, hows: {} }, 'Warg': { dmg: 60, hits: 10, hows: {} } },
+    recent: [
+      { name: 'Warg', how: null, dmg: 9, t: 369.2, hp: 52 },
+      { name: 'Fissure Geyser', how: null, dmg: 30, t: 371.4, hp: 22 },
+      { name: 'Fissure Geyser', how: null, dmg: 30, t: 372.0, hp: 0 },
+    ],
+    killer: { name: 'Fissure Geyser', how: null, dmg: 30 },
+  },
+  vashkar: {
+    by: { Vashkar: { dmg: 310, hits: 9, hows: { slam: 120, 'flame ring': 110, 'lava trail': 24 } }, 'Orc Raider': { dmg: 40, hits: 7, hows: {} } },
+    recent: [
+      { name: 'Vashkar', how: 'lava trail', dmg: 8, t: 360.2, hp: 58 },
+      { name: 'Vashkar', how: 'lava trail', dmg: 8, t: 360.7, hp: 50 },
+      { name: 'Vashkar', how: 'flame ring', dmg: 36, t: 363.9, hp: 14 },
+      { name: 'Vashkar', how: 'charge', dmg: 30, t: 364.4, hp: 0 },
+    ],
+    killer: { name: 'Vashkar', how: 'charge', dmg: 30 },
+  },
+  // a crowd with no single killer and no recorded killing blow (falls back to the top source)
+  crowd: {
+    by: { 'Goblin Scamp': { dmg: 80, hits: 14, hows: {} }, 'Orc Raider': { dmg: 70, hits: 11, hows: {} }, Warg: { dmg: 66, hits: 11, hows: {} }, Ogre: { dmg: 40, hits: 2, hows: {} }, 'Goblin Sapper': { dmg: 28, hits: 1, hows: { explosion: 28 } } },
+    recent: [
+      { name: 'Warg', how: null, dmg: 6, t: 370.0, hp: 30 },
+      { name: 'Goblin Scamp', how: null, dmg: 6, t: 370.4, hp: 24 },
+      { name: 'Orc Raider', how: null, dmg: 6, t: 371.1, hp: 18 },
+    ],
+    killer: null,
+  },
+};
+
+function fakeStats(victory, hurt = 'boar') {
   return {
     classId: 'stormcaller', tier: 2, act: victory ? 2 : 1, time: victory ? 641 : 372, level: victory ? 31 : 19,
     kills: victory ? 4120 : 1688, maxChain: victory ? 57 : 23, shardsEarned: victory ? 318 : 96, totalShards: 1204,
@@ -201,8 +252,9 @@ function fakeStats(victory) {
     reactions: { overload: 211, superconduct: 96, steam: 40, arcflash: 12 },
     fusions: ['Plasma Orb', 'Tempest'],
     relics: ["Alchemist's Coil", 'Blood Pact', 'Stormglass Boots', 'Second Wind'],
+    hurt: victory ? undefined : (HURT[hurt] ?? undefined),
   };
 }
 
-export function gameOver() { ensureRun(); const game = g(); game.ui.showGameOver(fakeStats(false)); freeze(); render(); return 'gameover'; }
+export function gameOver(hurt = 'boar') { ensureRun(); const game = g(); game.ui.showGameOver(fakeStats(false, hurt)); freeze(); render(); return 'gameover'; }
 export function victory() { ensureRun(); const game = g(); game.ui.showVictory(fakeStats(true)); freeze(); render(); return 'victory'; }

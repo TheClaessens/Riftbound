@@ -55,12 +55,12 @@ export const ALL_DEFS = { ...SKILLS, ...Object.fromEntries(FUSIONS.map((f) => [f
 export const PASSIVES = {
   might:     { id: 'might', name: 'Might', icon: '⚔', maxRank: 5, desc: () => '+12% damage.', apply: (s) => { s.damage += 0.12; } },
   haste:     { id: 'haste', name: 'Haste', icon: '⌛', maxRank: 5, desc: () => '−7% skill cooldowns.', apply: (s) => { s.cdr += 0.07; } },
-  swiftness: { id: 'swiftness', name: 'Swiftness', icon: '➶', maxRank: 5, desc: () => '+8% move speed.', apply: (s) => { s.moveSpeed *= 1.08; } },
+  swiftness: { id: 'swiftness', name: 'Swiftness', icon: '➶', maxRank: 5, desc: () => '+6% move speed, −6% dash cooldown.', apply: (s) => { s.moveSpeed += 0.39; s.dashCdr += 0.06; } },
   vitality:  { id: 'vitality', name: 'Vitality', icon: '♥', maxRank: 5, desc: () => '+20 max HP, +0.4 HP/s regen.', apply: (s) => { s.maxHp += 20; s.regen += 0.4; } },
-  magnetism: { id: 'magnetism', name: 'Magnetism', icon: '◎', maxRank: 5, desc: () => '+30% pickup radius, +6% XP.', apply: (s) => { s.pickupRadius *= 1.3; s.xpMult += 0.06; } },
-  amplify:   { id: 'amplify', name: 'Amplify', icon: '◉', maxRank: 5, desc: () => '+10% area of effect.', apply: (s) => { s.area += 0.1; } },
+  magnetism: { id: 'magnetism', name: 'Magnetism', icon: '◎', maxRank: 5, desc: () => '+25% pickup radius, +5% XP, +15% XP from reaction kills.', apply: (s) => { s.pickupRadius += 0.65; s.xpMult += 0.05; s.reactionXp += 0.15; } },
+  amplify:   { id: 'amplify', name: 'Amplify', icon: '◉', maxRank: 5, desc: () => '+8% area of effect, +2% chance a cast echoes.', apply: (s) => { s.area += 0.08; s.echo += 0.02; } },
   catalyst:  { id: 'catalyst', name: 'Catalyst', icon: '⚗', maxRank: 5, desc: () => '+25% reaction damage.', apply: (s) => { s.reaction += 0.25; } },
-  precision: { id: 'precision', name: 'Precision', icon: '✧', maxRank: 5, desc: () => '+6% critical chance.', apply: (s) => { s.crit += 0.06; } },
+  precision: { id: 'precision', name: 'Precision', icon: '✧', maxRank: 5, desc: () => '+6% critical chance, +3% damage.', apply: (s) => { s.crit += 0.06; s.damage += 0.03; } },
   volley:    { id: 'volley', name: 'Volley', icon: '⋔', maxRank: 2, desc: () => '+1 projectile on projectile skills.', apply: (s) => { s.projectiles += 1; } },
 };
 
