@@ -1,0 +1,25 @@
+name: "Idea"
+description: "Suggest a feature or improvement"
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping make Riftbound better. This report becomes a public issue.
+  - type: textarea
+    id: details
+    attributes:
+      label: "Details"
+      description: "What would you like to see, and why would it make the game better?"
+      placeholder: "It would be great if ..."
+    validations:
+      required: true
+  - type: textarea
+    id: run
+    attributes:
+      label: "Run details"
+      description: "Filled in by the in-game Feedback button. Safe to edit or delete."
+      render: text
+    validations:
+      required: false

@@ -361,6 +361,7 @@ export class Menus {
         <button type="button" class="mn-tome" data-act="pop" data-id="tome" data-ref="tome" aria-haspopup="dialog" aria-expanded="false"></button>
         <button type="button" class="mn-tool" data-act="pop" data-id="settings" aria-haspopup="dialog" aria-expanded="false" title="Settings">${ui('gear', '✲')}</button>
         <button type="button" class="mn-tool" data-act="pop" data-id="help" aria-haspopup="dialog" aria-expanded="false" title="Controls">${ui('help', '?')}</button>
+        <button type="button" class="mn-tool" data-act="feedback" title="Feedback" aria-label="Feedback">${ui('feedback', '✉')}</button>
         <a class="mn-tool" href="${PATCH_NOTES_URL}" target="_blank" rel="noopener" title="Patch notes" aria-label="Patch notes (opens in a new tab)">${ui('notes', '≡')}</a>
 
         <div class="cf-plate mn-pop mn-pop-tome" data-pop="tome" data-ref="tomePop" hidden></div>
@@ -641,6 +642,7 @@ export class Menus {
       case 'buy': this._buy(id); break;
       case 'begin': this._begin(); break;
       case 'pop': this._setPop(id); break;
+      case 'feedback': this._setPop(null); this.game.ui?.feedback?.open(); break;
       default: break;
     }
   }

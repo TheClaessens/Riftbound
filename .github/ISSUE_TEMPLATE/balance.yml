@@ -1,0 +1,25 @@
+name: "Balance"
+description: "Something feels too strong, too weak, too hard or too easy"
+title: "[Balance] "
+labels: ["enhancement", "balance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping make Riftbound better. This report becomes a public issue.
+  - type: textarea
+    id: details
+    attributes:
+      label: "Details"
+      description: "What feels off, and where (class, skill, boss, Rift Tier, act)? Numbers help."
+      placeholder: "The Act II boss kills me in 20 seconds when ..."
+    validations:
+      required: true
+  - type: textarea
+    id: run
+    attributes:
+      label: "Run details"
+      description: "Filled in by the in-game Feedback button. Safe to edit or delete."
+      render: text
+    validations:
+      required: false

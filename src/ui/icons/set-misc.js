@@ -414,6 +414,12 @@ const UI = {
     + path(M_MD, 'M4.2 2.2H19.8V5.4H4.2Z', INK_T) + flat(M_HI, 'M4.2 2.2H19.8V3.6H4.2Z')
     + path(M_MD, 'M4.2 18.6H19.8V21.8H4.2Z', INK_T) + flat(M_HI, 'M4.2 18.6H19.8V20H4.2Z')),
 
+  // Feedback: a chamfered bronze speech bubble with a tail, two inked lines of text.
+  feedback: g24(path(M_MD, 'M5.4 3H18.6L21.4 5.8V14.2L18.6 17H12.6L7.8 21.4V17H5.4L2.6 14.2V5.8Z', INK_T)
+    + flat(M_HI, 'M5.4 3H18.6L19.6 4H4.4L3.6 4.8V14.2L2.6 14.2V5.8Z')
+    + flat(M_LO, 'M7.8 17H12.6L7.8 21.4Z')
+    + flat(VOID, 'M7 8H17V9.4H7Z M7 11.2H13.4V12.6H7Z')),
+
   // Help: an octagonal bronze-rimmed enamel seal with a gilt "?" (the only glyph-shaped icon).
   help: g24((() => {
     const rim = ngon(12, 12, 11.2, 8, -112.5), face = ngon(12, 12, 8.6, 8, -112.5);

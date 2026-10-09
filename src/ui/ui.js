@@ -4,6 +4,7 @@
 //  pause (Build / Codex). Spec: design/UI.md §7. Styles: css/modals.css (prefix md-).
 //  #ui ignores the pointer; an open modal re-enables it.
 // =====================================================================================
+import { FeedbackPanel } from './feedback.js';
 import { Menus } from './menus.js';
 import { HUD } from './hud.js';
 import { icon, hasIcon, ICON, cardIconId } from './icons/index.js';
@@ -447,6 +448,7 @@ export class UI {
     this._buildLevelUp();
     this._buildRelicPick();
     this._buildPause();
+    this.feedback = new FeedbackPanel(this);
     this.menus = new Menus(game, this.uiRoot);
 
     const on = (ev, fn) => this._unsub.push(game.events.on(ev, fn));
@@ -503,6 +505,7 @@ export class UI {
     this._rp = null;
     this._disarmAbandon();
     for (const el of [this.luEl, this.rpEl, this.pauseEl]) this._close(el, instant);
+    this.feedback?.close(true);
   }
 
   // Closed modals keep their layout but skip rendering (content-visibility) and are inert.
@@ -813,6 +816,7 @@ export class UI {
           </nav>
           <div class="md-pz-actions">
             <button type="button" class="cf-btn primary" data-ref="resume">Resume <span class="cf-key">esc</span></button>
+            <button type="button" class="cf-btn md-feedback" data-ref="feedback">${icon(ICON.ui('feedback'), { cls: 'md-act-ico', fallback: '✉' })}Feedback</button>
             <button type="button" class="cf-btn md-abandon" data-ref="abandon">Abandon run</button>
           </div>
         </header>
@@ -843,6 +847,7 @@ export class UI {
     this.pzTabs = [...el.querySelectorAll('.md-tab')];
     this.pzRefs = { shake: q('shake'), auto: q('auto'), autoTxt: q('autoTxt'), run: q('run'), tip: q('tip'), panel: el.querySelector('.md-pz-panel') };
 
+    q('feedback').addEventListener('click', () => this.feedback.open());
     q('resume').addEventListener('click', () => this.game.togglePause());
     this.pzAbandon.addEventListener('click', () => this._onAbandonClick());
     for (const tab of this.pzTabs) tab.addEventListener('click', () => this._setPauseTab(tab.dataset.tab));
