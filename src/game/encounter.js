@@ -109,6 +109,11 @@ export class Encounter {
     return true;
   }
 
+  // Level-up / chest modals wait during the Seal and the first 2.5 s after the landing (game.js).
+  holdModals() {
+    return this.active && (this.state === 'seal' || (this.state === 'fight' && this.t < 2.5));
+  }
+
   // Animate the arena radius (Molten Tide, Floodfall). The wall follows.
   setArenaRadius(r, sec = 1.5) {
     if (!this.arena) return;

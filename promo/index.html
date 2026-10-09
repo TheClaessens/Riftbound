@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Riftbound Promo Renderer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Cinzel+Decorative:wght@700;900&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <!-- Promo kit shims: fixed 1920x1080, virtual clock, seeded RNG. Must run before any game module. -->
+  <script>window.PROMO = { width: 1920, height: 1080, seed: 1, raf: 'manual', timers: 'real' };</script>
+  <script src="kit/shims.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    html, body { margin: 0; background: #08060d; color: #cfc6e8; font: 13px Inter, sans-serif; overflow: hidden; }
+    #game { position: fixed; left: -4000px; top: 0; }
+    #fx-layer, #ui { display: none !important; }
+    #comp { position: fixed; inset: 0; margin: auto; width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.78vh; background: #000; }
+    #status { position: fixed; left: 8px; top: 6px; z-index: 5; text-shadow: 0 1px 2px #000; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="fx-layer"></div>
+  <div id="ui"></div>
+  <canvas id="comp" width="1920" height="1080"></canvas>
+  <div id="status">loading…</div>
+  <script type="module" src="promo.js"></script>
+</body>
+</html>

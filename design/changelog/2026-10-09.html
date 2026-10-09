@@ -1,0 +1,292 @@
+<title>Riftbound Patch Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze:wght@600;700;800&family=Alegreya+Sans+SC:wght@700;800&family=Alegreya+Sans:ital,wght@0,500;0,700;0,800;1,500&display=swap" rel="stylesheet">
+<style>
+/* Layout: one parchment-width column on the game's dark "Crownforge" plate; sections by what a
+   player notices, each change tagged FIX / NEW / CHANGE in its element colour. Single dark look,
+   deliberately the game's own. */
+:root {
+  color-scheme: dark;
+  --void: #0c0a12;
+  --plate: #16121f;
+  --plate-hi: #221c2e;
+  --rule: #3a3048;
+  --gilt: #ecd9a6;
+  --bronze: #c8a874;
+  --text: #f2ece0;
+  --dim: #b9b0c4;
+  --fix: #7fe0ff;      /* frost */
+  --new: #ffe45c;      /* storm */
+  --change: #ff9a5c;   /* fire */
+  --arcane: #c08cff;
+  --hp: #ff6a5e;
+  --display: "Grenze", "Palatino Linotype", Georgia, serif;
+  --body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  --label: "Alegreya Sans SC", "Alegreya Sans", system-ui, sans-serif;
+}
+html, body { background: var(--void); }
+body {
+  color: var(--text);
+  font: 500 17px/1.6 var(--body);
+  padding-inline: 16px;
+  padding-block: 0 64px;
+}
+.wrap { max-width: 44rem; margin: 0 auto; }
+
+header { padding-block: 56px 28px; border-bottom: 1px solid var(--rule); }
+.kicker { font: 800 0.8rem var(--label); letter-spacing: 0.16em; color: var(--bronze); text-transform: lowercase; }
+h1 {
+  font: 800 clamp(2.4rem, 7vw, 3.6rem)/1 var(--display);
+  color: var(--gilt);
+  margin: 10px 0 14px;
+  text-wrap: balance;
+}
+.prism { height: 3px; width: 120px; border-radius: 2px; background: linear-gradient(90deg, #c08cff, #ff7a33 33%, #ffe45c 66%, #7fe0ff); }
+.lede { color: var(--dim); margin: 18px 0 0; max-width: 38rem; }
+.play {
+  display: inline-flex; align-items: center; gap: 10px; margin-top: 22px;
+  font: 700 1rem var(--body); color: var(--void); background: var(--gilt);
+  padding: 10px 18px; border-radius: 4px; text-decoration: none;
+  box-shadow: inset 0 -2px 0 var(--bronze);
+}
+.play:hover { background: #fff1c8; }
+.play:focus-visible, a:focus-visible { outline: 2px solid var(--fix); outline-offset: 3px; }
+
+.highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 12px; margin-top: 32px; }
+.hl { background: var(--plate); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+.hl b { display: block; font: 700 1.25rem/1.15 var(--display); color: var(--gilt); margin-bottom: 4px; }
+.hl span { color: var(--dim); font-size: 0.95rem; }
+
+section { margin-top: 44px; }
+h2 {
+  font: 700 1.7rem/1.1 var(--display); color: var(--gilt); margin: 0 0 6px;
+  display: flex; align-items: baseline; gap: 12px;
+}
+h2::after { content: ""; flex: 1; height: 1px; background: var(--rule); transform: translateY(-6px); }
+.why { color: var(--dim); margin: 0 0 14px; font-style: italic; font-size: 0.95rem; }
+
+ul.notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+ul.notes li { display: grid; grid-template-columns: 4.6rem 1fr; gap: 12px; align-items: baseline; }
+ul.notes li > div { min-width: 0; }
+.tag {
+  font: 800 0.72rem var(--label); letter-spacing: 0.12em; text-align: center;
+  padding: 3px 0; border-radius: 3px; border: 1px solid currentColor; text-transform: lowercase;
+}
+.tag.fix { color: var(--fix); }
+.tag.new { color: var(--new); }
+.tag.change { color: var(--change); }
+strong { color: var(--text); font-weight: 800; }
+em.name { font-style: normal; color: var(--gilt); font-weight: 700; }
+.quote { font-family: var(--label); font-weight: 700; letter-spacing: 0.03em; color: var(--bronze); white-space: nowrap; }
+
+.tablewrap { overflow-x: auto; margin-top: 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--plate); }
+table { border-collapse: collapse; width: 100%; min-width: 30rem; font-size: 0.95rem; }
+th, td { text-align: left; padding: 9px 14px; vertical-align: top; }
+th { font: 800 0.75rem var(--label); letter-spacing: 0.12em; color: var(--bronze); text-transform: lowercase; border-bottom: 1px solid var(--rule); }
+tr + tr td { border-top: 1px solid #241d30; }
+td:first-child { color: var(--gilt); font-weight: 700; white-space: nowrap; }
+td.old { color: var(--dim); }
+
+footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--dim); font-size: 0.92rem; }
+
+/* releases: newest first; older ones follow an "earlier release" divider */
+.release-old header { padding-block: 28px 24px; }
+.release-title {
+  font: 800 clamp(2rem, 6vw, 2.8rem)/1 var(--display); color: var(--gilt);
+  margin: 10px 0 14px; display: block; text-wrap: balance;
+}
+.release-title::after { content: none; }
+.earlier {
+  margin-top: 72px; display: flex; align-items: center; gap: 14px;
+  font: 800 0.8rem var(--label); letter-spacing: 0.16em; color: var(--bronze); text-transform: lowercase;
+}
+.earlier::before, .earlier::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+td { min-width: 0; }
+
+@media (max-width: 520px) {
+  body { font-size: 16px; }
+  ul.notes li { grid-template-columns: 1fr; gap: 4px; }
+  .tag { justify-self: start; padding: 2px 8px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .play { transition: background 0.15s; }
+}
+</style>
+
+<div class="wrap">
+  <article class="release">
+  <header>
+    <div class="kicker">patch notes · 9 october 2026 · version 5</div>
+    <h1>The Rift Obelisks Update</h1>
+    <div class="prism" aria-hidden="true"></div>
+    <p class="lede">You now decide when the boss comes and how hard it hits. Each boss fight is now a sealed, three-phase encounter with its own music, mechanics you can read and learn, and a stagger bar that rewards clever play. A panel of playtesters tried it first, and their findings shaped the final tuning below.</p>
+    <a class="play" href="https://claude.ai/artifact/EB6NLo6nJutTjXVujuf6ng">Play Riftbound</a>
+
+    <div class="highlights">
+      <div class="hl"><b>Call the boss your way</b><span>Three Rift Obelisks trade risk for rewards.</span></div>
+      <div class="hl"><b>Raid-style bosses</b><span>Sealed arenas, three phases, intermissions.</span></div>
+      <div class="hl"><b>A score per boss</b><span>Each boss has its own music, which builds with the fight.</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>Rift Obelisks</h2>
+    <p class="why">Until now the boss arrived at 3:00, every time. That still happens if you do nothing.</p>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div>At <strong>0:50</strong> of every act, three obelisks rise from the ground. Walk up to one to read its card: what it costs, what it pays, and (for Haste) roughly how many levels you would skip.</div></li>
+      <li><span class="tag new">new</span><div>To activate an obelisk, <strong>stand in its ring for 4 seconds</strong>. The horde gathers around you while you do, so choosing risk is itself risky. If you step out, progress drains slowly instead of resetting.</div></li>
+      <li><span class="tag new">new</span><div>Rewards are <strong>paid only if you win the boss fight</strong>, and every card says so. In Act III, where the run ends at the kill, chest rewards turn into extra shards.</div></li>
+    </ul>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Obelisk</th><th>What it does</th><th>Cost</th><th>Pays</th></tr></thead>
+        <tbody>
+          <tr><td>Haste</td><td>Summons the boss now.</td><td>The rest of the act's horde, about 2–4 levels.</td><td>A burst of XP, shards for the time you saved, a boss chest with 4 choices instead of 3.</td></tr>
+          <tr><td>Echo</td><td>The boss comes back a second time, faster, starting at its second phase.</td><td>You take 10% more damage all fight.</td><td>An Echo Chest of rare Boss Relics, plus shards.</td></tr>
+          <tr><td>Wrath</td><td>Adds a boss modifier, shown before you commit. Up to three times: step out and back in for each.</td><td>A harder boss with more health and damage at higher heat.</td><td>More chest choices, a free skill rank, a guaranteed Boss Relic at heat 3, plus shards.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Boss encounters</h2>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>The arena seals.</strong> A wall of thorns, basalt or crystal rises around you, the horde dissolves into XP, and the boss lands. Level-ups wait until the boss is down on the ground, so the arrival is never interrupted.</div></li>
+      <li><span class="tag new">new</span><div><strong>Three phases.</strong> At two-thirds and one-third health the boss starts an <strong>intermission</strong>: it can't be harmed while you survive an arena-wide pattern, then it is <strong>Winded</strong> and open to free hits.</div></li>
+      <li><span class="tag new">new</span><div><strong>Stagger.</strong> Elemental reactions, freezes, stuns, burning, chilled or shocked status, perfect dodges and Rift Crystal blasts fill the boss's stagger bar. Fill it and the boss is <strong>Downed</strong>, taking 40% more damage. Single-element builds can stagger too.</div></li>
+      <li><span class="tag new">new</span><div><strong>Break Checks.</strong> Once a phase, the boss starts a named cast such as <span class="quote">War Horn</span>. Fill the stagger bar to the marker before it finishes, or the cast goes off.</div></li>
+      <li><span class="tag new">new</span><div><strong>Red means get out, striped gold means go here.</strong> Gold zones are cleanse pools, safe pockets and shelters behind pillars. Every boss attack shows on the ground first.</div></li>
+      <li><span class="tag new">new</span><div>Adds come only when a mechanic needs them: spore pods to shoot before they ripen, banners that shield their warchief, runners racing to heal their king, a wyvern that leaves a lightning rod behind.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The three bosses</h2>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div><em class="name">Gorrak, the Troll King</em>: stand behind his backhand, shoot his spore pods for healing sap, break his War Horn, dodge the trees he hurls, and dash through King's Wrath.</div></li>
+      <li><span class="tag change">change</span><div><em class="name">Vashkar, the Ashen Warchief</em>: step out, then back in, for his axe combo. Topple his war banners before their torchbearers relight them. Don't double back over your cinder marks. The arena shrinks when the Molten Tide rises. His frame now shows <span class="quote">Resists Fire 50%</span>.</div></li>
+      <li><span class="tag change">change</span><div><em class="name">Aurelith, the Prism Dragon</em>: her ward colour tells you her next attack, crystal pillars block her beams, her conduits feed the ward, and in the last phase the river floods the arena.</div></li>
+      <li><span class="tag new">new</span><div><strong>Music.</strong> Each boss has its own score that changes with phases, intermissions, staggers and enrage, and ends on a victory cadence: war drums and a bone horn for Gorrak, a brass march for Vashkar, organ and choir for Aurelith.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Rewards</h2>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>Six Boss Relics</strong>, offered only by Echo Chests and Wrath chests: <em class="name">Gorrak's Tusk</em>, <em class="name">Vashkar's Brand</em>, <em class="name">Aurelith's Scale</em>, <em class="name">Riftbreaker's Sigil</em>, <em class="name">Ashen Standard</em> and <em class="name">Hollow Heartstone</em>.</div></li>
+      <li><span class="tag new">new</span><div>A <strong>Wrath Cache</strong> at heat 2 or more: after the fight, add a rank to a skill of your choice.</div></li>
+      <li><span class="tag change">change</span><div>The passive called Haste is now <strong>Quickening</strong>, so it no longer shares a name with the obelisk.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Tuned after playtesting</h2>
+    <p class="why">Six playtesters fought these bosses before release. These changes come straight from what they hit.</p>
+    <ul class="notes">
+      <li><span class="tag fix">fix</span><div><strong>King's Wrath</strong> rings came faster than some classes can dash, in an arena you can't run out of. They now come 3.2 seconds apart, as do Aurelith's frost rings.</div></li>
+      <li><span class="tag fix">fix</span><div>Gorrak's <strong>follow-up backhand</strong> after a slam couldn't be dodged without a dash. It now gives more warning and lunges less.</div></li>
+      <li><span class="tag fix">fix</span><div>Chained freezes could keep a boss frozen for the whole fight. Bosses now shrug off a new freeze for 4 seconds after one, and can be stunned at most every 1.5 seconds.</div></li>
+      <li><span class="tag change">change</span><div>Reaction-heavy builds kept bosses Downed almost permanently. Repeated reactions now fill the stagger bar less, while perfect dodges and crystal blasts count double. Stagger you've built up now carries into a Break Check instead of resetting.</div></li>
+      <li><span class="tag change">change</span><div>Fights ran long. Boss health is retuned, and Vashkar's banners shield him less (20% each).</div></li>
+      <li><span class="tag new">new</span><div>The death screen now names the <strong>exact move</strong> that killed you, with a tip for that move. One-time tips explain stagger, intermissions, Winded and King's Wrath.</div></li>
+      <li><span class="tag change">change</span><div>Clearer fights: banners no longer stack on top of each other, the boss frame is smaller, trees fade when they hide the boss, and the Haste obelisk is now pale cyan so gold only ever means "go here".</div></li>
+    </ul>
+  </section>
+  </article>
+
+  <div class="earlier" role="separator">earlier release</div>
+
+  <article class="release release-old">
+  <header>
+    <div class="kicker">patch notes · 9 october 2026 · version 4</div>
+    <h2 class="release-title">The Clear Sight Update</h2>
+    <div class="prism" aria-hidden="true"></div>
+    <p class="lede">We watched a panel of playtesters run the Rift and listened to what tripped them up. This update fixes an unwinnable final boss, makes your hero easy to find in the thickest fights, and finally tells you what killed you.</p>
+    <a class="play" href="https://claude.ai/artifact/EB6NLo6nJutTjXVujuf6ng">Play Riftbound</a>
+
+    <div class="highlights">
+      <div class="hl"><b>Aurelith can fall</b><span>Prism-Shamans no longer shield the final boss.</span></div>
+      <div class="hl"><b>Never lose your hero</b><span>Your hero shows through your own spells.</span></div>
+      <div class="hl"><b>Know your killer</b><span>A new death recap shows what hit you, and how.</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>Bosses &amp; bugs</h2>
+    <ul class="notes">
+      <li><span class="tag fix">fix</span><div><em class="name">Aurelith, the Prism Dragon</em> could become impossible to damage while Kobold Prism-Shamans were nearby, because their shields also covered the boss. Shamans no longer shield bosses, so the final fight can be won again.</div></li>
+      <li><span class="tag new">new</span><div>When the act boss is off screen, a <strong>red skull marker</strong> on the screen edge points to it and shows how far away it is.</div></li>
+      <li><span class="tag fix">fix</span><div>Reaction echoes (from Prism Lens and similar relics) could set off further echoes, which pushed your Chain into the thousands. Now only reactions you cause can echo.</div></li>
+      <li><span class="tag fix">fix</span><div>Arcanist glyphs could stay frozen on screen at the start of your next run.</div></li>
+      <li><span class="tag fix">fix</span><div>The reaction feed on the right no longer piles up stale rows during long fights.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Seeing the fight</h2>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>Your hero stays visible.</strong> When your own clouds, explosions or glyphs cover you, your hero's colours come back and a thin outline in your class colour traces them. The ring under your feet always shows. In calm moments nothing changes.</div></li>
+      <li><span class="tag change">change</span><div>In busy fights, your own spell effects fade slightly right around your hero. <strong>Enemy projectiles and red warning zones are never faded.</strong></div></li>
+      <li><span class="tag change">change</span><div><strong>Low health</strong> no longer drains the colour from the whole screen. The edges pulse red and your hero gets a pulsing red outline, so you can still see the danger you need to escape.</div></li>
+      <li><span class="tag change">change</span><div><em class="name">Fissure Geysers</em> (Act II): the cracks now glow red-orange inside the red warning ring, then cool to dark embers after they erupt, so a spent geyser no longer looks like a new one.</div></li>
+      <li><span class="tag change">change</span><div>Big numbers are shortened: the Chain counter reads <span class="quote">×3k</span> instead of <span class="quote">×2993</span>.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Fairer damage</h2>
+    <p class="why">Several testers lost half their health to one hit in Act II and never saw it coming.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>No single hit can take more than <strong>30% of your maximum health</strong>.</div></li>
+      <li><span class="tag change">change</span><div><em class="name">War Boars</em> and <em class="name">Crag Drakes</em> no longer charge all at once. Each charge starts at least 0.6 seconds after the last, so you can dodge them one by one.</div></li>
+      <li><span class="tag new">new</span><div><strong>Death recap.</strong> When you fall, the end screen shows what finished you (<span class="quote">Slain by War Boar · charge · 41</span>), your three biggest sources of damage, your last few hits with your health after each, and one tip for next time.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Classes</h2>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div><em class="name">Arcanist</em>: every third Arcane Bolt volley is <strong>Prismatic</strong> and carries Fire, then Storm, then Frost. The Arcanist can now set up its own Combust, Arc Flash and Shatter from the first minute, without other elements.</div></li>
+      <li><span class="tag change">change</span><div><em class="name">Cryomancer</em>: Frost Armor now absorbs 60% of a hit instead of all of it. Still the sturdiest class, but no longer untouchable.</div></li>
+      <li><span class="tag change">change</span><div><strong>Unlock order.</strong> The Cryomancer now unlocks first (defeat Gorrak, the Troll King). The Arcanist unlocks once you discover 4 reactions. Classes you have already unlocked stay unlocked.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Levelling &amp; drafting</h2>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>Several level-ups at once</strong> (after a boss, for example) are now picked one after another in a single window, marked <span class="quote">1 of 3</span>, <span class="quote">2 of 3</span>, instead of the window closing and reopening each time.</div></li>
+      <li><span class="tag change">change</span><div><strong>Smoother early levels.</strong> The XP needed no longer jumps sharply at level 5, which used to leave you stuck around level 7 for over a minute.</div></li>
+      <li><span class="tag change">change</span><div><strong>Better hands.</strong> Every level-up now offers at least one card that grows your build: a new skill, a rank-up or a fusion. No more hands of only passives. You'll be offered a skill of your class's element by level 3.</div></li>
+      <li><span class="tag change">change</span><div><strong>Banish</strong> now removes a skill for the rest of the run, including its rank-ups and any fusion hints that need it.</div></li>
+      <li><span class="tag fix">fix</span><div><strong>Fusion hints were misleading.</strong> Each fusion needs a <em>specific</em> pair of skills, not any two at rank 3. Cards now name the partner and its rank (<span class="quote">Fusion path: Blizzard r2/3 → Thunderhead</span>), fusion cards say they <strong>replace both</strong> skills, and a ready fusion tells you it arrives at your next level-up.</div></li>
+    </ul>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Passive (per rank)</th><th>Before</th><th>Now</th></tr></thead>
+        <tbody>
+          <tr><td>Swiftness</td><td class="old">+8% move speed</td><td>+6% move speed, −6% dash cooldown</td></tr>
+          <tr><td>Magnetism</td><td class="old">+30% pickup radius, +6% XP</td><td>+25% pickup radius, +5% XP, +15% XP from reaction kills</td></tr>
+          <tr><td>Amplify</td><td class="old">+10% area</td><td>+8% area, +2% chance a cast echoes</td></tr>
+          <tr><td>Precision</td><td class="old">+6% critical chance</td><td>+6% critical chance, +3% damage</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Rift Shards</h2>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>Your best Chain now adds at most <strong>30 shards</strong> to a run's reward. Very long chains used to pay hundreds, which made one build the only sensible way to earn. Kills, acts reached, bosses and Rift Tier pay as before. Chain's in-run bonuses are unchanged.</div></li>
+      <li><span class="tag new">new</span><div><strong>Abandoning a run</strong> now tells you what you would give up. The confirm button reads <span class="quote">Forfeit 50 shards?</span>, because an abandoned run pays nothing.</div></li>
+    </ul>
+  </section>
+
+  <footer>
+    The Act II hint now says it plainly: red rings with glowing cracks erupt as geysers, so step out. Thanks to everyone who played. Keep telling us what trips you up.
+  </footer>
+  </article>
+</div>

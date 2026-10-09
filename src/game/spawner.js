@@ -121,6 +121,7 @@ export class Spawner {
   _updateBeats(act, t) {
     const b = this.beats;
     if (this.game.phase !== 'horde') return;   // a Hasted boss skips the remaining beats
+    if (this.game.obelisks?.summoning) return; // ...including during Haste's 3 s warning
     if (!b.surge && t >= SURGE_AT) {
       b.surge = true;
       this._eliteSurge(act, t);

@@ -48,11 +48,25 @@ const OB_NEAR = 10;          // world units: the approach card appears inside th
 const HEAT_MAX = 3;
 // Obelisk identity: colour + icon + label (never colour alone).
 const OB = {
-  haste: { color: '#ffc340', icon: 'obeliskHaste', name: 'Haste', title: 'Obelisk of Haste' },
+  haste: { color: '#bfefff', icon: 'obeliskHaste', name: 'Haste', title: 'Obelisk of Haste' },
   echo: { color: '#b08cff', icon: 'obeliskEcho', name: 'Echo', title: 'Obelisk of Echo' },
   wrath: { color: '#ff7a33', icon: 'obeliskWrath', name: 'Wrath', title: 'Obelisk of Wrath' },
 };
 const POISE_STEEL = '#e8eef8';
+// One-line meaning for every status chip (title tooltip + aria): the words the game never defined (playtest r2)
+const CHIP_TIP = {
+  downed: 'Staggered — takes +40% damage',
+  winded: 'Recovering from the intermission — free hits',
+  exposed: 'Weak point open — +20% damage',
+  sealed: 'Untargetable during the intermission',
+  recovering: 'Stagger locked for a moment',
+  stagger: 'Fill this with reactions to stagger the boss',
+};
+const BUFF_TIP = {
+  strain: 'Strain — +10% damage taken (Obelisk of Echo)', spores: 'Spores — more damage taken, slower; Sap pools cleanse',
+  sap: 'Sap — +25% move speed', rooted: 'Rooted — cannot move',
+};
+const ELNAME = { fire: 'Fire', frost: 'Frost', storm: 'Storm', arcane: 'Arcane', physical: 'Physical' };
 
 // Affix def.icon is a bare name ('affixFrenzied'): resolve to a sprite, falling back to the generic sigil.
 export const affixIcon = (def, cls = '') => icon(def?.icon && hasIcon(ICON.ui(def.icon)) ? ICON.ui(def.icon) : ICON.ui('affix'), { cls });
@@ -299,8 +313,9 @@ export class HUD {
     on('breakCheck', () => {
       flash(E.cast, [{ transform: 'scale(1.06)' }, { transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.34,1.56,.64,1)' });
     });
-    on('breakCheckEnd', ({ success }) => {
+    on('breakCheckEnd', ({ enemy, name, success }) => {
       if (success) flash(E.poiseFlash, [{ opacity: 1 }, { opacity: 0 }], { duration: 520 }, 0);
+      if (enemy === this.game.boss) this._verdict = { t: 1.5, success: !!success, name };   // shown INSIDE the cast bar, never centre
     });
     on('obelisksRisen', () => { this._ribbon = { kind: 'obelisks', text: 'The Rift offers', t: 4 }; });
     on('obeliskArmed', ({ type }) => { this._armPop = type; this._k.armed = null; });
@@ -324,6 +339,7 @@ export class HUD {
     this.visible = false;
     this.root.style.display = 'none';
     this.uiRoot.classList.add('hud-off');   // hides the primer plates too (css/hud.css)
+    this.fx.reset();                        // nothing from a finished fight or run survives in the DOM
   }
 
   dispose() {
@@ -336,6 +352,7 @@ export class HUD {
 
   _reset() {
     this._k = {};
+    this._bossClear?.();
     this._chainLast = 0;
     this._ribbon = null;
     this._bearer = null;
@@ -459,7 +476,7 @@ export class HUD {
       }
       setText(E.rbTxt, txt);
       setText(E.rbT, tt);
-    }
+    } else { setText(E.rbTxt, ""); setText(E.rbT, ""); }
   }
 
   // ================================================================== top: armed chips (timeline)
@@ -485,6 +502,20 @@ export class HUD {
   }
 
   // ================================================================== top: boss bar
+  // The boss frame is hidden (display none) between fights: empty its text too, so no old boss name / affix /
+  // chip text lingers in the DOM for the next fight or run. (Memoised setters keep their caches in step.)
+  _bossClear() {
+    const E = this.el;
+    this._k.bossId = null; this._k.bsKind = ''; this._k.cast = null; this._k.ward = undefined;
+    this._verdict = null; this._notches = [];
+    for (const n of [E.bossName, E.bossEpi, E.bsTxt, E.castName, E.castTag, E.castT, E.tagEnrageTxt, E.poiseTxt, E.heatTxt, E.tagEchoTxt]) setText(n, '');
+    E.affixes.innerHTML = ''; E.bossNotches.innerHTML = '';   // written raw in _bossSetup
+    for (const n of [E.bsIco, E.wardGem]) setHTML(n, '');
+    for (const k of ['sealed', 'downed', 'winded', 'exposed', 'echo', 'has-affix', 'has-heat', 'has-poise']) setCls(E.boss, k, false);
+    setCls(E.cast, 'on', false);
+    setCls(E.bossState, 'on', false);
+  }
+
   _bossSetup(g, b) {
     const E = this.el;
     this._k.bossId = b;
@@ -501,9 +532,14 @@ export class HUD {
     this._notches = gates.map((x, i) => ({ el: E.bossNotches.children[i], g: x }));
     // affixes: icon + name (the def text is the tooltip); the row exists for the whole fight (no layout shift)
     const ax = b.affixes ?? [];
-    E.affixes.innerHTML = ax.map((a) =>
+    // resistances first ("Resists Fire 50%": fire builds need to know), then the Wrath affixes
+    const res = Object.entries(b.resist ?? {}).filter(([, v]) => typeof v === 'number' && v > 0);
+    E.affixes.innerHTML = res.map(([el, v]) => {
+      const nm = ELNAME[el] ?? el, txt = `Resists ${nm} ${Math.round(v * 100)}%`;
+      return `<span class="hud-affix resist" data-el="${esc(el)}" title="${txt}: ${nm} damage and ${nm} reactions hurt it less"><span class="hud-affix-ico">${icon(ICON.el(el), { el })}</span><span class="hud-affix-n">${txt}</span></span>`;
+    }).join('') + ax.map((a) =>
       `<span class="hud-affix" title="${esc(a.name)}: ${esc(a.desc)}"><span class="hud-affix-ico">${affixIcon(a)}</span><span class="hud-affix-n">${esc(a.name)}</span></span>`).join('');
-    setCls(E.boss, 'has-affix', ax.length > 0);
+    setCls(E.boss, 'has-affix', ax.length + res.length > 0);
     setCls(E.boss, 'has-poise', !!b.poise);
     setCls(E.boss, 'has-heat', b.id === 'vashkar' && typeof b.axeHeat === 'number');
     setCls(E.boss, 'echo', !!b.isEcho);
@@ -518,7 +554,7 @@ export class HUD {
     const b = g.boss;
     const on = !!b && !b.dead;
     setCls(E.boss, 'on', on);
-    if (!on) return;
+    if (!on) { if (this._k.bossId) this._bossClear(); return; }
     if (this._k.bossId !== b) this._bossSetup(g, b);
 
     const f = b.maxHp > 0 ? b.hp / b.maxHp : 0;
@@ -541,16 +577,20 @@ export class HUD {
     const enr = b.enrage | 0;
     setCls(E.tagEnrage, 'on', enr > 0);
     if (enr > 0) setText(E.tagEnrageTxt, enr > 1 ? `enraged ×${enr}` : 'enraged');
+    const winded = downed && this._downReason === 'winded';
     let kind = '', txt = '';
-    if (downed) { kind = 'downed'; txt = this._downReason === 'winded' ? 'winded' : 'downed'; }
+    if (winded) { kind = 'winded'; txt = 'winded'; }
+    else if (downed) { kind = 'downed'; txt = 'downed'; }
     else if (exposed) { kind = 'exposed'; txt = `exposed ${Math.ceil(b.exposedT)}`; }
     else if (sealed) { kind = 'sealed'; txt = 'sealed'; }
+    setCls(E.boss, 'winded', winded);
     setCls(E.bossState, 'on', !!kind);
     if (kind) {
       if (this._k.bsKind !== kind) {
         this._k.bsKind = kind;
         E.bossState.dataset.k = kind;
         setHTML(E.bsIco, icon(kind === 'sealed' ? ICON.ui('lock') : ICON.ui(kind)));
+        setAttr(E.bossState, 'title', CHIP_TIP[kind]);
       }
       setText(E.bsTxt, txt);
     } else this._k.bsKind = '';
@@ -576,6 +616,7 @@ export class HUD {
       setCls(pc, 'check', mode === 'check');
       setCls(pc, 'hot', mode !== 'downed' && mode !== 'rec' && P.v / cap > 0.8);
       setText(E.poiseTxt, label);
+      setAttr(E.poise, 'title', mode === 'rec' ? CHIP_TIP.recovering : mode === 'downed' ? CHIP_TIP[winded ? 'winded' : 'downed'] : CHIP_TIP.stagger);
       const th = check ? clamp01(P.threshold / cap) : 0;
       setCls(E.poiseMk, 'on', th > 0);
       if (th > 0) {
@@ -602,7 +643,13 @@ export class HUD {
 
     // ---- cast bar (named casts + Break Checks)
     const c = b.cast;
-    setCls(E.cast, 'on', !!c);
+    if (c) this._verdict = null;
+    else if (this._verdict && (this._verdict.t -= gdt) <= 0) this._verdict = null;
+    const V = c ? null : this._verdict;
+    setCls(E.cast, 'on', !!c || !!V);
+    setCls(E.cast, 'verdict', !!V);
+    setCls(E.cast, 'ok', !!V?.success);
+    setCls(E.cast, 'fail', !!V && !V.success);
     if (c) {
       const key = `${c.name}|${c.check ? c.threshold : 0}`;
       if (this._k.cast !== key) {
@@ -613,6 +660,16 @@ export class HUD {
       }
       setScaleX(E.castFill, c.dur > 0 ? c.t / c.dur : 0);
       setText(E.castT, Math.max(0, c.dur - c.t).toFixed(1));
+    } else if (V) {
+      const key = `v|${V.name}|${V.success}`;
+      if (this._k.cast !== key) {
+        this._k.cast = key;
+        setText(E.castName, V.name ?? 'Break Check');
+        setText(E.castTag, V.success ? 'broken!' : 'failed');
+        setCls(E.cast, 'check', true);
+        setText(E.castT, '');
+        setScaleX(E.castFill, 1);
+      }
     } else this._k.cast = null;
 
     // Prism Ward (Aurelith): element gem + countdown ring; broken = grey until the next cycle
@@ -767,7 +824,8 @@ export class HUD {
     const near = best && bd <= (this._ob === best ? OB_NEAR + 2 : OB_NEAR);
     if (!near) {
       this._ob = null;
-      setCls(E.ob, 'on', false);
+      setCls(E.ob, "on", false);
+      if (this._obKey) { this._obKey = ""; E.obBody.innerHTML = ""; setText(E.obName, ""); setText(E.obKick, ""); setText(E.obChip, ""); setText(E.obFoot, ""); setHTML(E.obIco, ""); }
       return;
     }
     const o = best;
@@ -797,7 +855,7 @@ export class HUD {
     }
     setAttr(E.ob.querySelector('.hud-ob-ring .fg'), 'stroke-dasharray', `${Math.round(prog * 100)} 100`);
     setScaleX(E.obFill, prog);
-    setText(E.obFoot, ch && prog > 0 ? `channelling ${Math.round(prog * 100)}%` : this._obHint);
+    setText(E.obFoot, chOn ? `channelling ${Math.round(prog * 100)}%${o.type === 'wrath' ? `  ·  heat ${Math.min(HEAT_MAX, (o.heat | 0) + 1)} of ${HEAT_MAX}` : ''}` : this._obHint);
 
     // anchor above the monolith, clamped under the top bar and above the action bar
     const u = this._uPx, w = window.innerWidth, h = window.innerHeight;
@@ -911,10 +969,10 @@ export class HUD {
     const w = window.innerWidth, h = window.innerHeight, u = this._uPx;
     const bossOn = !!bossLive;
     const L = 40 * u, R = w - 40 * u;
-    const T = (bossOn ? 178 : 132) * u, B = h - 150 * u;   // excludes the top bar and the action bar
+    const T = (bossOn ? 140 : 132) * u, B = h - 150 * u;   // excludes the top bar and the action bar
     for (let i = 0; i < this._mk.length; i++) {
       const M = this._mk[i], t = targets[i];
-      if (!t) { setCls(M.root, 'on', false); continue; }
+      if (!t) { setCls(M.root, 'on', false); setText(M.d, ''); continue; }
       if (M.kind !== t.kind) {
         M.kind = t.kind;
         const sprite = t.sprite
@@ -991,7 +1049,7 @@ export class HUD {
     if (this._k.buffs !== key) {
       this._k.buffs = key;
       E.buffs.innerHTML = buffs.map(([id, b]) =>
-        `<div class="hud-buff" style="--acc:${b.color ?? 'var(--cf-gilt)'};--el:${b.color ?? 'var(--cf-gilt)'}">
+        `<div class="hud-buff" title="${esc(BUFF_TIP[id] ?? b.name ?? id)}" style="--acc:${b.color ?? 'var(--cf-gilt)'};--el:${b.color ?? 'var(--cf-gilt)'}">
            <div class="hud-buff-sq">${buffIcon(id, b)}<i class="hud-buff-sweep"></i></div>
            <span class="hud-buff-t num"></span>
          </div>`).join('');

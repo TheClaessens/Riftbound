@@ -34,7 +34,7 @@ const FLOOD_R = 17;
 
 const CFG = {
   id: 'riftHeart', name: 'Aurelith, the Prism Dragon', model: AURELITH_MODEL,
-  hp: 92000, radius: 2.4, speed: 2.3, stopGap: 5, resist: null, deathColor: 0x9ff3ff,
+  hp: 86000, radius: 2.4, speed: 2.3, stopGap: 5, resist: null, deathColor: 0x9ff3ff,
   look: { scale: 1.1, glow: [0.35, 0.5, 0.65] },
   cycle: [2.4, 2.0, 1.6], downed: [4, 5, 6], enrageAt: 120, turnRate: 7, windedDur: 4,
 };
@@ -570,14 +570,14 @@ export class Aurelith extends BossBase {
     g.fx.shake(0.25, 'threat');
   }
 
-  // ---- frost: two ring waves, 2.4 s apart (dash through)
+  // ---- frost: two ring waves, 3.2 s apart (dash through; ≥ the slowest dash recharge, 3.0 s)
   castRings() {
     const g = this.game;
     const lead = this.lead('rings', 0.9);
-    const tok = this.token('frost', lead + 2.8);
+    const tok = this.token('frost', lead + 3.6);
     this.face(g.player.pos);
-    this.rig.tellT = lead; this.rig.tell2 = lead + 2.4;
-    this.play('rings', lead + 2.4 + 0.9, lead, null, 1.0);
+    this.rig.tellT = lead; this.rig.tell2 = lead + 3.2;
+    this.play('rings', lead + 3.2 + 0.9, lead, null, 1.0);
     const stomp = (ld) => this.sh(tok, this.circle(this.pos, 3.4, ld, {
       dmg: 0.7, how: 'frost stomp', onResolve: () => {
         this.ringWave(this.pos, { speed: 8, width: 1.1, from: 3.0, maxR: this.arena.r + 2, dmg: 1.0, how: 'frost ring' });
@@ -587,8 +587,8 @@ export class Aurelith extends BossBase {
       },
     }));
     stomp(lead);
-    this.fafter(tok, lead + 1.6, () => stomp(0.8));
-    return lead + 2.4 + 1.0;
+    this.fafter(tok, lead + 2.4, () => stomp(0.8));
+    return lead + 3.2 + 1.0;
   }
 
   // ---- storm: Tempest — 3 strikes chase you, then lock

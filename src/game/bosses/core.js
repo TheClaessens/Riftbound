@@ -33,8 +33,15 @@ const TEACH = 1.4;            // first use of a mechanic: lead × TEACH
 
 export const POISE = {
   shatter: 14, steam: 10, overload: 10, combust: 10, superconduct: 8, arcflash: 8,
-  frozen: 6, stunned: 4, perfect: 5, crystal: 6, generator: 15, chainPer: 0.5, chainMax: 5,
+  frozen: 6, stunned: 4, perfect: 10, crystal: 10, generator: 15, chainPer: 0.5, chainMax: 5,
 };
+// Reaction fatigue (playtest round 2: reaction spam kept bosses Downed most of the fight with no dodging
+// involved). Each reaction poise gain is × 1 / (1 + fatigue / FATIGUE_K); fatigue +1 per reaction, decays
+// with FATIGUE_TAU. ~1 reaction/s → ×0.5; 3/s → ×0.25. Skill sources (perfect dodge, crystal, generator) are exempt.
+const FATIGUE_K = 4;
+const STATUS_POISE = 1.5;          // per 0.5 s while the boss carries a player status (≈ 3/s)
+const FATIGUE_TAU = 4;
+const REACTION_SRC = new Set(['shatter', 'steam', 'overload', 'combust', 'superconduct', 'arcflash']);
 
 const _v = new THREE.Vector3();
 
@@ -238,7 +245,7 @@ export class BossBase {
     this.exposedT = 0;
     this.armor = 0;                    // 0..0.9 damage reduction (generators); scripts set it
     this.takenMult = 1;
-    this.poise = { v: 0, max: POISE_MAX, mult: 1, lockT: 0, lastGain: -99, threshold: 0 };
+    this.poise = { v: 0, max: POISE_MAX, mult: 1, lockT: 0, lastGain: -99, threshold: 0, fatigue: 0 };
     this.cast = null;                  // { name, t, dur, threshold (0 = plain cast), check: bool }
     this.enrage = 0;                   // 0 = calm; n = enrage steps reached
     this.fightT = 0;                   // seconds of active fight (excludes intermissions + Downed)
@@ -529,9 +536,12 @@ export class BossBase {
   // Break Check: a named cast the player must stagger. Poise empties, the threshold mark appears.
   // o: { name, dur, threshold, action, onSuccess, onFail } → busy for dur
   breakCheck(o) {
-    const threshold = Math.round(o.threshold * (this._affixPoise ?? 1));
+    // Stagger already built carries over (round 2: resetting a 90% bar to 0 read as stolen progress): the
+    // target is the check's full size above the current bar (capped at the bar), never below the base threshold.
+    const base = Math.round(o.threshold * (this._affixPoise ?? 1));
+    const cap = this.poise.max * this.poise.mult - 1;
+    const threshold = Math.round(Math.min(cap, Math.max(base, this.poise.v + base)));
     this.cast = { name: o.name, t: 0, dur: o.dur, threshold, check: true, o };
-    this.poise.v = 0;
     this.poise.lockT = 0;
     this.poise.threshold = threshold;
     if (o.action) this.play(o.action, o.dur, o.dur, null, 1.2);
@@ -543,7 +553,8 @@ export class BossBase {
   addPoise(n, src) {
     const p = this.poise;
     if (n <= 0 || this.dead || this.downed || this.intermissionIdx || p.lockT > 0) return;
-    const gain = n * (this.game.player?.stats.poiseGain ?? 1) * (1 - 0.05 * this.game.tier);
+    let gain = n * (this.game.player?.stats.poiseGain ?? 1) * (1 - 0.05 * this.game.tier);
+    if (REACTION_SRC.has(src)) { gain /= 1 + p.fatigue / FATIGUE_K; p.fatigue += 1; }
     p.v = Math.min(p.max * p.mult, p.v + gain);
     p.lastGain = this.time;
     this.game.events.emit('poise', { enemy: this, amount: gain, src });
@@ -596,7 +607,7 @@ export class BossBase {
     const mv = this.intermissionIdx || this.downed ? 1 : updateStatuses(game, this, dt);
     if (this.dead) return;
     this.time += dt;
-    this._poiseFromStatus();
+    this._poiseFromStatus(dt);
     this._tickTimers(dt, mv);
 
     if (this.intermissionIdx) {
@@ -626,6 +637,7 @@ export class BossBase {
 
     // poise decay (paused during checks, Downed and the recovery lock)
     const p = this.poise;
+    p.fatigue *= Math.exp(-dt / FATIGUE_TAU);
     if (p.lockT > 0) p.lockT -= dt;
     else if (!this.cast?.check && !this.downed && this.time - p.lastGain > POISE_DECAY_DELAY) p.v = Math.max(0, p.v - POISE_DECAY * dt);
     if (this.exposedT > 0) this.exposedT -= dt;
@@ -803,7 +815,15 @@ export class BossBase {
     for (const a of this.affixes) a.update?.(this, dt);
   }
 
-  _poiseFromStatus() {
+  _poiseFromStatus(dt) {
+    // Status pressure: every 0.5 s a boss carrying Burn / Chill / Shock gains STATUS_POISE (round 2: single-
+    // element builds had no way to stagger; reactions alone also favoured 2-element builds too much).
+    this._statusT = (this._statusT ?? 0.5) - dt;
+    if (this._statusT <= 0) {
+      this._statusT = 0.5;
+      const s = this.status;
+      if (s.burn > 0 || s.chill > 0 || s.shock > 0) this.addPoise(STATUS_POISE, 'status');
+    }
     const stun = this.status.stun > 0;
     if (stun && !this._stunWas) this.addPoise(POISE.stunned, 'stunned');
     this._stunWas = stun;

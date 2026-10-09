@@ -66,7 +66,7 @@ const DISC_FS = /* glsl */`
 const TELE_COMMON = /* glsl */`
   uniform vec3 uRim; uniform vec3 uFill; uniform vec3 uOutline;
   uniform float uOutlineA; uniform float uFillA; uniform float uDashed;
-  uniform float uProgress; uniform float uTime;
+  uniform float uProgress; uniform float uTime; uniform float uStripe;
   varying vec2 vUv;
   const float OUTLINE_W = 0.10;
   const float RIM_W = 0.14;
@@ -83,6 +83,11 @@ const TELE_COMMON = /* glsl */`
     float pulse = 0.5 + 0.5 * sin(uTime * mix(5.0, 20.0, urg));
     float edge  = interior * (1.0 - smoothstep(0.0, 0.12 + aa, abs(edgeDist))) * step(0.02, uProgress);
     vec4 c = vec4(uFill, interior * uFillA * mix(0.35, 1.0 + 0.25 * urg * pulse, filled));
+    // safe zones: bold screen-space diagonal stripes (readable without colour; round 2 colour-blind check)
+    if (uStripe > 0.5) {
+      float st = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 18.0));
+      c = vec4(mix(uFill, uRim, st * 0.6), interior * uFillA * (0.55 + 0.75 * st));
+    }
     c = mix(c, vec4(uRim, 0.9), edge);
     c = mix(c, vec4(uRim, 0.8 + 0.2 * pulse), rim);
     c = mix(c, vec4(uOutline, uOutlineA), outline);
@@ -137,7 +142,7 @@ const TELE_DONUT_FS = TELE_COMMON + /* glsl */`
   }`;
 
 // "Go here" colour for safe pockets, cleanse pools, shelters (design/RAID.md). Never used for danger.
-export const SAFE_GOLD = 0xffe9a8;
+export const SAFE_GOLD = 0xffc83a;   // saturated gold, solid rim + stripes (round 2: the pale gold read as khaki)
 
 // Drop-in replacement for an additive MeshBasicMaterial on halos / shells / flat decals.
 // Exposes .color (THREE.Color; multiply for HDR) and .opacity like a MeshBasicMaterial.
@@ -437,11 +442,12 @@ export class FX {
     return new THREE.ShaderMaterial({
       uniforms: {
         uRim: { value: friendly || safe ? base.clone().lerp(new THREE.Color(0xffffff), 0.3).multiplyScalar(safe ? 1.5 : 1.1) : base.clone() },
-        uFill: { value: base.clone().multiplyScalar(friendly ? 0.6 : safe ? 0.5 : 0.16) },
+        uFill: { value: base.clone().multiplyScalar(friendly ? 0.6 : safe ? 0.85 : 0.16) },
         uOutline: { value: new THREE.Color(safe ? 0x1a1000 : 0x14000a) },
         uOutlineA: { value: friendly ? 0.5 : safe ? 0.7 : 0.8 },
-        uFillA: { value: friendly ? 0.22 : safe ? 0.3 : 0.55 },
-        uDashed: { value: _dashed(opts) || safe ? 1 : 0 },
+        uFillA: { value: friendly ? 0.22 : safe ? 0.42 : 0.55 },
+        uDashed: { value: _dashed(opts) ? 1 : 0 },   // safe zones are SOLID + striped (dashed = crystals / friendly)
+        uStripe: { value: safe ? 1 : 0 },
         uProgress: { value: 0 },
         uTime: { value: 0 },
       },

@@ -23,6 +23,8 @@ export const ENV = {
   uFadeTarget:   { value: new THREE.Vector3(0, 1, 0) },  // player chest (world)
   uCamDir:       { value: new THREE.Vector3(1, 1.22, 1).normalize() }, // target -> camera
   uFadeRadius:   { value: 2.4 },
+  uFadeTarget2:  { value: new THREE.Vector3(0, -100, 0) }, // second cut-out target: the raid boss (arena/wall.js drives it)
+  uFade2:        { value: new THREE.Vector2(3.4, 0) },     // x = radius (m), y = 1 while a boss is up
   // Environment-only grade (before haze). Neutral tone mapping's toe subtracts up to 0.04 from every
   // channel, which over-saturates dark-ish albedos; env colours are desaturated / lifted here instead
   // of touching the global grade (characters + VFX keep theirs).
@@ -165,17 +167,25 @@ const FADE_PARS = /* glsl */`
 uniform vec3  uFadeTarget;
 uniform vec3  uCamDir;
 uniform float uFadeRadius;
-`;
-// Player occlusion cut-out: Bayer-dithered discard inside a screen-space disc around the player,
-// only for fragments in front of the player (toward the camera) and above knee height.
-const FADE_FRAGMENT = /* glsl */`
-{
-  vec3 fr = vEnvWorld - uFadeTarget;
+uniform vec3  uFadeTarget2;
+uniform vec2  uFade2;
+float envFadeKeep(vec3 target, float radius) {
+  vec3 fr = vEnvWorld - target;
   float along = dot(fr, uCamDir);
   float perp = length(fr - along * uCamDir);
-  float keep = smoothstep(uFadeRadius, uFadeRadius + 1.6, perp);
+  float keep = smoothstep(radius, radius + 1.6, perp);
   keep = max(keep, 1.0 - smoothstep(0.4, 1.6, along));
   keep = max(keep, 1.0 - smoothstep(0.35, 0.9, vEnvWorld.y));
+  return keep;
+}
+`;
+// Player occlusion cut-out: Bayer-dithered discard inside a screen-space disc around the player (and, during a
+// raid encounter, a second one around the boss), only for fragments in front of the target (toward the camera)
+// and above knee height.
+const FADE_FRAGMENT = /* glsl */`
+{
+  float keep = envFadeKeep(uFadeTarget, uFadeRadius);
+  if (uFade2.y > 0.5) keep = min(keep, envFadeKeep(uFadeTarget2, uFade2.x));
   keep = 0.12 + 0.88 * keep;
   vec2 fc = mod(floor(gl_FragCoord.xy), 4.0);
   const float envBayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0,
@@ -206,7 +216,7 @@ export function patchEnv(material, opts = {}) {
     uWindAmp: { value: o.wind.amp ?? 0.15 },
     uFlutter: { value: o.wind.flutter ?? 0.03 },
   } : {};
-  const fadeU = o.fade ? { uFadeTarget: ENV.uFadeTarget, uCamDir: ENV.uCamDir, uFadeRadius: ENV.uFadeRadius } : {};
+  const fadeU = o.fade ? { uFadeTarget: ENV.uFadeTarget, uCamDir: ENV.uCamDir, uFadeRadius: ENV.uFadeRadius, uFadeTarget2: ENV.uFadeTarget2, uFade2: ENV.uFade2 } : {};
   material.userData.envUniforms = { ...o.uniforms, ...windU };
 
   material.onBeforeCompile = (shader) => {
@@ -429,4 +439,10 @@ export function buildLayoutMask({ meters = 256, res = 256, heightFn, paths = [],
   };
   const commit = () => { texture.needsUpdate = true; };
   return { texture, origin: new THREE.Vector2(-half, -half), size: meters, sample, stamp, commit, heightFn };
+}
+
+/** Second occlusion cut-out that follows the raid boss (dither like the player's). pos null = off. Allocation-free. */
+export function setBossFade(pos, radius = 3.4, height = 2) {
+  if (pos) { ENV.uFadeTarget2.value.set(pos.x, height, pos.z); ENV.uFade2.value.set(radius, 1); }
+  else ENV.uFade2.value.y = 0;
 }

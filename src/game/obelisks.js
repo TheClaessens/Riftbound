@@ -31,7 +31,7 @@ export const OBELISK_RISE_AT = 50;            // seconds into the act
 const CHANNEL_R = 3.0;
 const CHANNEL_TIME = 4.0;
 const CHANNEL_DECAY = 0.25;                   // progress lost per second outside the ring
-const HASTE_WARN = 3;                         // "THE HEART STIRS"
+const HASTE_WARN = 3;                         // "THE HEART STIRS" (spawner beats wait while it runs: obelisks.summoning)
 const RISE_T = 1.6, COLLAPSE_T = 1.1, RISE_STAGGER = 0.35;
 const DEG = Math.PI / 180;
 const PLACE_MIN = 20, PLACE_MAX = 32, PLACE_R = 48, MIN_SEP = 12, MIN_ANGLE = 100 * Math.PI / 180;
@@ -48,9 +48,10 @@ const TILES = 64;
 export const XP_BUDGET = [1100, 4000, 7100];  // XP an act yields by its boss (default path)
 export const XP_BEFORE = [0, 1100, 5100];     // cumulative XP carried into each act
 export const ACT_MULT = [1, 1.5, 2];
-const WINDFALL = 0.3;
-const ECHO_SHARDS = 15;                       // × ACT_MULT -> 15 / 22 / 30
-const WRATH_SHARDS = [0, 5, 12, 30];          // total at heat N, × ACT_MULT
+const WINDFALL = 0.4;                           // share of the XP still ahead
+const ECHO_SHARDS = 25;                       // × ACT_MULT -> 25 / 38 / 50
+const WRATH_SHARDS = [0, 8, 20, 45];          // total at heat N, × ACT_MULT
+const PERK_SHARDS = 20;                       // final act: the run ends at the kill, so each chest / Cache perk pays this instead
 const BOUNTY_PER_S = 0.25;
 const F_TABLE = [[0, 0], [60, 0.23], [90, 0.38], [120, 0.56], [150, 0.77], [ACT_LENGTH, 1]];
 
@@ -73,7 +74,7 @@ export function levelAtXP(cum) {
 }
 
 export const OBELISK_TYPES = {
-  haste: { id: 'haste', name: 'Obelisk of Haste', title: 'Haste', tag: 'Summon now', color: '#ffc340', hex: 0xffc340, icon: 'obeliskHaste', fallback: '»' },
+  haste: { id: 'haste', name: 'Obelisk of Haste', title: 'Haste', tag: 'Summon now', color: '#bfefff', hex: 0xbfefff, icon: 'obeliskHaste', fallback: '»' },
   echo: { id: 'echo', name: 'Obelisk of Echo', title: 'Echo', tag: 'The boss comes twice', color: '#b08cff', hex: 0xa88cff, accent: 0x4ff0d0, icon: 'obeliskEcho', fallback: '◈' },
   wrath: { id: 'wrath', name: 'Obelisk of Wrath', title: 'Wrath', tag: 'Heat', color: '#ff7a33', hex: 0xff7a33, icon: 'obeliskWrath', fallback: '♨' },
 };
@@ -216,7 +217,7 @@ function stoneGeometry(type) {
 
 // ------------------------------------------------------------------ glow motes (one InstancedMesh per obelisk)
 const MOTES = {
-  haste: { n: 20, colors: [0xffd070, 0xfff0c0], hdr: 1.8, size: 0.075, h: 6.8, r0: 0.45, r1: 1.5, v0: 0.5, v1: 1.1, sway: 0.25 },
+  haste: { n: 20, colors: [0xcfefff, 0xffffff], hdr: 1.8, size: 0.075, h: 6.8, r0: 0.45, r1: 1.5, v0: 0.5, v1: 1.1, sway: 0.25 },
   echo: { n: 16, colors: [0xb59cff, 0x5ff2d6], hdr: 1.6, size: 0.07, h: 5.4, r0: 0.5, r1: 1.7, v0: 0.2, v1: 0.5, sway: 0.5 },
   wrath: { n: 18, colors: [0xff8a3a, 0xffc060], hdr: 1.7, size: 0.065, h: 5.2, r0: 0.5, r1: 1.4, v0: 0.3, v1: 0.8, sway: 0.4 },
 };
@@ -320,19 +321,19 @@ function buildVisuals(game, o) {
     // three gold bands inlaid in the spire; lit one by one while channelling
     V.bands = [];
     [[1.5, 0.68], [2.7, 0.52], [3.9, 0.38]].forEach(([y, r]) => {
-      const m = glow(glowMaterial(0xffc340, 1.4), 1, true);
+      const m = glow(glowMaterial(0xbfefff, 1.4), 1, true);
       const b = new THREE.Mesh(bandGeo(), m);
       b.rotation.x = Math.PI / 2; b.scale.set(r, r, 1.7); b.position.y = y;
       body.add(b); V.bands.push(m);
     });
     // floating hourglass crystal (two cones tip to tip) with a gold frame and halo
     const hg = new THREE.Group(); hg.position.y = 6.5;
-    const crystalMat = glow(glowMaterial(0xffd36a, 1.25), 1, true);
+    const crystalMat = glow(glowMaterial(0xdff6ff, 1.25), 1, true);
     const up = new THREE.Mesh(GEO.cone, crystalMat); up.rotation.x = Math.PI; up.scale.set(0.42, 0.62, 0.42); up.position.y = 0.31;
     const dn = new THREE.Mesh(GEO.cone, crystalMat); dn.scale.set(0.42, 0.62, 0.42); dn.position.y = -0.31;
-    const frameM = glow(glowMaterial(0xfff0c0, 1.5), 1, true);
+    const frameM = glow(glowMaterial(0xffffff, 1.5), 1, true);
     const frame = new THREE.Mesh(GEO.torus, frameM); frame.scale.set(0.55, 0.55, 2); frame.rotation.x = Math.PI / 2;
-    const halo = new THREE.Mesh(GEO.sphere, glow(blendAddMaterial(0xffd060, { hdr: 1, occ: 0.05, opacity: 0.07 }), 1, true));
+    const halo = new THREE.Mesh(GEO.sphere, glow(blendAddMaterial(0xbfefff, { hdr: 1, occ: 0.05, opacity: 0.07 }), 1, true));
     halo.scale.setScalar(0.95);
     hg.add(up, dn, frame, halo);
     body.add(hg);
@@ -514,7 +515,7 @@ export class Obelisks {
       this.list.push(o);
     });
     g.events.emit('obelisksRisen', { obelisks: this.list });
-    g.events.emit('announce', { kind: 'obelisk', text: 'THE RIFT OFFERS', sub: 'Three obelisks have risen. Take what you dare.', color: '#ffc340' });
+    g.events.emit('announce', { kind: 'obelisk', text: 'THE RIFT OFFERS', sub: 'Three obelisks have risen. Take what you dare.', color: '#bfefff' });
   }
 
   // 20-32 u from the player, >= 100 deg apart (bearing), >= 12 u from each other, inside r 48, clear of obstacles.
@@ -561,6 +562,9 @@ export class Obelisks {
   }
 
   // ------------------------------------------------------------------ frame
+
+  // true during Haste's 3 s warning (spawner holds its beats)
+  get summoning() { return this._hasteT > 0; }
 
   update(dt) {
     const g = this.game;
@@ -613,7 +617,9 @@ export class Obelisks {
 
     const g = this.game;
     const usable = !g.encounter?.active && g.phase === 'horde' && !p.dead;
-    const inside = usable && distXZ(p.pos, o.pos) <= CHANNEL_R;
+    const near = usable && distXZ(p.pos, o.pos) <= CHANNEL_R;
+    if (o.needExit && !near) o.needExit = false;   // Wrath: stepped out, the next heat may start
+    const inside = near && !o.needExit;
     const prev = o.progress;
     o.channelling = inside;
     o.state = inside ? 'channel' : 'idle';
@@ -639,7 +645,7 @@ export class Obelisks {
   // ------------------------------------------------------------------ completing a channel
 
   _complete(o) {
-    const g = this.game, st = this.stakes, mult = ACT_MULT[g.act] ?? 1;
+    const g = this.game, st = this.stakes, mult = ACT_MULT[g.act] ?? 1, final = g.act >= 2;
     const fx = g.fx, hex = o.def.hex;
     o.channelling = false;
     fx.ring(o.pos, { color: hex, radius: 7, life: 0.6, width: 0.2, hdr: 3 });
@@ -651,12 +657,12 @@ export class Obelisks {
     if (o.type === 'haste') {
       o.armed = true; o.state = 'spent'; o.progress = 1;
       this._hasteT = HASTE_WARN;
-      g.events.emit('announce', { kind: 'obelisk', text: 'THE HEART STIRS', sub: 'The boss comes in 3 seconds', color: '#ffc340' });
+      g.events.emit('announce', { kind: 'obelisk', text: 'THE HEART STIRS', sub: 'The boss comes in 3 seconds', color: '#bfefff' });
     } else if (o.type === 'echo') {
       o.armed = true; o.state = 'spent'; o.progress = 1;
       st.echo = true;
       st.echoChest = { pool: 'boss', choices: 3 };
-      this._payout.echo = Math.round(ECHO_SHARDS * mult);
+      this._payout.echo = Math.round(ECHO_SHARDS * mult) + (final ? PERK_SHARDS : 0);
       g.events.emit('announce', { kind: 'obelisk', text: 'ECHO ARMED', sub: 'The boss will come twice. You take +10% damage.', color: '#b08cff' });
     } else {
       o.heat++;
@@ -669,9 +675,10 @@ export class Obelisks {
       if (o.heat === 1) st.chest.extra += 1;
       if (o.heat >= 2) { st.wrathCache = true; }
       if (o.heat >= 3) st.chest.bossRelics = 1;
-      this._payout.wrath = Math.round(WRATH_SHARDS[o.heat] * mult);
+      this._payout.wrath = this._wrathShards(o.heat);
       o.armed = true;
       o.progress = 0;
+      o.needExit = o.heat < 3;               // step out of the ring and back in before the next channel
       o.nextAffix = o.heat < 3 ? AFFIXES[o.queue[o.heat]] : null;
       o.state = o.heat >= 3 ? 'spent' : 'idle';
       if (o.heat >= 3) o.progress = 1;
@@ -680,6 +687,11 @@ export class Obelisks {
     }
     fx.text(o.pos, o.def.title.toUpperCase() + (o.type === 'wrath' ? ` ${o.heat}` : ''), o.def.color, true);
     g.events.emit('obeliskArmed', { type: o.type, heat: o.type === 'wrath' ? o.heat : 0, affix: affix ? affix.id : null });
+  }
+
+  // Wrath total at `heat` (x act mult). Final act: each heat's chest / Cache perk becomes PERK_SHARDS (the run ends at the kill).
+  _wrathShards(heat, act = this.game.act) {
+    return Math.round(WRATH_SHARDS[heat] * (ACT_MULT[act] ?? 1)) + (act >= 2 ? PERK_SHARDS * heat : 0);
   }
 
   _summonHaste() {
@@ -704,13 +716,13 @@ export class Obelisks {
     if (reason === 'haste' && st.haste) {
       const mult = ACT_MULT[g.act] ?? 1;
       const m = this._hasteMath(ACT_LENGTH - st.haste.skipped, g.act);
-      st.chest.extra += 1;                                                    // Quick Chest: +1 relic choice
-      this._payout.haste = Math.round(BOUNTY_PER_S * st.haste.skipped * mult); // Haste Bounty (paid on victory)
+      st.chest.extra += 1;                                                    // Quick Chest: 4 relics instead of 3
+      this._payout.haste = Math.round(BOUNTY_PER_S * st.haste.skipped * mult) + (g.act >= 2 ? PERK_SHARDS : 0); // Haste Bounty (paid on victory)
       // Windfall XP: a burst of gems that flies straight to the player (level-up hands follow)
       const n = 6;
       for (let i = 0; i < n; i++) g.pickups.spawnXP(g.player.pos, m.windfall / n);
       g.pickups.magnetAll();
-      g.fx.text(g.player.pos, `WINDFALL +${m.windfall} XP`, '#ffd34d', true);
+      g.fx.text(g.player.pos, `WINDFALL +${m.windfall} XP`, '#bfefff', true);
       st.haste.windfall = m.windfall;
     }
   }
@@ -749,24 +761,27 @@ export class Obelisks {
 
   // { title, cost: [lines], pay: [lines], levelsDelta? } — computed live from the act clock and the stakes.
   preview(type) {
-    const g = this.game, mult = ACT_MULT[g.act] ?? 1, t = g.actTime;
+    const g = this.game, mult = ACT_MULT[g.act] ?? 1, t = g.actTime, final = g.act >= 2;
     const def = OBELISK_TYPES[type];
     if (!def) return null;
     const o = this.get(type);
-    const lv = (n) => `${Math.abs(n)} level${Math.abs(n) === 1 ? '' : 's'}`;
+    const WIN = 'Paid only if you win the boss fight';
+    const perk = (txt) => (final ? `${txt}: becomes ≈ +${PERK_SHARDS} shards (the run ends at the kill)` : txt);
     if (type === 'haste') {
       const m = this._hasteMath();
       const beats = [t < 90 ? 'Elite Surge' : null, t < 135 ? 'Swarm' : null].filter(Boolean);
+      const net = Math.abs(m.levelsDelta);
       return {
-        title: def.name, tag: def.tag, levelsDelta: m.levelsDelta, levelsSkipped: m.levelsSkipped, levelsBack: m.levelsBack, skipped: m.skipped, windfall: m.windfall,
+        title: def.name, tag: def.tag, levelsDelta: m.levelsDelta, skipped: m.skipped, windfall: m.windfall,
         cost: [
-          m.skipped > 8 ? `Skips ${m.skipped}s of this act (about -${lv(m.levelsSkipped)})` : 'Skips almost nothing',
-          ...(beats.length ? [`Forfeits: ${beats.join(', ')}`] : []),
+          m.skipped > 8 ? `Skips ${m.skipped} s of horde${beats.length ? ` (${beats.join(', ')})` : ''}` : 'Skips almost nothing',
+          net > 0 ? `≈ −${net} level${net === 1 ? '' : 's'} after the Windfall` : '≈ no levels lost after the Windfall',
         ],
         pay: [
-          `Windfall +${m.windfall} XP (about +${lv(m.levelsBack)})`,
-          `Haste Bounty +${Math.round(BOUNTY_PER_S * m.skipped * mult)} shards`,
-          '+1 relic choice in the boss chest',
+          `Windfall: +${m.windfall} XP now`,
+          `≈ +${Math.round(BOUNTY_PER_S * m.skipped * mult) + (final ? PERK_SHARDS : 0)} shards`,
+          ...(final ? [perk('Boss chest with 4 relics')] : ['Boss chest: choose from 4 relics instead of 3']),
+          WIN,
         ],
       };
     }
@@ -774,25 +789,34 @@ export class Obelisks {
       return {
         title: def.name, tag: def.tag,
         cost: ['Strain: +10% damage taken for the whole fight', 'The boss rises again as an Echo (55% HP, starts at Phase 2)'],
-        pay: ['Echo Chest: pick 1 of 3 Boss Relics', `+${Math.round(ECHO_SHARDS * mult)} shards`],
+        pay: [
+          ...(final ? [perk('Echo Chest: pick 1 of 3 Boss Relics')] : ['Echo Chest: pick 1 of 3 Boss Relics']),
+          `≈ +${Math.round(ECHO_SHARDS * mult) + (final ? PERK_SHARDS : 0)} shards`,
+          WIN,
+        ],
       };
     }
     const heat = o?.heat ?? 0, h = heat + 1;
-    if (heat >= 3) return { title: def.name, tag: def.tag, heat, cost: ['Heat 3: the sigils are full'], pay: [`+${Math.round(WRATH_SHARDS[3] * mult)} shards in total`] };
+    const note = o?.needExit && o.channelling === false && this.game.player && distXZ(this.game.player.pos, o.pos) <= CHANNEL_R ? 'Step out and back in to add more Heat' : null;
+    if (heat >= 3) return { title: def.name, tag: def.tag, heat, cost: ['Heat 3: the sigils are full'], pay: [`≈ +${this._wrathShards(3)} shards in total`, WIN] };
     const aff = o?.nextAffix ?? AFFIXES[AFFIX_IDS[0]];
+    const perkLine = h === 1 ? 'Boss chest: choose from 4 relics instead of 3' : h === 2 ? 'Wrath Cache: +1 rank to a skill you own' : 'Boss chest: one of the choices is a Boss Relic';
     return {
-      title: def.name, tag: def.tag, heat, nextAffix: aff,
+      title: def.name, tag: def.tag, heat, nextAffix: aff, note,
       cost: [
+        ...(note ? [note] : []),
         `Boss affix: ${aff.name} (${aff.desc})`,
         ...(h === 2 ? ['Boss HP +15%'] : h === 3 ? ['Boss HP +30%, damage +10%'] : []),
         'Packs converge on you while you channel',
       ],
       pay: [
-        ...(h === 1 ? ['+1 relic choice in the boss chest'] : h === 2 ? ['Wrath Cache: +1 rank to a skill you own'] : ['A Boss Relic is guaranteed in the boss chest']),
-        `Heat ${h}: ${Math.round(WRATH_SHARDS[h] * mult)} shards in total`,
+        perk(perkLine),
+        `≈ ${this._wrathShards(h)} shards in total at Heat ${h}`,
+        WIN,
       ],
     };
   }
+
 
   // ------------------------------------------------------------------ visuals
 

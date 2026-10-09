@@ -73,10 +73,11 @@ const runeGilt = (T) => path(T.md, 'M24 19L28 26L24 33L20 26Z', INK_T) + flat(T.
 
 const GILTS = { lo: F('cf-bronze', '#8c6c43'), md: GILT, hi: F('cf-gilt-hi', '#fff4d2') };
 
-const OBELISK_HASTE = pillar(STORM, runeHaste)
+const HASTE_C = trio('haste', '#6fb4cc', '#bfefff', '#f0fcff');
+const OBELISK_HASTE = pillar(HASTE_C, runeHaste)
   // speed streaks trailing off the left shoulder
-  + path(STORM.md, 'M2.5 20H10.5L11.6 22H2.5Z', INK_T) + path(STORM.md, 'M4.5 26H12.6L13.6 28H4.5Z', INK_T)
-  + path(STORM.md, 'M1.5 32H11.6L12.6 34H1.5Z', INK_T);
+  + path(HASTE_C.md, 'M2.5 20H10.5L11.6 22H2.5Z', INK_T) + path(HASTE_C.md, 'M4.5 26H12.6L13.6 28H4.5Z', INK_T)
+  + path(HASTE_C.md, 'M1.5 32H11.6L12.6 34H1.5Z', INK_T);
 
 const OBELISK_ECHO = `<g opacity=".62">`
   + path(ARCANE.lo, 'M32.8 38L35 20.5L39.4 11.5L43.8 20.5L46 38Z')
@@ -233,7 +234,32 @@ const RELIC_SIGIL = path(M_MD, D(ngon(24, 24, 21, 12, -90)))
   + path(ACC, 'M24 8.5L27.4 20.6L39.5 24L27.4 27.4L24 39.5L20.6 27.4L8.5 24L20.6 20.6Z', INK_T)
   + flat(VOID, 'M28 5L22.6 17.4L27 21.4L21 26.4L25.4 30.4L20 43L24.4 31.8L20.2 27.2L26.6 22L22 17.8Z');
 
+// Ashen Standard: a war standard on a bronze pole, ash-dark cloth with an ember sigil, sparks drifting off.
+const RELIC_STANDARD = path(M_LO, 'M11 3H14V45H11Z') + flat(M_HI, 'M11 3H12.6V45H11Z')
+  + path(M_MD, 'M8.5 41H16.5V45H8.5Z') + path(ACC, D(ngon(12.5, 4, 3.4, 8)), INK_T)
+  + path(IRON_HI, 'M14 7H40L35 15L40 23L36 31H14Z') + flat(IRON, 'M14 7H27L24 31H14Z') + flat(IRON_LO, 'M36 31L40 23L35 15L40 7H33L30 31Z')
+  + path(ACC, 'M26 11C27.6 14 30.8 15.4 29.8 19.4C29.3 21.6 27.8 22.8 26 22.8C24.2 22.8 22.7 21.6 22.2 19.6C21.8 17.8 22.8 16.6 23.8 15.6C24 16.8 24.6 17.4 25.2 17.4C24.6 15 25.2 13 26 11Z', INK_T)
+  + flat(ACC_LO, 'M26 22.8C27.8 22.8 29.3 21.6 29.8 19.4C28.6 20.8 27.4 21 26 21Z')
+  + `<g style="${ACC};stroke:var(--ink,#0c0a12);stroke-width:1;paint-order:stroke"><circle cx="33" cy="36" r="1.9"/><circle cx="38.5" cy="40.5" r="1.4"/><circle cx="29" cy="42" r="1.2"/><circle cx="42" cy="33" r="1.1"/></g>`;
+// Hollow Heartstone: a faceted crystal heart with a hollow core, a thin gold setting.
+const HEART = 'M24 43C12 33 5 26.5 5 18.4C5 11.8 10 7.5 15.4 7.5C19.2 7.5 22.2 9.6 24 12.6C25.8 9.6 28.8 7.5 32.6 7.5C38 7.5 43 11.8 43 18.4C43 26.5 36 33 24 43Z';
+const RELIC_HEARTSTONE = path(ACC, HEART)
+  + flat(F('cf-gilt-hi', '#fff4d2'), 'M24 12.6C22.2 9.6 19.2 7.5 15.4 7.5C10 7.5 5 11.8 5 18.4C5 22.4 7.6 26 12 30L24 24Z')
+  + flat(ACC_LO, 'M24 43C36 33 43 26.5 43 18.4C43 15 41.6 12.2 39.4 10.2L24 24Z')
+  + path(GL, 'M24 16.2C22.6 14.2 20.6 13 18.4 13C15.2 13 12.6 15.4 12.6 18.6C12.6 22.6 16.8 26.4 24 32C31.2 26.4 35.4 22.6 35.4 18.6C35.4 15.4 32.8 13 29.6 13C27.4 13 25.4 14.2 24 16.2Z', INK_T)
+  + flat(F('glass-hi', '#2c3552'), 'M24 16.2C22.6 14.2 20.6 13 18.4 13C15.2 13 12.6 15.4 12.6 18.6C12.6 22.6 16.8 26.4 24 32Z')
+  + `<path style="fill:none;stroke:var(--metal,#8c6c43);stroke-width:2;stroke-linejoin:round" d="${HEART}"/>`
+  + path(ACC, 'M24 19L26 22.4L24 25.8L22 22.4Z', INK_T);
+
+const WIND = { lo: F('wind-lo', '#4f6a94'), md: F('wind', '#9fb4d6'), hi: F('wind-hi', '#e4edfb') };
+const WINDED = path(WIND.md, 'M4 14H28C34 14 37 8 32 6C29.6 5 27 6.6 27 9H23C23 3.4 29 0.8 34 2.6C42 5.6 40 18 28 18H4Z')
+  + flat(WIND.hi, 'M4 14H28V16H4Z') + path(WIND.md, 'M4 25H36C43 25 46 33 40 36C37 37.4 33.6 36 33.6 32.4H29.6C29.6 38.8 36.6 42 42 39.4C49 36 47.5 21 36 21H4Z')
+  + flat(WIND.lo, 'M4 25H36V27H4Z') + path(WIND.md, 'M10 31H24C28 31 29.6 36 26 37.4C24 38.2 22 37 22 35H18.4C18.4 40 25 42.4 29 40C34 37 31 27.4 24 27.4H10Z');
+
 export default {
+  'ui-winded': WINDED,
+  'relic-ashenStandard': RELIC_STANDARD,
+  'relic-hollowHeartstone': RELIC_HEARTSTONE,
   'relic-gorraksTusk': RELIC_TUSK,
   'relic-vashkarsBrand': RELIC_BRAND,
   'relic-aurelithsScale': RELIC_SCALE,

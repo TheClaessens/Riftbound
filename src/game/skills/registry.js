@@ -54,7 +54,7 @@ export const ALL_DEFS = { ...SKILLS, ...Object.fromEntries(FUSIONS.map((f) => [f
 // Passives modify player.stats. apply(stats) is called once per rank on a fresh base.
 export const PASSIVES = {
   might:     { id: 'might', name: 'Might', icon: '⚔', maxRank: 5, desc: () => '+12% damage.', apply: (s) => { s.damage += 0.12; } },
-  haste:     { id: 'haste', name: 'Haste', icon: '⌛', maxRank: 5, desc: () => '−7% skill cooldowns.', apply: (s) => { s.cdr += 0.07; } },
+  haste:     { id: 'haste', name: 'Quickening', icon: '⌛', maxRank: 5, desc: () => '−7% skill cooldowns.', apply: (s) => { s.cdr += 0.07; } },
   swiftness: { id: 'swiftness', name: 'Swiftness', icon: '➶', maxRank: 5, desc: () => '+6% move speed, −6% dash cooldown.', apply: (s) => { s.moveSpeed += 0.39; s.dashCdr += 0.06; } },
   vitality:  { id: 'vitality', name: 'Vitality', icon: '♥', maxRank: 5, desc: () => '+20 max HP, +0.4 HP/s regen.', apply: (s) => { s.maxHp += 20; s.regen += 0.4; } },
   magnetism: { id: 'magnetism', name: 'Magnetism', icon: '◎', maxRank: 5, desc: () => '+25% pickup radius, +5% XP, +15% XP from reaction kills.', apply: (s) => { s.pickupRadius += 0.65; s.xpMult += 0.05; s.reactionXp += 0.15; } },

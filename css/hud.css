@@ -717,7 +717,7 @@
    Nothing below changes the boss frame size mid-fight: states are overlays.
    =================================================================== */
 .hud-beat { transition: left .5s var(--ease-forge); }
-.hud-beat.hasted { box-shadow: 0 0 0 1px var(--cf-void), 0 0 calc(10 * var(--u)) #ffc340, inset 0 0 0 max(2px, round(calc(2 * var(--u)), 1px)) #ffc340; }
+.hud-beat.hasted { box-shadow: 0 0 0 1px var(--cf-void), 0 0 calc(10 * var(--u)) #bfefff, inset 0 0 0 max(2px, round(calc(2 * var(--u)), 1px)) #bfefff; }
 .hud-beat .ico { width: 1em; height: 1em; }
 
 /* ---- armed chips: under the right end of the act plate ---- */
@@ -912,7 +912,6 @@
 .hud-ob-chip.on { display: block; }
 .hud-ob-chip.gain { background: linear-gradient(160deg, #4b3b10 0 40%, #2e2408 40%); color: #ffe9a8; box-shadow: 0 0 0 1px var(--cf-void), inset 0 0 0 1px var(--cf-gilt); }
 .hud-ob-body { display: flex; flex-direction: column; gap: calc(7 * var(--u)); margin-top: calc(9 * var(--u)); padding-top: calc(8 * var(--u)); border-top: 1px solid rgb(200 168 116 / .35); }
-.hud-ob.channel .hud-ob-body { display: none; }
 .hud-ob-sec { display: grid; grid-template-columns: calc(52 * var(--u)) 1fr; gap: calc(8 * var(--u)); align-items: start; }
 .hud-ob-lbl { display: flex; align-items: center; gap: calc(5 * var(--u)); font: 800 calc(13 * var(--u)) / 1.5 var(--font-label); letter-spacing: .16em; text-transform: uppercase; color: var(--cf-dim); }
 .hud-ob-lbl > i { flex: none; width: calc(13 * var(--u)); height: calc(13 * var(--u)); border-radius: calc(3 * var(--u)); corner-shape: bevel; box-shadow: 0 0 0 1px var(--cf-void); }
@@ -1061,3 +1060,76 @@
 .hud-pay-tot { padding-left: calc(14 * var(--u)); border-left: 1px solid var(--cf-bronze); }
 .hud-pay-tot > span:first-child { font-size: calc(24 * var(--u)); line-height: 0; display: inline-flex; }
 .hud-pay-lbl { font: 800 calc(14 * var(--u)) / 1 var(--font-label); letter-spacing: .14em; text-transform: uppercase; color: var(--cf-dim); }
+
+/* ===================================================================
+   ROUND 2: one centre lane, strip, verdict-in-cast, chips, compact boss frame
+   =================================================================== */
+.hud-ln { position: absolute; left: 0; right: 0; top: 26%; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.hud-ln.k-boss { top: 22%; }
+.hud-ln.k-stakes { top: 30%; }
+.hud-ln.k-victory { top: 24%; gap: calc(6 * var(--u)); }
+.hud-ln .hud-bi, .hud-ln .hud-sting, .hud-ln .hud-stakes { position: static; inset: auto; translate: none; opacity: 1; top: auto; left: auto; }
+.hud-ln .hud-banner { position: static; inset: auto; transform: none; opacity: 1; transition: none; }
+.hud-strip {
+  position: absolute; left: 50%; translate: -50% 0; display: flex; align-items: center; gap: calc(12 * var(--u)); pointer-events: none;
+  padding: calc(5 * var(--u)) calc(14 * var(--u)); border-radius: calc(6 * var(--u)); corner-shape: bevel; --bc: var(--cf-gilt);
+  background: linear-gradient(160deg, var(--cf-plate-2) 0 40%, var(--cf-plate-1) 40%);
+  box-shadow: 0 0 0 1px var(--cf-void), inset 0 0 0 max(1px, round(calc(2 * var(--u)), 1px)) var(--bc);
+}
+.hud-strip.echo { --bc: #c8a6ff; }
+.hud-strip-n { font: 800 calc(17 * var(--u)) / 1 var(--font-label); letter-spacing: .14em; text-transform: uppercase; color: var(--bc); white-space: nowrap; }
+.hud-strip .hud-bn-bar { width: calc(200 * var(--u)); height: round(calc(8 * var(--u)), 2px); overflow: clip; border: 1px solid var(--cf-bronze); background: rgb(12 10 18 / .8); box-shadow: 0 0 0 1px var(--cf-void); }
+.hud-strip .hud-bn-bar > i { display: block; height: 100%; transform-origin: 0 50%; background: linear-gradient(180deg, #fff 0 25%, var(--bc) 25%); }
+.hud-strip .hud-bn-t { font-size: calc(22 * var(--u)); min-width: 2.8ch; line-height: 1; color: #fff; -webkit-text-stroke: max(3px, round(calc(4 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill; }
+
+/* victory stack */
+.hud-vic-st { font: 700 calc(44 * var(--u)) / 1 var(--font-head); color: var(--c, var(--cf-gilt)); -webkit-text-stroke: max(4px, round(calc(7 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill; }
+.hud-vic-st:empty { display: none; }
+.hud-vic-t { font: 700 calc(46 * var(--u)) / 1 var(--font-hero); letter-spacing: .06em; color: var(--cf-gilt); -webkit-text-stroke: max(4px, round(calc(7 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill; }
+.hud-vic-s { font: 800 calc(20 * var(--u)) / 1 var(--font-label); letter-spacing: .12em; text-transform: uppercase; color: var(--cf-text); -webkit-text-stroke: max(3px, round(calc(5 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill; }
+.hud-vic-t:empty, .hud-vic-s:empty { display: none; }
+.hud-vic-pay:empty { display: none; }
+.hud-vic-pay > .hud-pay { position: static; translate: none; opacity: 1; top: auto; left: auto; }
+
+/* Break Check verdict lives inside the cast bar */
+.hud-cast.verdict .hud-cast-tag { font-size: calc(24 * var(--u)); letter-spacing: .14em; }
+.hud-cast.verdict .hud-cast-name { opacity: .85; }
+.hud-cast.verdict.ok { background: linear-gradient(160deg, #26324a 0 38%, #161d30 38%) padding-box, linear-gradient(160deg, #fff, #aebbd6 60%, #6e7a94) border-box; box-shadow: 0 0 0 1px var(--cf-void), 0 0 calc(18 * var(--u)) rgb(232 238 248 / .7); }
+.hud-cast.verdict.ok .hud-cast-tag { color: #fff; -webkit-text-stroke: max(2px, round(calc(3 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill; }
+.hud-cast.verdict.ok .hud-cast-fill { background: linear-gradient(180deg, #fff 0 30%, #e8eef8 30%); }
+.hud-cast.verdict.fail .hud-cast-tag { color: #ff6a4a; -webkit-text-stroke: max(2px, round(calc(3 * var(--u)), 1px)) var(--cf-void); paint-order: stroke fill; }
+.hud-cast.verdict.fail .hud-cast-fill { background: linear-gradient(90deg, #5a1018, #b8202a); }
+.hud-cast.verdict { animation: hud-verdict .35s var(--ease-stamp); }
+@keyframes hud-verdict { from { scale: 1.08; } to { scale: 1; } }
+
+/* WINDED is its own thing: softer blue-grey, not the steel-white DOWNED */
+.hud-boss-state[data-k="winded"] { background: linear-gradient(160deg, #a9bbd8 0 40%, #6f86ad 40%); color: #0f1a2b; }
+.hud-boss.winded > .hud-boss-glow { --gc: #8fa3c4; opacity: .7; animation: hud-glow 1.2s ease-in-out infinite alternate; }
+.hud-boss.winded .hud-boss-name { color: #dbe6f7; text-shadow: 0 0 calc(10 * var(--u)) #8fa3c4, 0 1px 0 var(--cf-void); }
+.hud-poise.downed .hud-poise-track { }
+.hud-boss.winded .hud-poise.downed .hud-poise-track { border-color: #a9bbd8; box-shadow: 0 0 0 1px var(--cf-void), 0 0 calc(8 * var(--u)) rgb(143 163 196 / .7), inset 0 2px 4px rgb(0 0 0 / .4); }
+.hud-boss.winded .hud-poise.downed .hud-poise-fill { background: linear-gradient(180deg, #dbe6f7 0 30%, #8fa3c4 30%); }
+
+/* resistance pill (Vashkar: Resists Fire 50%) */
+.hud-affix.resist { background: linear-gradient(160deg, #3a1d14 0 40%, #26120d 40%); box-shadow: inset 0 0 0 1px var(--fire), 0 0 0 1px var(--cf-void); }
+.hud-affix.resist .hud-affix-n { color: var(--fire-hi); }
+.hud-affix.resist[data-el="frost"] { box-shadow: inset 0 0 0 1px var(--frost), 0 0 0 1px var(--cf-void); }
+.hud-affix.resist[data-el="frost"] .hud-affix-n { color: var(--frost-hi); }
+
+/* ---- compact boss frame (≤ ~16% of the screen height at 720p) ---- */
+.hud-top.boss .hud-act { display: none; }
+.hud-top.boss .hud-boss { margin-top: calc(14 * var(--u)); padding: 0 calc(20 * var(--u)) calc(7 * var(--u)) calc(50 * var(--u)); }
+.hud-boss-head { height: calc(25 * var(--u)); }
+.hud-boss-name { font-size: calc(26 * var(--u)); }
+.hud-boss-epi { font-size: calc(15 * var(--u)); }
+.hud-tag { height: calc(20 * var(--u)); font-size: calc(13 * var(--u)); }
+.hud-boss-state { height: calc(21 * var(--u)); font-size: calc(14 * var(--u)); }
+.hud-boss-bar { --h: round(calc(16 * var(--u)), 2px); }
+.hud-boss-prow { margin-top: calc(13 * var(--u)); }
+.hud-poise, .hud-heat { height: round(calc(15 * var(--u)), 2px); }
+.hud-poise-lbl, .hud-heat-lbl { font-size: calc(12 * var(--u)); }
+.hud-boss-affixes { margin-top: calc(6 * var(--u)); }
+.hud-affix { height: calc(21 * var(--u)); }
+.hud-affix-ico { font-size: calc(18 * var(--u)); }
+.hud-affix-n { font-size: calc(12 * var(--u)); }
+.hud-boss > .hud-cast { top: calc(100% + 14 * var(--u)); }

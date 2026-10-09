@@ -20,7 +20,7 @@ import { distXZ, dirXZ, clamp } from '../../core/utils.js';
 
 const CFG = {
   id: 'hollowWarden', name: 'Gorrak, the Troll King', model: GORRAK_MODEL,
-  hp: 16000, radius: 1.8, speed: 2.4, stopGap: 1.4, resist: null, deathColor: 0x6a5aaa,
+  hp: 14500, radius: 1.8, speed: 2.4, stopGap: 1.4, resist: null, deathColor: 0x6a5aaa,
   look: { scale: 1.05, glow: [0.22, 0.4, 0.55] },
   cycle: [1.3, 1.1, 0.9], downed: [4, 5, 6], enrageAt: 75,
 };
@@ -111,7 +111,7 @@ export class Gorrak extends BossBase {
     this._mv = null;              // scripted body motion (lunge | leap)
     this._dizzy = null;
     this._dizzyPos = new THREE.Vector3();
-    this.poise.max = 130;         // a longer bar than the default 100: natural Downeds every ~25 s, not every ~15 s
+    this.poise.max = 110;         // a bit longer than the default 100 (reaction fatigue in core does the rest)
     this.trees = [];              // tree prop pool (Timberfall)
     // track the rig's bone matrices: pods / hands / head are read back through boneWorld()
     this.rig.bones = new Float32Array(GORRAK_MODEL.boneCount * 16);
@@ -646,7 +646,7 @@ export class Gorrak extends BossBase {
   }
 
   // INTERMISSION 2 "King's Wrath" — he roars (every live pod ripens at once; more are flung first so at least two ripen)
-  // and stamps three ring waves 2.3 s apart (dash through or outrun). PURPOSE: ring-wave reading + spore clouds
+  // and stamps three ring waves 3.2 s apart (dash through; ≥ the slowest dash recharge, 3.0 s). PURPOSE: ring-wave reading + spore clouds
   // dropped into the lanes, the signature of the last phase.
   kingsWrath() {
     const g = this.game;
@@ -664,7 +664,7 @@ export class Gorrak extends BossBase {
       g.fx.text({ x: this.pos.x, y: 3.6, z: this.pos.z }, 'THE PODS RIPEN', '#d8ff7a', true);
     });
     for (let i = 0; i < 3; i++) {
-      const t0 = 1.0 + i * 2.3;
+      const t0 = 1.0 + i * 3.2;
       this.after(t0, () => this.play('slam', 1.3, 0.9, null, 0.6));
       this.after(t0 + 0.9, () => {
         const at = this.pos.clone();
@@ -673,7 +673,7 @@ export class Gorrak extends BossBase {
         this.ringWave(at, { speed: 8, width: 0.9, maxR: this.arena.r + 2, dmg: 0.6, how: 'kings wrath' });
       });
     }
-    return 7.2;
+    return 9.0;
   }
 
   // ================================================================ hooks
@@ -722,9 +722,11 @@ export class Gorrak extends BossBase {
   }
 }
 
-// Gold-white ground ring material for the pod timer (additive, no depth test: decal layer).
+// Spore-lime ground ring for the pod timer (additive, no depth test: decal layer). Not gold: gold means
+// "go here", and a pod is something to shoot (playtest round 2).
+const POD_RING = 0xb8ff3c;
 function blendRing(opacity) {
-  return blendAddMaterial(SAFE_GOLD, { hdr: 1.5, occ: 0.4, opacity, side: THREE.DoubleSide, depthTest: false });
+  return blendAddMaterial(POD_RING, { hdr: 1.5, occ: 0.4, opacity, side: THREE.DoubleSide, depthTest: false });
 }
 
 // Zones have no dispose hook: wrap it so their VFX emitters / decals stop with them.

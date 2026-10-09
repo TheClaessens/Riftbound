@@ -359,7 +359,10 @@ export class Game {
       this.heroes.update(dt, this.time);
 
       if (this.state === 'playing') {
-        if (this.pendingLevelUps > 0) this._openLevelUp();
+        // the Seal and the boss's landing are one uninterrupted beat (round 2: the reaped XP's level-ups
+        // used to pop over the arrival); the queued hands open right after
+        if (this.encounter.holdModals()) { /* wait */ }
+        else if (this.pendingLevelUps > 0) this._openLevelUp();
         else if (this.pendingChests > 0) this._openChest();
       }
     } else if (active) {

@@ -1,4 +1,4 @@
-# Riftbound — Architecture & Module Contracts (v4.0 — heroes on the rig + world-grounded spell VFX)
+# Riftbound — Architecture & Module Contracts (v5.0 — Rift Obelisks + raid-style boss encounters; v4.0 heroes on the rig + world-grounded spell VFX)
 
 Read `DESIGN.md` for the game design (numbers are there). This file is the **contract** every module must respect.
 
@@ -39,25 +39,35 @@ src/game/vfx/hero/{fire,frost,storm,arcane}.js + heroFx.js   dashes, traits, idl
 src/game/vfx/reactions.js, status.js   reaction / freeze / ward / kill visuals; status overlays on enemies (vfx bundle E)
 src/game/pickups.js               xp, health, magnet, chest                                   (core)
 src/game/enemies.js               archetypes × factions, EnemyBullet; drives creature rigs    (enemies)
-src/game/bosses.js                createBoss(game, id, pos, opts): 3 bosses on boss rigs      (bosses)
+src/game/bosses.js                facade: createBoss(game, id, pos, opts), AFFIXES, WARD_CYCLE  (bosses)
+src/game/bosses/core.js           BossBase (shapes, poise, phases, adds, objects, zones), POISE, RingWave, Zone  (bosses core)
+src/game/bosses/affixes.js        Wrath affixes (frenzied, bulwark, reverberating, rift storm, vengeful)  (bosses core)
+src/game/bosses/{gorrak,vashkar,aurelith}.js   boss scripts: moves, rotation, intermissions  (boss agents)
+src/game/bosses/legacy.js         v4 bosses, frozen (fallback while a script has `static ready = false`)  (frozen)
+src/game/encounter.js             encounter director (v5): summon → Seal → fight → Echo → victory; ARENAS  (encounter)
+src/game/obelisks.js              Rift Obelisks (v5): channel, stakes, Windfall, Wrath heat, payouts  (obelisks)
+src/game/creatures/bosses/{common,gorrak,vashkar,aurelith}.js   boss rigs + poses; bossModels.js is the facade  (creatures)
+src/game/arena/{wall,common,geo,verge,cinder,crown}.js   encounter walls per boss/biome (Thornwood hedge, basalt, crystal)  (arena)
 src/game/spawner.js               act-aware spawning, beats, boss spawn                       (bosses)
 src/game/creatures/rig.js         PartBuilder, defineCreature, Pose, shaders (instanced rig)  (creatures)
 src/game/creatures/renderer.js    CreatureRenderer: instancing, bone texture, outlines, blobs (creatures)
 src/game/creatures/index.js       enemy type → creature def registry                          (creatures)
 src/game/creatures/greenskins.js  Act I models · warband.js Act II · wyrmkin.js Act III · bossModels.js
-src/game/world.js                 World contract, Rift Crystals (geodes), shrines, hazards; owns the biome    (world)
+src/game/world.js                 World contract, Rift Crystals (geodes), shrines, hazards, boss arena (`setArena`); owns the biome    (world)
 src/game/tutorial.js              Rift Primer (first-run tutorial) + one-time contextual tips; owns its DOM    (tutorial)
 src/game/env/biome.js             buildBiome(def): ground, grass, water, props, motes          (env)
 src/game/env/common.js            ENV uniforms, patchEnv (wind, haze, clouds, dither), noise   (env)
 src/game/env/{ground,field,water,props,motes,lighting}.js   env systems                         (env)
 src/game/env/biomes/{forest,barrens,river}.js + props_*.js  the three biome definitions        (env)
-src/dev/sim.js, src/dev/viewer.js, dev/creatures.html        balance sim, snap(), creature + hero viewer (dev)
+src/dev/sim.js, src/dev/viewer.js, dev/creatures.html        balance sim (runSim with `obelisks`, jumpToBoss), snap(), creature + hero viewer (dev)
 src/dev/shot.js                   headless frames (pinned 1280×720) → dev/shots/*.png via the shots server (8097); stage/castAt/step (dev)
-src/game/audio.js                 procedural SFX + music                                      (audio)
+src/game/audio.js                 procedural SFX + music (base; Audio mixes in the modules below)  (audio)
+src/game/audio/{scores,score,voices,sfx,offline}.js   boss scores (SCORES, BOSS_KEY), score engine, boss voices, raid SFX, DEV offline render  (audio)
+src/ui/icons/set-raid.js          raid icon set (obelisks, poise / downed / break check, affixes, fight objects)  (ui-icons)
 src/game/skills/*.js              skills (gameplay + their visuals); registry.js, common.js (Projectile), fusionCommon.js (core)
 src/game/skills/fusions/*.js      one file per fusion skill
 css/theme.css, src/ui/scale.js    Crownforge tokens + primitives (.cf-plate/-frame/-socket/-bar/-btn…), root unit   (ui-core)
-src/ui/icons/index.js + set-*.js  SVG icon sprite: icon(id), ICON.*; sets: skills, relics, react, misc           (ui-icons)
+src/ui/icons/index.js + set-*.js  SVG icon sprite: icon(id), ICON.*; sets: skills, relics, react, misc, raid           (ui-icons)
 src/ui/hud.js, hud-fx.js, hud-util.js + css/hud.css   in-run HUD, event overlays, cached DOM setters + Meter (ui-hud)
 src/ui/ui.js + css/modals.css     UI orchestrator; level-up, relic chest, pause (build/codex)  (ui-modals)
 src/ui/menus.js + css/menus.css   title / Sanctum, game over / victory                        (ui-menus)
@@ -75,6 +85,8 @@ src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, 
 | `tier` | Rift Tier 0..5 |
 | `player`, `enemies`, `boss`, `fx`, `vfx`, `world`, `pickups`, `spawner`, `ui`, `audio` | `vfx` = the world-grounded spell VFX toolkit (src/game/vfx/, design/VFX.md) |
 | `creatures`, `heroes` | CreatureRenderers: enemies + bosses (renderOrder 3), the player hero (2.0 px outline, renderOrder 21) |
+| `encounter` | Encounter director (encounter.js, v5): `summon(reason)`, `arena` (`{ center, r, r0, zoom }`), `setArenaRadius(r, sec)`, `holdModals()`. `game.phase === 'boss'` while it runs |
+| `obelisks` | Rift Obelisks (obelisks.js, v5): channel state; writes `game.run.stakes` (reset per act) |
 | `chain` | current reaction Chain (0 = none) |
 | `stats` | `{ kills, damageDealt, reactions:{type:n}, fusions:[names], level, time, maxChain, bossesKilled, act, classId, tier, … }`. At run end it also has `shardsEarned, unlocks:[classIds], tierUnlocked, totalShards, victory, relics:[names]` |
 | `meta` | persistent save (meta.js): `{ shards, attune:{id:rank}, unlocked:{classId:true}, codex:{reactions,fusions,relics}, stats, maxTier, lastClass, lastTier, unlockAll, shake (1/0.5/0), tutorialDone, tips:[ids] }` |
@@ -115,15 +127,39 @@ src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, 
 | `chestOpened` | `{ relics }` |
 | `playerHit` | `{ amount, source }` |
 | `playerDied` | `{}` |
-| `bossSpawned` | `{ enemy, final }`: emitted by spawner. Set `game.boss = enemy` first. |
-| `bossPhase` | `{ enemy, phase: 2 }`: emitted by the boss at 50% HP |
-| `bossKilled` | `{ enemy, final }`: emitted by spawner when the boss dies |
+| `bossSpawned` | `{ enemy, final, echo }`: emitted by encounter.js at the landing (1.5 s after the Seal). Sets `game.boss = enemy` first. |
+| `bossPhase` | `{ enemy, phase: 2\|3 }`: emitted at the end of an intermission (gates at 66% and 33% HP) |
+| `bossKilled` | `{ enemy, final }`: emitted by encounter.js after the victory beat (wall sinks 2.4 s), then Rift Shift or Victory |
+| `encounterStart`, `encounterEnd` | the Seal begins / the victory beat begins. Full list: next section |
 | `announce` | `{ text, sub?, color? }`: big centre-screen announcement |
 | `shrineSpawned` / `shrineClaimed` | `{ type, pos }` |
 | `geodeBroken` | `{ element, pos, hits }` (hits = foes caught in the blast) |
 | `hazard` | `{ kind: 'lava'\|'lightning', pos }` (on impact) |
 | `autoCastChanged` | `{ on }` |
 | `xpCollected` / `itemCollected` | `{ value }` / `{ type: 'health'\|'magnet'\|'chest' }` |
+
+### Raid encounter events (v5; payloads in `design/RAID.md` § Events)
+| Event | Payload | Notes |
+|---|---|---|
+| `encounterStart` | `{ bossId, act, arena, stakes, reason }` | the Seal begins (music: cut act theme, riser) |
+| `encounterEnd` | `{ victory: true, enemy, final, bossId }` | victory beat begins |
+| `bossIntermission` | `{ enemy, index: 1\|2, dur }` | boss untargetable for `dur` |
+| `bossDowned` | `{ enemy, dur, reason: 'stagger'\|'break'\|'winded' }` | |
+| `bossRecovered` | `{ enemy }` | |
+| `breakCheck` / `breakCheckEnd` | `{ enemy, name, dur, threshold }` / `{ enemy, name, success }` | named cast with a Stagger threshold |
+| `poise` | `{ enemy, amount, src }` | src = reaction type, `frozen`, `perfect`, `crystal`, `generator`, … |
+| `bossEnrage` | `{ enemy, level }` | first soft-enrage step |
+| `bossImpact` | `{ enemy, pos, heavy }` | every resolved hostile shape (music ducks, SFX thud) |
+| `echoMend` | `{ enemy, dur }` | the first body died; the Echo rises after `dur` |
+| `bossTell` / `bossWard` | `{ enemy, kind, lead }` / `{ enemy, ward }` | big tells (music/SFX accents); Aurelith's ward |
+| `obelisksRisen` | `{ obelisks }` | 0:50 of each act |
+| `obeliskChannel` | `{ obelisk, progress }` | throttled (≤ 10 Hz) |
+| `obeliskArmed` | `{ type: 'haste'\|'echo'\|'wrath', heat, affix }` | |
+| `obeliskCollapse` | `{}` | encounter start |
+| `obeliskPayout` | `{ shards, parts, lines }` | the payout summary, paid only on a won boss fight |
+| `wrathCache` | `{ card }` | heat 2+: the Wrath Cache card (a decision of `kind: 'wrathCache'`) after the boss dies |
+
+**Stakes** (`game.run.stakes`, written by obelisks.js, read by encounter.js; reset per act): `{ haste: null | { at, skipped }, echo, heat, affixes, bossHpMult, bossDmgMult, chest: { extra, bossRelics }, echoChest: { pool: 'boss', choices: 3 }, echoAffix }`. Chests: `enemy.chestSpec` → `game.queueChest(spec)` → `rollRelics(game, n, spec)`; relics.js honours `spec.pool === 'boss'` and `spec.bossRelics`, and keeps tag `boss` out of normal rolls.
 
 ### Actors
 Anything with `update(dt, game) → boolean` (return `false` when finished) and optional `dispose(game)`. **Hostile actors (enemy bullets, boss hazards) must set `this.hostile = true`**, so the Rift Shift can clear them.
@@ -188,11 +224,15 @@ Everything is tuned for **bright ground**: the default blend is "blend-add" (`BL
 | `lightning(from, to, { color, life, jag, strands, segments })` | dark under-strand + glowing strand (Line2); `from`/`to` may carry `.y` |
 | `telegraph(pos, radius, duration, { color, onDone, friendly, keepColor })` | → `{ cancel() }`. Decal shader: dark band, crisp rim, growing fill. Hostile = `HOSTILE_RED` |
 | `lineTelegraph(from, dir, length, width, duration, { color, onDone, friendly, keepColor })` | → `{ cancel() }` |
+| `coneTelegraph(origin, dir, angle, radius, duration, opts)` | cone telegraph → `{ cancel() }`. Hostile red by default; `opts.safe` = gold "go here". |
+| `donutTelegraph(pos, inner, outer, duration, opts)` | donut telegraph (in-and-out patterns) → `{ cancel() }`. Same colour rules. |
+| `zone(pos, shape, kind = 'hostile' \| 'safe', opts)` | persistent ground-decal zone. `shape`: `{ radius }` circle, `{ radius, inner }` donut, `{ radius, angle, dir }` cone. Hostile = red (spore cloud, fire); safe = gold (sap pool, lightning rod, shelter). |
+| `opts.safe` (telegraphs and zones) | draws the gold `SAFE_GOLD` style (solid rim + diagonal stripes) and never damages. `SAFE_GOLD = 0xffc83a` is exported by fx.js. Hostile red stays the only colour for danger. |
 | `corpse(mesh, life, { onEnd })` | for non-rig meshes only (enemies use the rig death topple) |
 | `light(pos, color, intensity, life, distance)` | intensities are scaled ×0.3 internally (daylight); pool of 6 |
 | `shake(amount, kind = 'self')` | `'threat'` for anything hurting the player (hits, boss attacks, hazards, Rift Shift); default `'self'` for the player's own impacts, which are damped and capped (engine.js) |
 | `number(pos, value, { color, crit })`, `text(pos, str, color, big)` | DOM text with a dark stroke |
-Exports: `BLEND_ADD`, `HOSTILE_RED`, `blendAddMaterial(color, { hdr, occ, opacity, side, depthWrite, depthTest })` (drop-in for additive `MeshBasicMaterial`; `.color` / `.opacity` work).
+Exports: `BLEND_ADD`, `HOSTILE_RED`, `SAFE_GOLD`, `blendAddMaterial(color, { hdr, occ, opacity, side, depthWrite, depthTest })` (drop-in for additive `MeshBasicMaterial`; `.color` / `.opacity` work).
 
 ## Creatures (`src/game/creatures/`)
 Every enemy and boss body is a **creature rig**: a procedurally modelled, procedurally animated creature drawn with GPU instancing (one `InstancedMesh` per creature type + one inverted-hull outline mesh, bone matrices in a float texture read by `gl_InstanceID`, soft blob shadows in one shared draw). Full modelling/animation contract: `design/ART.md`; creature designs: `design/research/03-creature-art.md`.
@@ -223,8 +263,12 @@ deathColor, mesh (attachment Group), rig (creature handle), topY, center, update
 * Ranged shots spawn from the creature's `muzzle` (model space, rotated by yaw).
 * Never remove itself from `game.enemies`. Game removes dead enemies and calls `dispose` (killed → death topple corpse).
 
-## Boss contract (`src/game/bosses.js`)
-`createBoss(game, id: 'hollowWarden'|'vashkar'|'riftHeart', pos, opts: { hpMult, damageScale, final })`. It returns an enemy-contract object with `boss: true, name, phase (1|2)` and emits `bossPhase` at 50%. Ids are unchanged; they are **Gorrak, the Troll King**, **Vashkar, the Ashen Warchief** and **Aurelith, the Prism Dragon**. Every attack plays a body tell synced to its telegraph (`_play(action, dur, tellTime)`).
+## Boss contract (v5 raid encounters: `design/RAID.md`)
+* A boss is a `BossBase` subclass (`src/game/bosses/core.js`) in `src/game/bosses/{gorrak,vashkar,aurelith}.js`. The facade `src/game/bosses.js` exports `createBoss(game, id, pos, opts)` (ids `hollowWarden` = Gorrak, `vashkar`, `riftHeart` = Aurelith), `AFFIXES` and `WARD_CYCLE`. A script with `static ready = false` falls back to `bosses/legacy.js`.
+* Scripts declare `CFG` (id, hp, radius, cycle, downed, enrageAt, …), a `rotation(phase)`, `moves`, `intermission(idx)`, and optional `think / move / visuals / onPhase / onDowned / onRecovered / onClearField / onDispose`.
+* The toolkit: shapes (`circle`, `cone`, `donut`, `line`, `ringWave`), `zone`, `spawnAdd`, `spawnObject`, poise (`addPoise`, `breakCheck`, `down`, `expose`, `castBar`), `own` / `own_mat`. Full signatures and the rules for lead times and readability: **`design/RAID.md` § BossBase API and § Readability rules**.
+* Every attack plays a body tell synced to its telegraph (`play(action, dur, tell)`). Every new move needs a rig pose in `src/game/creatures/bosses/<boss>.js` (at least `downed`, `recover`).
+* The HUD and audio read the boss fields on `game.boss` (`poise`, `cast`, `phase`, `gates`, `exposedT`, `enrage`, `objects`, `ward`); they are listed in `design/RAID.md` § Boss fields. Legacy bosses have no poise, so guard with `?.`.
 
 ## World contract (`src/game/world.js`)
 ```js
@@ -234,6 +278,7 @@ class World {
   setBiome(id: 'verge'|'cinder'|'crown', instant: boolean)  // Thornwood / Sunscorch Barrens / Stormwater Reach: buildBiome(def), atmosphere, rim
   reset()                         // new run: clear geodes/shrines/hazards
   spawnCrystal(el, pos, { hp })   // a one-off Rift Crystal outside the respawning slots (tutorial)
+  setArena(arena | null)          // boss encounter arena { center, r }; Rift Crystals move inside it (4 at 0.6 R); null = off
   collide(pos, radius)            // push out of obstacles, clamp to bounds (mutates)
   randomSpawnPoint(center, minDist, maxDist) → Vector3
   heightAt(x, z)                  // terrain height (0 on the playfield)

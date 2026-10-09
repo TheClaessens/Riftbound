@@ -1,0 +1,17 @@
+# Generated output (screenshots, playtest runs, promo renders, builds)
+/dev/shots/
+/playtest/out/
+/promo/out/
+/dist/
+
+# Local zip backups (each one is a tagged commit in the history now)
+/backup/
+
+# Stray numeric files from shell redirects
+/[0-9]*
+
+# Local-only Claude settings and skill packages
+.claude/settings.local.json
+.claude/skills/*.zip
+
+node_modules/

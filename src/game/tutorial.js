@@ -68,11 +68,19 @@ export class Tutorial {
     on('reaction', (e) => this._onReaction(e));
     on('levelUp', () => this._onLevelUp());
     on('shrineSpawned', () => this.tip('shrine', 'A <b>Shrine</b> has appeared &mdash; follow the arrow.', 'Stand inside it for 2.5s to claim a powerful 25s blessing.'));
-    on('bossSpawned', () => this.tip('boss', 'A <b>boss</b> approaches!', 'Every attack is telegraphed in <b style="color:#ff5a4a">red</b>. Step out, or dash through it.'));
-    // v5 raid tips: Rift Obelisks, Stagger / Downed, Break Checks (one-time each; see design/RAID.md)
+    on('bossSpawned', () => this.tip('boss', 'The arena seals. <b style="color:#ff5a4a">Red</b> = get out, striped gold = go here. Every attack is shown on the ground first.'));
+    // v5 raid tips: Rift Obelisks, Stagger / Downed, Break Checks, Intermission / Winded (one-time each; see design/RAID.md)
     on('obelisksRisen', () => this.tip('obelisks', 'Obelisks let you <b>call the boss your way</b>.', '<b style="color:#ffd34d">Haste</b> summons it now, <b style="color:#b9a4ff">Echo</b> brings it twice, <b style="color:#ff8a4a">Wrath</b> adds affixes. Stand in a ring for 4s to arm one. Doing nothing is fine.'));
-    on('bossDowned', ({ reason } = {}) => reason !== 'winded' && this.tip('downed', 'The boss is <b>Downed</b>!', 'Reactions, freezes and perfect dodges fill its <b style="color:#e8eef8">Stagger</b> bar. A full bar drops it for a few seconds: hit it hard.'));
-    on('breakCheck', () => this.tip('breakcheck', 'A <b>Break Check</b>: it is charging a big attack.', 'Fill the Stagger bar past the marker before the cast ends to cancel it and knock the boss Down.'));
+    on('poise', ({ enemy } = {}) => enemy?.boss && this.tip('stagger', 'Reactions, freezes, stuns, burning/chilled/shocked status and perfect dodges fill the boss\'s <b style="color:#e8eef8">STAGGER</b> bar. Fill it to knock the boss <b>DOWN</b>: it takes +40% damage.'));
+    on('bossIntermission', ({ enemy, index } = {}) => {
+      this.tip('intermission', 'Intermission: the boss can\'t be harmed. Survive the pattern &mdash; it ends with the boss <b style="color:#e8eef8">WINDED</b>.');
+      if (enemy?.id === 'hollowWarden' && index === 2) this.tip('kingswrath', '<b>King\'s Wrath</b>: dash <b>THROUGH</b> each shockwave ring.');
+    });
+    on('bossDowned', ({ reason } = {}) => {
+      if (reason === 'winded') this.tip('winded', '<b style="color:#e8eef8">WINDED</b>: free hits after the intermission.');
+      else this.tip('downed', 'The boss is <b>Downed</b>!', 'Reactions, freezes and perfect dodges fill its <b style="color:#e8eef8">Stagger</b> bar. A full bar drops it for a few seconds: hit it hard.');
+    });
+    on('breakCheck', () => this.tip('breakcheck', '<b>Break Check!</b> Fill the <b style="color:#e8eef8">STAGGER</b> bar to the marker before the cast ends, or it lands.'));
     on('actStart', ({ act }) => {
       if (act === 1) this.tip('act2', 'The orcs of the Barrens <b>resist Fire</b> (50%).', `Lean on reactions and other elements. Red rings with glowing cracks erupt as geysers: step out.`, CARD_DELAY);
       if (act === 2) this.tip('act3', 'Some foes carry a <b>Prism Ward</b> &mdash; immune to one element.', 'Any reaction on a warded foe shatters its ward. Mind the lightning circles.', CARD_DELAY);
@@ -84,10 +92,10 @@ export class Tutorial {
 
   // ------------------------------------------------------------------ public
 
-  /** One-time contextual tip (shown once per profile). */
+  /** One-time contextual tip (shown once per profile). Skipped while another tip is up, so it is not marked seen unshown. */
   tip(id, text, sub = '', delay = 0) {
     const meta = this.game.meta;
-    if (!this._playerRun || !meta || meta.tips?.includes(id)) return;
+    if (!this._playerRun || !meta || meta.tips?.includes(id) || this._tip) return;
     if (this.active && this.step !== 'done') return;   // the primer has the panel; the tip waits for another time
     (meta.tips ??= []).push(id);
     saveMeta(meta);

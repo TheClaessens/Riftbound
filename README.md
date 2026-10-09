@@ -4,6 +4,12 @@ An isometric horde-survival action RPG in three acts, built with **Three.js** (W
 
 Pick one of four classes and fight through the goblin-haunted **Thornwood**, the orc-held **Sunscorch Barrens** and the dragon-nested **Stormwater Reach**. Weave the four elements into **six reactions**, fuse spells into **ten evolved forms**, bend your build with **relics**, and dash through telegraphs for **Perfect Dodges**. Slay Aurelith, the Prism Dragon, to win.
 
+## Rift Obelisks & raid bosses (v5)
+* **Rift Obelisks** rise at 0:50 of every act. **Haste** summons the boss now (Windfall XP, shards and an extra relic choice). **Echo** brings the boss back once more, stronger, for a Boss Relic chest. **Wrath** adds boss affixes and a tougher boss for better loot (up to three heats). Stand in a ring for 4 s to arm one. Doing nothing is fine: the boss still comes at 3:00.
+* **Raid-style boss fights**: the arena seals around you, the horde turns into XP, and the boss fights alone with its own score. Three phases with intermissions, a **Stagger** bar (filled by reactions, freezes, stuns, perfect dodges and crystal blasts), **Downed** windows, named **Break Checks**, and gold "go here" safe zones.
+* **Six Boss Relics** (tag `boss`), offered only by Echo Chests and Wrath heat 3.
+* Design: [design/RAID_PASSES.md](design/RAID_PASSES.md) (the passes; Pass 8 is the round-2 tuning) and [design/RAID.md](design/RAID.md) (the implementer contract).
+
 ## Run
 
 ES modules need to be served over HTTP (opening `index.html` directly won't work). An internet connection is needed on first load (Three.js and fonts come from a CDN).
@@ -29,7 +35,8 @@ Then open http://localhost:8080. To play every class at any Rift Tier, tick **Un
 | 1–3 / F / X | Level-up: pick a card / reroll / banish |
 
 ## Docs
-* [DESIGN.md](DESIGN.md): the game design spec (v4)
+* [DESIGN.md](DESIGN.md): the game design spec (v5)
+* [design/RAID_PASSES.md](design/RAID_PASSES.md) and [design/RAID.md](design/RAID.md): the v5 raid design passes and contract
 * [design/PASSES.md](design/PASSES.md): the 10 design passes that produced it
 * [ARCHITECTURE.md](ARCHITECTURE.md): module contracts
 * [design/UI.md](design/UI.md): the v3 "Crownforge" UI spec (tokens, primitives, icons, screens); [design/UI_PASSES.md](design/UI_PASSES.md): the UI design passes
@@ -40,6 +47,14 @@ From the browser console:
 ```js
 const { runSim } = await import('/src/dev/sim.js');
 await runSim({ classId: 'cryomancer', seconds: 700 });
+```
+
+Obelisk lanes (v5) and a direct boss fight:
+
+```js
+await runSim({ classId: 'cryomancer', seconds: 800, obelisks: ['haste@90', 'echo', 'wrath:2'] });
+const { jumpToBoss } = await import('/src/dev/sim.js');
+jumpToBoss(1, { echo: true, affixes: ['frenzied'], phase: 2, god: true });
 ```
 
 ## Visual tech (v2)

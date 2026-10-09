@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "riftbound",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "serve.ps1", "-Port", "8080"],
+      "port": 8080
+    },
+    {
+      "name": "riftbound-alt",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "serve.ps1", "-Port", "8094"],
+      "port": 8094
+    },
+    {
+      "name": "riftbound-promo",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "promo/kit/serve.ps1", "-Port", "8096"],
+      "port": 8096
+    },
+    {
+      "name": "riftbound-playtest",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "playtest/kit/serve.ps1", "-Port", "8098"],
+      "port": 8098
+    },
+    {
+      "name": "riftbound-shots",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "promo/kit/serve.ps1", "-Port", "8097", "-Out", "dev/shots"],
+      "port": 8097
+    }
+  ]
+}

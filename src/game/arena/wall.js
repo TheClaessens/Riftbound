@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { setBossFade } from '../env/common.js';
 import { TAU, W_FRAC, delayOf, easeOutBack, heightCap, createRingDecal } from './common.js';
 import { buildVerge } from './verge.js';
 import { buildCinder } from './cinder.js';
@@ -106,6 +107,7 @@ export function createArenaWall(game, biomeId, center, r) {
   for (const it of items) { const hh = it.H * it.s * it.sy; maxH = Math.max(maxH, hh); if (hh > heightCap(it.a) + 0.06) overCap++; }
 
   const wall = {
+    group,
     stats: {
       overCap, maxH: +maxH.toFixed(2), drawCalls: draws, tris: Math.round(tris), pieces: items.length, layers: layers.map((L) => `${L.mesh.name}:${L.mesh.count}x${L.geo.attributes.position.count / 3}`) },
     _items: items,
@@ -130,6 +132,9 @@ export function createArenaWall(game, biomeId, center, r) {
       const vis = k > 0.001;
       for (const L of layers) L.mesh.visible = vis;
       ring.set(k, rad, time);
+      // the env cut-out also follows the boss, so canopy / tall props inside the arena never hide it
+      const bs = game.boss;
+      if (bs && !bs.dead && k > 0.3) setBossFade(bs.pos, Math.max(3.2, (bs.radius ?? 1.5) * 1.8), Math.max(1.6, (bs.radius ?? 1.5) * 1.1)); else setBossFade(null);
       for (const x of extras) x.update?.(dt, { k, rad, time, center, game });
     },
     dispose() {
@@ -139,6 +144,7 @@ export function createArenaWall(game, biomeId, center, r) {
       for (const L of layers) if (!seen.has(L.mat)) { seen.add(L.mat); L.mat.dispose(); }
       for (const x of extras) x.dispose?.();
       B.dispose?.();
+      if (game.encounter?.wall === wall || !game.encounter?.wall) setBossFade(null);
       ring.dispose();
     },
   };
@@ -153,12 +159,10 @@ export function warmArenaWall(game, biomeId) {
   const w = createArenaWall(game, biomeId, new THREE.Vector3(4000, 0, 4000), 20);
   w.rise(0.01);
   w.update(0.1);
-  // compileAsync (KHR_parallel_shader_compile) links in the background: no frame hitch at all
-  try {
-    const R = game.engine.renderer;
-    if (R.compileAsync) R.compileAsync(game.scene, game.engine.camera).catch(() => {});
-    else R.compile(game.scene, game.engine.camera);
-  } catch (e) { /* headless / no renderer */ }
+  // Compile only this wall's materials, against the real scene's lights (program cache keys must match the
+  // fight). Synchronous on purpose: compileAsync's readiness poll threw from a timer when a stage/biome
+  // rebuild disposed materials mid-compile.
+  try { game.engine.renderer.compile(w.group, game.engine.camera, game.scene); } catch (e) { /* headless / no renderer */ }
   // Keep the warm wall alive, sunk and hidden: three.js frees a program as soon as no live material uses it,
   // so disposing it would throw the compiled programs away again (measured: 60-80 ms hitch at every Seal).
   w.sink(0.001);

@@ -11,7 +11,7 @@ import { distXZ, dirXZ } from '../../core/utils.js';
 //
 //  Mechanics (every add / object states its purpose):
 //    Axe Combo       circle r 4.5 around him (in), 0.5 s later a donut 4.5-11 (out). +25 Axe Heat (flames on the blade).
-//    War Banners     2 generator objects at opposite sides (r 0.7 R). Each living banner: armor 0.25 on him, a ring
+//    War Banners     2 generator objects at opposite sides (r 0.7 R). Each living banner: armor 0.2 on him, a ring
 //                    wave r->6 every 7 s. Both down = "Disarmed" (Downed 5 s, +15 poise each). PURPOSE: generators,
 //                    damage them while baiting him away. His back banners are hidden the moment he plants them.
 //    Torchbearers    2 orc thralls race from the wall to a fallen banner's site and re-light it at 50% HP.
@@ -27,9 +27,11 @@ import { distXZ, dirXZ } from '../../core/utils.js';
 //  Events: bossTell { kind: combo|charge|overswing|memory|meteor|ashfall|tide|disarmed }.
 // =====================================================================================
 
+// Damage reduction per living War Banner (round 2: 0.25 each doubled fights for players who ignore banners).
+const BANNER_DR = 0.2;
 const CFG = {
   id: 'vashkar', name: 'Vashkar, the Ashen Warchief', model: VASHKAR_MODEL,
-  hp: 30000, radius: 2.2, speed: 2.1, stopGap: 1.2, resist: { fire: 0.5 }, deathColor: 0xff6a1f,
+  hp: 24000, radius: 2.2, speed: 2.1, stopGap: 1.2, resist: { fire: 0.5 }, deathColor: 0xff6a1f,
   look: { scale: 1.0, glow: [0.25, 0.45, 0.62] },
   cycle: [1.7, 1.4, 1.1], downed: [4, 5, 6], enrageAt: 95,
 };
@@ -836,7 +838,7 @@ export class Vashkar extends BossBase {
     obj.side = side;
     obj.hpMult = hpMult;
     this.banners.push({ obj, side });
-    this.armor = 0.25 * this.banners.length;
+    this.armor = BANNER_DR * this.banners.length;
     return obj;
   }
 
@@ -867,7 +869,7 @@ export class Vashkar extends BossBase {
   bannerDown(obj, B, p, side) {
     const g = this.game;
     this.banners = this.banners.filter((b) => b.obj !== obj);
-    this.armor = 0.25 * this.banners.length;   // think() does not run while Downed: refresh now
+    this.armor = BANNER_DR * this.banners.length;   // think() does not run while Downed: refresh now
     if (this.dead || this.intermissionIdx) return;
     g.fx.shake(0.5, 'threat');
     g.fx.burst({ x: p.x, y: 0.5, z: p.z }, { color: 0x1fe0c2, count: 20, speed: 6, life: 0.7, size: 0.45, up: 1.2, hdr: 2.2 });
@@ -1044,10 +1046,10 @@ export class Vashkar extends BossBase {
       this.lastOverswing = this.fightT;
       this.raiseBanners();
     }
-    // armor 0.25 per living banner
+    // armor BANNER_DR per living banner
     let live = 0;
     for (const b of this.banners) if (!b.obj.dead) live++;
-    this.armor = 0.25 * live;
+    this.armor = BANNER_DR * live;
     if (!this.intermissionIdx && !this.downed && !this.cast) {
       if (this.phase >= 3) this.axeHeat = Math.min(100, ((this.fightT - this.lastOverswing) / OVERSWING_EVERY) * 100);   // P3: a 30 s clock
       else this.axeHeat = Math.min(100, this.axeHeat + HEAT_PASSIVE * dt);                                          // P1/P2: the axe also warms by itself

@@ -168,6 +168,35 @@ const BOSS_RELICS = {
     desc: '+60% Poise gain. Downed bosses take 20% more damage from you.', flavour: 'Every wall has a seam. This finds it.',
     apply: (s) => { s.poiseGain += 0.6; s.downedDmg += 0.2; } },
 };
+// Perfect Dodges become attacks: a fire burst (burns, stuns 0.4 s, adds Stagger to bosses).
+BOSS_RELICS.ashenStandard = { id: 'ashenStandard', name: 'Ashen Standard', icon: '⚑', tag: 'boss',
+  desc: 'Perfect Dodges erupt in a fire burst (r 5): burns, stuns for 0.4s and adds Stagger to bosses.', flavour: 'It burns brightest where you should have died.',
+  init: (game, p) => game.events.on('perfectDodge', () => {
+    const R = 5 * p.stats.area, dmg = reactionBase(game) * 0.8;
+    game.fx.ring(p.pos, { color: 0xff9a3c, radius: R, life: 0.4, width: 0.25 });
+    game.fx.burst(p.pos, { color: 0xff7a33, count: 22, speed: 6, life: 0.6, size: 0.4, up: 2, hdr: 2 });
+    for (const e of game.queryEnemies(p.pos, R + 0.5, _hits).slice()) {
+      if (e.dead || e.inert || Math.hypot(e.pos.x - p.pos.x, e.pos.z - p.pos.z) > R + (e.radius ?? 0.5)) continue;
+      stunEnemy(e, 0.4);
+      if (e.boss) e.addPoise?.(6, 'standard');
+      damageEnemy(game, e, dmg, { element: 'fire', raw: true, noCrit: true, knockback: 3 });
+    }
+  }) };
+// Defensive: every 15 s the first hit that costs more than 15% of max HP is half refunded (may turn a lethal blow into a survivable one).
+BOSS_RELICS.hollowHeartstone = { id: 'hollowHeartstone', name: 'Hollow Heartstone', icon: '❖', tag: 'boss',
+  desc: 'Every 15s, the first hit that costs over 15% of your max HP is half refunded.', flavour: 'Still beating. Not yours, but it helps.',
+  init: (game, p, st) => {
+    st.cd = 0;
+    const offA = game.events.on('tick', ({ dt }) => { if (st.cd > 0) st.cd -= dt; });
+    const offB = game.events.on('playerHit', ({ amount }) => {
+      if (st.cd > 0 || amount < p.stats.maxHp * 0.15) return;
+      st.cd = 15;
+      p.hp = Math.min(p.stats.maxHp, p.hp + amount * 0.5);   // playerHit fires before the death check
+      game.fx.ring(p.pos, { color: 0xffd6a0, radius: 2.5, life: 0.4 });
+      game.fx.text(p.pos, 'HEARTSTONE', '#ffd6a0');
+    });
+    return () => { offA(); offB(); };
+  } };
 Object.assign(RELICS, BOSS_RELICS);
 
 export const RELIC_IDS = Object.keys(RELICS);                                  // all of them (codex)
