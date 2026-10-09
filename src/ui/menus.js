@@ -24,6 +24,8 @@ const DASH_KEY = 'space';
 
 const OB_ICON = { haste: 'obeliskHaste', echo: 'obeliskEcho', wrath: 'obeliskWrath' };
 const OB_COLOR = { haste: '#bfefff', echo: '#b08cff', wrath: '#ff7a33' };
+// Patch notes (changelog/index.html), served by GitHub Pages next to the game; absolute so it also works from other hosts
+const PATCH_NOTES_URL = 'https://theclaessens.github.io/Riftbound/changelog/';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
@@ -359,6 +361,7 @@ export class Menus {
         <button type="button" class="mn-tome" data-act="pop" data-id="tome" data-ref="tome" aria-haspopup="dialog" aria-expanded="false"></button>
         <button type="button" class="mn-tool" data-act="pop" data-id="settings" aria-haspopup="dialog" aria-expanded="false" title="Settings">${ui('gear', '✲')}</button>
         <button type="button" class="mn-tool" data-act="pop" data-id="help" aria-haspopup="dialog" aria-expanded="false" title="Controls">${ui('help', '?')}</button>
+        <a class="mn-tool" href="${PATCH_NOTES_URL}" target="_blank" rel="noopener" title="Patch notes" aria-label="Patch notes (opens in a new tab)">${ui('notes', '≡')}</a>
 
         <div class="cf-plate mn-pop mn-pop-tome" data-pop="tome" data-ref="tomePop" hidden></div>
 

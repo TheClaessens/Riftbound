@@ -4,6 +4,8 @@ An isometric horde-survival action RPG in three acts, built with **Three.js** (W
 
 Pick one of four classes and fight through the goblin-haunted **Thornwood**, the orc-held **Sunscorch Barrens** and the dragon-nested **Stormwater Reach**. Weave the four elements into **six reactions**, fuse spells into **ten evolved forms**, bend your build with **relics**, and dash through telegraphs for **Perfect Dodges**. Slay Aurelith, the Prism Dragon, to win.
 
+**Play it:** https://theclaessens.github.io/Riftbound/ · **Patch notes:** https://theclaessens.github.io/Riftbound/changelog/ (source: [changelog/index.html](changelog/index.html); newest release on top, also linked from the title screen).
+
 ## Rift Obelisks & raid bosses (v5)
 * **Rift Obelisks** rise at 0:50 of every act. **Haste** summons the boss now (Windfall XP, shards and an extra relic choice). **Echo** brings the boss back once more, stronger, for a Boss Relic chest. **Wrath** adds boss affixes and a tougher boss for better loot (up to three heats). Stand in a ring for 4 s to arm one. Doing nothing is fine: the boss still comes at 3:00.
 * **Raid-style boss fights**: the arena seals around you, the horde turns into XP, and the boss fights alone with its own score. Three phases with intermissions, a **Stagger** bar (filled by reactions, freezes, stuns, perfect dodges and crystal blasts), **Downed** windows, named **Break Checks**, and gold "go here" safe zones.

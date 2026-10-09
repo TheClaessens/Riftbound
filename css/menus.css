@@ -145,7 +145,7 @@
   cursor: pointer;
 }
 .mn-tome { gap: calc(10 * var(--u)); padding: 0 calc(16 * var(--u)) 0 calc(10 * var(--u)); text-align: left; }
-.mn-tool { width: round(calc(56 * var(--u)), 2px); justify-content: center; padding: 0; color: var(--cf-gilt); }
+.mn-tool { width: round(calc(56 * var(--u)), 2px); justify-content: center; padding: 0; color: var(--cf-gilt); text-decoration: none; }   /* a.mn-tool: patch notes link */
 .mn-tool .ico { width: round(calc(32 * var(--u)), 2px); height: round(calc(32 * var(--u)), 2px); }
 .mn-tool .ico-glyph { font: 800 calc(26 * var(--u)) / 1 var(--font-head); }
 .mn-tome:hover, .mn-tool:hover, .mn-tome.is-on, .mn-tool.is-on {
