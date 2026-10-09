@@ -1,4 +1,4 @@
-# Riftbound — Architecture & Module Contracts (v5.0 — Rift Obelisks + raid-style boss encounters; v4.0 heroes on the rig + world-grounded spell VFX)
+# Riftbound — Architecture & Module Contracts (v6.0 — the Crownshard + pacts; v5.0 — Rift Obelisks + raid-style boss encounters; v4.0 heroes on the rig + world-grounded spell VFX)
 
 Read `DESIGN.md` for the game design (numbers are there). This file is the **contract** every module must respect.
 
@@ -45,7 +45,9 @@ src/game/bosses/affixes.js        Wrath affixes (frenzied, bulwark, reverberatin
 src/game/bosses/{gorrak,vashkar,aurelith}.js   boss scripts: moves, rotation, intermissions  (boss agents)
 src/game/bosses/legacy.js         v4 bosses, frozen (fallback while a script has `static ready = false`)  (frozen)
 src/game/encounter.js             encounter director (v5): summon → Seal → fight → Echo → victory; ARENAS  (encounter)
-src/game/obelisks.js              Rift Obelisks (v5): channel, stakes, Windfall, Wrath heat, payouts  (obelisks)
+src/game/obelisks.js              The Crownshard director (v6; historic name): shard states, commune, pacts, Rift Answer, stakes, payouts (obelisks)
+src/game/shard/model.js           ShardVisual (v6): the Crownshard 3D set piece, its states and one-shot FX  (shard-art)
+src/ui/pact.js + css/pact.css     the Pact screen (v6): pact columns, Wrath stepper, Call it now / Seal / Walk away  (ui-pact)
 src/game/creatures/bosses/{common,gorrak,vashkar,aurelith}.js   boss rigs + poses; bossModels.js is the facade  (creatures)
 src/game/arena/{wall,common,geo,verge,cinder,crown}.js   encounter walls per boss/biome (Thornwood hedge, basalt, crystal)  (arena)
 src/game/spawner.js               act-aware spawning, beats, boss spawn                       (bosses)
@@ -78,7 +80,7 @@ src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, 
 | Member | Meaning |
 |---|---|
 | `scene`, `camera`, `engine`, `input`, `events` | as named |
-| `state` | `'title' \| 'playing' \| 'levelup' \| 'relic' \| 'paused' \| 'shift' \| 'dead' \| 'victory'` |
+| `state` | `'title' \| 'playing' \| 'levelup' \| 'relic' \| 'paused' \| 'pact' \| 'shift' \| 'dead' \| 'victory'`. `'pact'`: the Pact screen is open (v6); the game is paused and the world is desaturated |
 | `phase` | `'horde' \| 'boss' \| 'shift'` |
 | `time` | total run seconds |
 | `act` (0..2), `actTime`, `actDef` | current act index, seconds into the act, and `ACTS[act]` (acts.js) |
@@ -86,7 +88,7 @@ src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, 
 | `player`, `enemies`, `boss`, `fx`, `vfx`, `world`, `pickups`, `spawner`, `ui`, `audio` | `vfx` = the world-grounded spell VFX toolkit (src/game/vfx/, design/VFX.md) |
 | `creatures`, `heroes` | CreatureRenderers: enemies + bosses (renderOrder 3), the player hero (2.0 px outline, renderOrder 21) |
 | `encounter` | Encounter director (encounter.js, v5): `summon(reason)`, `arena` (`{ center, r, r0, zoom }`), `setArenaRadius(r, sec)`, `holdModals()`. `game.phase === 'boss'` while it runs |
-| `obelisks` | Rift Obelisks (obelisks.js, v5): channel state; writes `game.run.stakes` (reset per act) |
+| `obelisks` | The Crownshard director (obelisks.js; name kept from v5): shard state, commune, pacts, Rift Answer; writes `game.run.stakes` (reset per act) |
 | `chain` | current reaction Chain (0 = none) |
 | `stats` | `{ kills, damageDealt, reactions:{type:n}, fusions:[names], level, time, maxChain, bossesKilled, act, classId, tier, … }`. At run end it also has `shardsEarned, unlocks:[classIds], tierUnlocked, totalShards, victory, relics:[names]` |
 | `meta` | persistent save (meta.js): `{ shards, attune:{id:rank}, unlocked:{classId:true}, codex:{reactions,fusions,relics}, stats, maxTier, lastClass, lastTier, unlockAll, shake (1/0.5/0), tutorialDone, tips:[ids] }` |
@@ -152,10 +154,12 @@ src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, 
 | `bossImpact` | `{ enemy, pos, heavy }` | every resolved hostile shape (music ducks, SFX thud) |
 | `echoMend` | `{ enemy, dur }` | the first body died; the Echo rises after `dur` |
 | `bossTell` / `bossWard` | `{ enemy, kind, lead }` / `{ enemy, ward }` | big tells (music/SFX accents); Aurelith's ward |
-| `obelisksRisen` | `{ obelisks }` | 0:50 of each act |
-| `obeliskChannel` | `{ obelisk, progress }` | throttled (≤ 10 Hz) |
-| `obeliskArmed` | `{ type: 'haste'\|'echo'\|'wrath', heat, affix }` | |
-| `obeliskCollapse` | `{}` | encounter start |
+| `shardWake` | `{ pos }` | 0:50 of each act (replaces `obelisksRisen`) |
+| `pactOpen` | `{}` | the Pact screen opens; the game is paused |
+| `pactClose` | `{ sealed, haste }` | the Pact screen closes; the game resumes |
+| `obeliskArmed` | `{ type: 'haste'\|'echo'\|'wrath', heat, affix }` | once per newly sealed stake (Wrath: once per heat step) |
+| `riftAnswer` | `{ pos, foes, seconds }` | the horde answers a newly sealed pact |
+| `shardAscend` | `{}` | encounter start (replaces `obeliskCollapse`) |
 | `obeliskPayout` | `{ shards, parts, lines }` | the payout summary, paid only on a won boss fight |
 | `wrathCache` | `{ card }` | heat 2+: the Wrath Cache card (a decision of `kind: 'wrathCache'`) after the boss dies |
 

@@ -6,20 +6,24 @@ Pick one of four classes and fight through the goblin-haunted **Thornwood**, the
 
 **Play it:** https://theclaessens.github.io/Riftbound/ · **Patch notes:** https://theclaessens.github.io/Riftbound/changelog/ (source: [changelog/index.html](changelog/index.html); newest release on top, also linked from the title screen).
 
-## Rift Obelisks & raid bosses (v5)
-* **Rift Obelisks** rise at 0:50 of every act. **Haste** summons the boss now (Windfall XP, shards and an extra relic choice). **Echo** brings the boss back once more, stronger, for a Boss Relic chest. **Wrath** adds boss affixes and a tougher boss for better loot (up to three heats). Stand in a ring for 4 s to arm one. Doing nothing is fine: the boss still comes at 3:00.
+## The Crownshard & raid bosses (v6)
+* **The Crownshard**, a shard of the shattered Riftcrown, wakes at the heart of every land at 0:50. Press **F** beside it and time stops while you read your pacts side by side: **Call it now** brings the boss at once (Windfall XP, shards and an extra relic choice), **Echo** brings it back once more for a Boss Relic chest, and **Wrath** adds boss affixes and a tougher boss for better loot (up to three heats). Sealing a new pact makes the horde answer. You can return until the boss arrives, and doing nothing is fine: it still comes at 3:00.
 * **Raid-style boss fights**: the arena seals around you, the horde turns into XP, and the boss fights alone with its own score. Three phases with intermissions, a **Stagger** bar (filled by reactions, freezes, stuns, perfect dodges and crystal blasts), **Downed** windows, named **Break Checks**, and gold "go here" safe zones.
 * **Six Boss Relics** (tag `boss`), offered only by Echo Chests and Wrath heat 3.
-* Design: [design/RAID_PASSES.md](design/RAID_PASSES.md) (the passes; Pass 8 is the round-2 tuning) and [design/RAID.md](design/RAID.md) (the implementer contract).
+* Design: [design/SHARD_PASSES.md](design/SHARD_PASSES.md) and [design/SHARD.md](design/SHARD.md) (the v6 Crownshard passes and contract); [design/RAID_PASSES.md](design/RAID_PASSES.md) (the raid passes; Pass 8 is the round-2 tuning) and [design/RAID.md](design/RAID.md) (the raid implementer contract).
 
 ## Run
 
-ES modules need to be served over HTTP (opening `index.html` directly won't work). An internet connection is needed on first load (Three.js and fonts come from a CDN).
+ES modules need to be served over HTTP (opening `index.html` directly won't work). Three.js and the fonts are vendored in `vendor/`, so no internet connection is needed.
 
 * **Any OS with Node.js 18+**: in this folder run `npm start` (no dependencies to install).
 * **Windows without Node**: double-click `start.bat`, or run `powershell -ExecutionPolicy Bypass -File serve.ps1`.
 
 Then open http://localhost:8080. To play every class at any Rift Tier, tick **Unlock all** on the title screen (or add `?unlockall` / `#unlockall` to the URL). Switching it off restores your earned unlocks.
+
+## CrazyGames build
+
+`powershell -ExecutionPolicy Bypass -File tools/package-crazygames.ps1` writes `dist/crazygames/` and `dist/riftbound-crazygames-<version>.zip` (upload the zip in the CrazyGames Developer Portal). The package adds the CrazyGames SDK v3 and sets `window.RIFTBOUND_PLATFORM`; `src/platform.js` then initialises the SDK, reports loading and gameplay start/stop, and hides links that leave the game (patch notes, GitHub feedback). Test it locally with the `riftbound-crazygames` launch config (port 8095), or add `?platform=crazygames` to the normal dev URL. The repo root (GitHub Pages) loads no SDK.
 
 ## Controls
 
@@ -30,6 +34,7 @@ Then open http://localhost:8080. To play every class at any Rift Tier, tick **Un
 | LMB | Class starter skill |
 | RMB / Q / E / R | Skill slots |
 | Space | Dash (Perfect Dodge: dash just before a hit) |
+| F | Commune with the Crownshard (opens the Pact screen; time stops) |
 | T | Toggle auto-cast |
 | Wheel | Zoom |
 | Esc / P | Pause, build and Codex |
@@ -51,7 +56,7 @@ const { runSim } = await import('/src/dev/sim.js');
 await runSim({ classId: 'cryomancer', seconds: 700 });
 ```
 
-Obelisk lanes (v5) and a direct boss fight:
+Pact lanes (v6: they seal pacts at the Crownshard, same syntax) and a direct boss fight:
 
 ```js
 await runSim({ classId: 'cryomancer', seconds: 800, obelisks: ['haste@90', 'echo', 'wrath:2'] });

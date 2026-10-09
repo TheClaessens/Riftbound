@@ -8,9 +8,10 @@ import { FUSIONS } from '../game/skills/registry.js';
 
 const DT = 1 / 30;
 
-// ---- Rift Obelisk lanes (v5). runSim({ obelisks: ['haste@90', 'echo', 'wrath:2'] }):
+// ---- Pact lanes (v6 Crownshard; syntax kept from the v5 obelisks). runSim({ obelisks: ['haste@90', 'echo', 'wrath:2'] }):
 //   'echo' | 'wrath' (heat 1) | 'wrath:N' (heat N, 1..3) | 'haste' (at 2:00) | 'haste@S' (at actTime S seconds).
-// Every act the bot walks to and channels the listed obelisks (Haste last, once its time has come).
+// Every act the bot walks to the Crownshard once it wakes and seals the listed pacts in one visit
+// (the Rift Answer follows); Haste is a second visit once its time has come.
 export function parseObelisks(list = []) {
   const out = [];
   for (const s of list) {
@@ -20,20 +21,20 @@ export function parseObelisks(list = []) {
   }
   return out;
 }
+// The draft the lane wants sealed right now, or null (nothing to do at the shard yet).
+function pactWant(game, plan) {
+  const O = game.obelisks, s = O?.shard;
+  if (!plan?.length || !s || s.state !== 'open' || game.encounter?.active || game.phase !== 'horde') return null;
+  const st = O.stakes, t = game.actTime;
+  const echo = plan.some((x) => x.type === 'echo');
+  const heat = Math.max(0, ...plan.filter((x) => x.type === 'wrath').map((x) => x.heat));
+  const haste = plan.find((x) => x.type === 'haste');
+  const hasteNow = !!haste && t >= haste.at;
+  if (!hasteNow && (!echo || st.echo) && heat <= (st.heat ?? 0)) return null;
+  return { echo: echo || !!st.echo, heat: Math.max(heat, st.heat ?? 0), haste: hasteNow };
+}
 function obeliskTarget(game, plan) {
-  const L = game.obelisks?.list;
-  if (!plan?.length || !L?.length || game.encounter?.active || game.phase !== 'horde') return null;
-  const t = game.actTime;
-  const live = (type) => L.find((o) => o.type === type && (o.state === 'idle' || o.state === 'channel'));
-  const haste = plan.find((s) => s.type === 'haste');
-  if (haste && t >= haste.at) { const o = live('haste'); if (o) return o; }
-  for (const s of plan) {
-    if (s.type === 'haste') continue;
-    const o = live(s.type);
-    if (!o || (s.type === 'echo' && o.armed) || (s.type === 'wrath' && o.heat >= s.heat)) continue;
-    return o;
-  }
-  return null;
+  return pactWant(game, plan) ? game.obelisks.shard : null;
 }
 
 const _cand = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
@@ -199,6 +200,8 @@ export async function runSim({ classId = 'arcanist', seconds = 700, tier = 0, lo
   for (let i = 0; i < steps; i++) {
     if (game.state === 'dead' || game.state === 'victory') break;
     if (game.state === 'playing' || game.state === 'shift') botSteer(game, plan);
+    // the Crownshard: in range, seal the lane's pacts directly (no Pact screen)
+    if (game.state === 'playing' && game.obelisks?.canCommune?.()) { const want = pactWant(game, plan); if (want) game.obelisks.sealPact(want); }
     try { game.update(DT); } catch (err) { tl.errors.push(String(err?.stack ?? err).slice(0, 400)); if (tl.errors.length > 5) break; }
     if (game.state === 'paused') game.togglePause();
     maxEnemies = Math.max(maxEnemies, game.enemies.length);

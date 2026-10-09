@@ -1,8 +1,8 @@
-# RIFTBOUND — Game Design v5 (v2 = vibrant world + creatures; v2.1 = playtest fixes; v3 = Crownforge UI; v4 = heroes on the creature rig + world-grounded spell VFX; v5 = Rift Obelisks + raid-style boss encounters; v5.2 = raid sustain & targeting)
+# RIFTBOUND — Game Design v5 (v2 = vibrant world + creatures; v2.1 = playtest fixes; v3 = Crownforge UI; v4 = heroes on the creature rig + world-grounded spell VFX; v5 = Rift Obelisks + raid-style boss encounters; v5.2 = raid sustain & targeting; v6 = the Crownshard)
 
 > An isometric horde-survival ARPG in three acts. Pick a class, weave elements into reactions, bend your build with relics, and dash through the telegraphs. Descend through the Rift and shatter its Heart.
 
-The rationale and the cut list are in [design/PASSES.md](design/PASSES.md). The v5 raid rework is in [design/RAID_PASSES.md](design/RAID_PASSES.md) (passes; Pass 8 = round-2 tuning) and its implementer contract is [design/RAID.md](design/RAID.md). This file is the **spec**: implement the numbers as written, then tune them with the simulation harness.
+The rationale and the cut list are in [design/PASSES.md](design/PASSES.md). The v5 raid rework is in [design/RAID_PASSES.md](design/RAID_PASSES.md) (passes; Pass 8 = round-2 tuning) and its implementer contract is [design/RAID.md](design/RAID.md). The v6 Crownshard (it replaces the obelisks, §3b) is in [design/SHARD_PASSES.md](design/SHARD_PASSES.md), its API contract in [design/SHARD.md](design/SHARD.md). This file is the **spec**: implement the numbers as written, then tune them with the simulation harness.
 
 ---
 
@@ -21,13 +21,13 @@ Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It 
 | II | **The Sunscorch Barrens** (ochre badlands, mesas, orc war camps) | The Warband (orcs, ogres, wargs; resist Fire 50%) | **Vashkar, the Ashen Warchief** (resist Fire 50%) | Fissure Geysers | frost, storm |
 | III | **The Stormwater Reach** (stormy riverlands, drowned ruins, dragons) | The Wyrmkin (dragons, naga, kobolds; elites carry Prism Ward) | **Aurelith, the Prism Dragon** (rotating Prism Ward) | Lightning Strikes | all 4 |
 
-* **Act clock**: 3:00 of horde (`ACT_LENGTH = 180`), then the boss spawns. That 3:00 summon is the default path; Rift Obelisks can bring the boss forward (§3b). Once the boss is summoned, the horde stops and the encounter frame runs (§9b).
+* **Act clock**: 3:00 of horde (`ACT_LENGTH = 180`), then the boss spawns. That 3:00 summon is the default path; the Crownshard's pacts can bring the boss forward (§3b). Once the boss is summoned, the horde stops and the encounter frame runs (§9b).
 * **Beats per act**:
 
   | Time | Beat |
   |---|---|
   | 0:00 | Act title card |
-  | 0:50 | **Rift Obelisks** rise: Haste / Echo / Wrath (§3b) |
+  | 0:50 | **The Crownshard wakes**: commune (F) to seal pacts (§3b) |
   | 1:30 | **Elite Surge**: 3 elites; the gold-marked **Relic Bearer** (×1.5 HP) drops a Relic Chest |
   | 2:15 | **Swarm**: a ring of 24 swarmers |
   | 3:00 | **Boss** (default summon; the encounter, §9b) |
@@ -52,21 +52,33 @@ Vael's mages tried to bind the four elemental Primes into the **Riftcrown**. It 
 * Live cap: 320.
 * Elite chance (after 0:45 of an act): 1%.
 * Elites have ×4 HP, ×1.35 radius, ×6 XP (min 10), ×1.3 damage and a rim aura. Random elites drop a Relic Chest 6% of the time (≈ 7 relics per full run, counting surges and bosses).
-* Boss HP (v5.2): Gorrak 12,000 · Vashkar 21,500 · Aurelith 86,000 (× (1 + 0.3·tier)). Bosses drop a chest (it flies to you during the Rift Shift), a health orb and a magnet. Obelisk payouts are paid only if you win that boss fight (§3b).
+* Boss HP (v5.2): Gorrak 12,000 · Vashkar 21,500 · Aurelith 86,000 (× (1 + 0.3·tier)). Bosses drop a chest (it flies to you during the Rift Shift), a health orb and a magnet. Pact payouts are paid only if you win that boss fight (§3b).
 
-## 3b. Rift Obelisks (v5)
-Three obelisks rise at **0:50** of every act (the same three, always): **Haste**, **Echo**, **Wrath**. Each stands 20–32 u from you, ≥ 100° apart in bearing and ≥ 12 u from each other, inside r 48. Haste is pale cyan `#bfefff` (gold is reserved for safe zones).
-* **Activation = channel.** Stand in r 3.0 for **4 s** (progress decays 0.25/s outside). During a channel, horde packs spawn 14–20 u out around that obelisk (**Rift Pull**).
-* Costs attach to the **encounter**, never to the clock: activating at 2:59 does not dodge them. When the boss spawns (timer or Haste), every obelisk collapses.
+## 3b. The Crownshard & pacts (v6)
+**Placement and waking.** One Crownshard, a shard of the shattered Riftcrown, stands at the world origin in every act (collision r 1.6). The player starts every act beside it, at (4.5, 0, 4.5). Until **0:50** it is dormant: chained, tilted, half-sunk and dim. At 0:50 it wakes: the chains snap, the shard lifts into the air, and its light column shows across the land. Crystals and shrines keep 11 u clear of it. Haste is pale cyan `#bfefff` (gold is reserved for safe zones).
 
-| Obelisk | Effect | Cost | Pay (only if you win that boss fight) |
+**Commune.** Stand within r 4.5 of the shard and press **F** (horde phase, not dashing; no channel). The game pauses on the **Pact screen**: the world drains of colour and the shard is the one bright thing. Commune again as often as you like until the boss arrives. Sealed pacts are oaths and cannot be undone. Walking away costs nothing.
+
+**The Pact screen.** Three pacts side by side, each with its risk and reward:
+* **Pact of Echo**: a toggle.
+* **Pact of Wrath**: a 0–3 heat stepper. Each step shows the affix it adds; all three affixes are visible up front. Sealed levels show locked.
+* **Call it now** (Pact of Haste): the primary action. It seals the draft and calls the boss in 3 s.
+* **Seal the pact** seals the draft and leaves the boss on its 3:00 timer. **Walk away** (Esc) changes nothing. Keys: 1 toggles Echo, 2 / 3 raise / lower Wrath, Enter seals, H calls.
+
+**The Answer.** Sealing at least one *new* level (Echo = 1, each Wrath step = 1) without Haste makes the horde answer when the game resumes: after a 0.8 s flare, **6 foes per new level** burst out 11–15 u around the shard, and for **4 s per new level** horde spawns converge on the shard (**Rift Pull**). Opening the screen gives no protection: you resume exactly where you were.
+
+**Ascend.** When the encounter starts (timer or Haste), the shard rises up its light column (1.4 s) and is gone for the rest of the act, leaving a cold ruin. The next act starts with a new, dormant shard.
+
+Costs attach to the **encounter**, never to the clock: sealing at 2:59 still counts, and still triggers the Answer.
+
+| Pact | Effect | Cost | Pay (only if you win that boss fight) |
 |---|---|---|---|
-| **Haste** "Summon now" | 3 s warning ("THE HEART STIRS"; Elite Surge and Swarm don't fire during it), then the boss encounter starts. | The rest of the act's horde (XP, Elite Surge, Swarm). | **Windfall XP** = 40% of the act XP still ahead; **Haste Bounty** = `round(0.25 × seconds skipped × actMult)` shards (none in Act III, the final act, which also drops the chest line); the boss chest offers 4 relics instead of 3. The card warns below 40% HP. |
-| **Echo** "The boss comes twice" | After the kill: 3 s **Rift Mend** (heal 20%, dash refilled), then the boss returns as an **Echo**: 55% HP, starts at Phase 2, faster. | **Strain**: +10% damage taken for the whole encounter (both bodies). | **Echo Chest**: pick 1 of 3 **Boss Relics** + 25 × actMult shards. |
-| **Wrath** "Heat" (channel up to 3×) | Each channel = +1 Heat = one **boss affix**, pre-rolled and shown on the pillar before you channel (Frenzied, Bulwark, Reverberating, Rift Storm, Vengeful). Heat 2: boss HP +15%. Heat 3: HP +30%, damage +10%. | The affixes; channelling under a Rift Pull. After each heat you must step out of the ring and back in to channel again. | Heat 1: +1 relic choice. Heat 2: + **Wrath Cache** (+1 rank to a skill of your choice). Heat 3: one boss-chest choice is a guaranteed **Boss Relic**. Shards 8 / 20 / 45 × actMult (total at that heat). |
+| **Pact of Haste** "Call it now" | "Call it now" on the Pact screen: 3 s warning ("THE SHARD CALLS"; Elite Surge and Swarm don't fire during it), then the boss encounter starts. No Answer. | The rest of the act's horde (XP, Elite Surge, Swarm). | **Windfall XP** = 40% of the act XP still ahead; **Haste Bounty** = `round(0.25 × seconds skipped × actMult)` shards (none in Act III, the final act, which also drops the chest line); the boss chest offers 4 relics instead of 3. The card warns below 40% HP. |
+| **Pact of Echo** "The boss comes twice" | After the kill: 3 s **Rift Mend** (heal 20%, dash refilled), then the boss returns as an **Echo**: 55% HP, starts at Phase 2, faster. | **Strain**: +10% damage taken for the whole encounter (both bodies). Sealing it triggers the Answer. | **Echo Chest**: pick 1 of 3 **Boss Relics** + 25 × actMult shards. |
+| **Pact of Wrath** "Heat" (heat 0–3) | Each heat step = +1 Heat = one **boss affix**, pre-rolled and shown on the Pact screen before you seal (Frenzied, Bulwark, Reverberating, Rift Storm, Vengeful). Heat 2: boss HP +15%. Heat 3: HP +30%, damage +10%. | The affixes. Each new heat step triggers the Answer. | Heat 1: +1 relic choice. Heat 2: + **Wrath Cache** (+1 rank to a skill of your choice). Heat 3: one boss-chest choice is a guaranteed **Boss Relic**. Shards 8 / 20 / 45 × actMult (total at that heat). |
 
 * `actMult` = [1, 1.5, 2] for acts I–III.
-* **Shard guard**: obelisk shards are capped at 60% of the run's base shards (before the tier multiplier).
+* **Shard guard**: pact shards are capped at 60% of the run's base shards (before the tier multiplier).
 * **Act III**: chest and cache perks become +20 shards each instead (the run ends at the kill).
 * The 3:00 path is unchanged and remains the fully balanced default.
 
@@ -78,6 +90,7 @@ Three obelisks rise at **0:50** of every act (the same three, always): **Haste**
 | LMB | Class starter skill (hold) |
 | RMB / Q / E / R | Active skill slots 1–4 (hold) |
 | **Space** | **Dash** |
+| **F** | Commune with the Crownshard (opens the Pact screen, §3b) |
 | T | Auto-cast toggle (RMB/Q/E/R fire at the nearest foe) |
 | Wheel | Zoom |
 | Esc / P | Pause + Codex |
@@ -398,7 +411,7 @@ A 0–100 bar under the nameplate (Gorrak 110), filled by play, not raw damage:
   * The focus glows with the last-cast element. The element shows at rest, tied to the class meter (embers / armor shards / tine arcs / halo spin).
 * **Spell VFX (v4)**: every ability is drawn as a real phenomenon of the world. Fire is forge billows with soot; frost is a squall, rime and spikes; storm is slate thunderheads and forked bolts; arcane is rune circles, void and starlight. Zone edges are physical features at the exact gameplay radius, never flat circles. See `design/VFX.md` and `design/research/10-ability-vfx-bible.md`.
 * **HUD** (v3 "Crownforge", full spec in `design/UI.md`, rationale in `design/UI_PASSES.md`):
-  * top centre: act timeline (act gems, 0:00–3:00 track with Elite Surge / Swarm / Boss markers, timer) + a beat ribbon ("Elite Surge in 0:08"); in boss fights the boss frame: name, 3 phase pips with notches at 66% and 33%, the Prism Ward badge (element gem + countdown, Aurelith), a STAGGER bar (steel-white, with a threshold marker during a Break Check and a DOWNED state), a cast bar for Break Checks and named casts, Wrath affix pips, an Echo pip, and SEALED / DOWNED / WINDED / EXPOSED chips. Obelisks: edge markers, an approach card at ≤ 10 u (cost, pay, the net level estimate for Haste, the rolled affix for Wrath), a channel ring, and armed chips on the act timeline (the boss marker slides to "now" on Haste)
+  * top centre: act timeline (act gems, 0:00–3:00 track with Elite Surge / Swarm / Boss markers, timer) + a beat ribbon ("Elite Surge in 0:08"); in boss fights the boss frame: name, 3 phase pips with notches at 66% and 33%, the Prism Ward badge (element gem + countdown, Aurelith), a STAGGER bar (steel-white, with a threshold marker during a Break Check and a DOWNED state), a cast bar for Break Checks and named casts, Wrath affix pips, an Echo pip, and SEALED / DOWNED / WINDED / EXPOSED chips. The Crownshard (v6): an edge marker while it is off screen, a world-anchored prompt above it ("F Commune" / "Wakes in 0:12"), the Pact screen (src/ui/pact.js), and sealed-pact chips under the act plate (the boss marker slides to "now" on Haste)
   * bottom centre: one compact action bar: level, HP (shield hatch, damage ghost), XP line, dash socket with charge pips, 5 skill sockets with cooldown sweeps and rank pips, auto-skill gems, auto-cast toggle, buffs with radial timers
   * under the character: mini HP, dash pips, Frost Armor pips / Momentum strip (replaces the old trait panel)
   * right lane: CHAIN ×N (white → amber → prism), milestone stamps, Arcanist Resonance meter, reaction feed, discovery toasts
@@ -409,7 +422,7 @@ A 0–100 bar under the nameplate (Gorrak 110), filled by play, not raw damage:
     * Gorrak: F minor pentatonic, 6/8, taiko and bone horn.
     * Vashkar: C phrygian-dominant march, moving to 7/8 in P3.
     * Aurelith: Eb lydian, organ and choir; the chord follows the Prism Ward.
-  * SFX: dash, perfect dodge, relic open/pick, geode shatter, shrine claim, Rift Shift, boss phase, ward break, chain milestones (10/25/50), Seal and landing, Break Check success/fail, Downed, obelisk arm and payout.
+  * SFX: dash, perfect dodge, relic open/pick, geode shatter, shrine claim, Rift Shift, boss phase, ward break, chain milestones (10/25/50), Seal and landing, Break Check success/fail, Downed, the Crownshard (wake, commune drone with SFX duck, per-pact seal, the horde's answer, ascend) and pact payout.
 
 ## 11b. Onboarding: the Rift Primer (playtest v2.1)
 The Rift Primer is a first-run tutorial (`src/game/tutorial.js`) played inside Act I itself. It has no separate level, no modal and no pause. A small objective panel on the left walks through one step at a time:

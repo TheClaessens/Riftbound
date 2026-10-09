@@ -24,8 +24,8 @@ const META_KEY = 'riftbound.meta.v1';
 const SRC = { EnemyBullet: 'enemy projectile', FlameRing: 'boss flame ring', LavaTrail: 'boss lava trail', BeamSweep: 'boss beam sweep' };
 const srcName = (s) => !s ? 'unknown' : s.type === 'hazard' ? `map hazard: ${s.kind}` : s.name ?? SRC[s.constructor?.name] ?? s.type ?? s.constructor?.name ?? 'unknown';
 const _v = new THREE.Vector3();
-// v5: the obelisk the playtester asked the hands to walk to and channel (PT.channel)
-let OB_GOAL = null;
+// v6: the playtester asked the hands to walk to the Crownshard and commune (PT.commune)
+let SHARD_GOAL = false;
 // round 3: PT.autoCast(true) = the game's own auto-cast (T) picks targets; the hands only move and dash
 let AUTO_CAST = false;
 
@@ -39,12 +39,12 @@ const hands = createTopdownHands({
   hazards: () => G().actors.filter((a) => a.hostile && a.pos && !(a.dir && a.speed)).map((a) => ({ x: a.pos.x, z: a.pos.z, radius: a.radius })),
   goals: (p) => {
     const g = G(), out = [];
-    // v5: walk to the obelisk being channelled (PT.channel) and stay inside its ring
-    const ob = OB_GOAL && g.obelisks?.list?.find((o) => o.type === OB_GOAL.type && (o.state === 'idle' || o.state === 'channel'));
-    if (ob) {
-      const d = Math.hypot(ob.pos.x - p.x, ob.pos.z - p.z);
-      out.push({ x: ob.pos.x, z: ob.pos.z, weight: d > 2 ? 3 : 0.4, calmOnly: false });
-    } else if (OB_GOAL) OB_GOAL = null;
+    // v6: walk to the Crownshard (PT.commune); afterStep opens the Pact screen once in range
+    const sh = SHARD_GOAL && g.obelisks?.shard;
+    if (sh && (sh.state === 'open' || sh.state === 'dormant' || sh.state === 'waking')) {
+      const d = Math.hypot(sh.pos.x - p.x, sh.pos.z - p.z);
+      out.push({ x: sh.pos.x, z: sh.pos.z, weight: d > 3.2 ? 3 : 0.4, calmOnly: false });
+    } else if (SHARD_GOAL) SHARD_GOAL = false;
     // v5: debuffed (Gorrak's spores) → the gold cleanse pools
     if (g.player?.buffs?.has('spores') && g.boss?.actors) {
       for (const a of g.boss.actors) if (a.kind === 'safe' && !a.dead) { out.push({ x: a.pos.x, z: a.pos.z, weight: 2.5, calmOnly: false }); break; }
@@ -111,6 +111,41 @@ function stakesView(st) {
   return s.length ? s.join(' + ') : undefined;
 }
 
+// v6: the Pact screen as a decision. Option 0 is always 'walk away' (the safe auto-pick).
+function pactOptions(view) {
+  const O = G().obelisks, sealed = view.sealed, out = [{ action: 'walk away', label: 'Walk away (nothing changes)' }];
+  for (const echo of sealed.echo ? [true] : [false, true]) {
+    for (let heat = sealed.heat; heat <= 3; heat++) {
+      for (const haste of [false, true]) {
+        const ans = O.answerPreview({ echo, heat, haste });
+        if (!haste && ans.levels === 0) continue;
+        const add = [echo && !sealed.echo && 'Echo', heat > sealed.heat && `Wrath ${sealed.heat + 1 === heat ? heat : `${sealed.heat + 1}-${heat}`}`].filter(Boolean);
+        out.push({
+          action: haste ? 'call it now (Haste)' : 'seal the pact', label: `${haste ? 'Call the boss now' : 'Seal'}${add.length ? ': ' + add.join(' + ') : ''}`,
+          echo, heat, haste, hordeAnswers: haste ? 'no (the boss comes in 3 s)' : `${ans.foes} foes + ${ans.seconds}s of converging packs`,
+        });
+      }
+    }
+  }
+  return out;
+}
+function pactInfo(view) {
+  const lines = (pv) => pv && { risk: pv.cost, reward: pv.pay };
+  return {
+    boss: view.bossName, arrivesIn: fmtTime(view.timeLeft), lowHp: view.lowHp, sealed: view.sealed,
+    haste: lines(view.haste), echo: lines(view.echo),
+    wrath: [1, 2, 3].map((h) => ({ heat: h, affix: view.affixes[h - 1] ? `${view.affixes[h - 1].name}: ${view.affixes[h - 1].desc}` : null, ...lines(view.wrath[h]) })),
+    note: 'Time is stopped while this screen is open. Wrath levels are cumulative. Sealed pacts cannot be undone.',
+  };
+}
+
+function shardView(g) {
+  const s = g.obelisks?.shard, p = g.player;
+  if (!s || !p || s.state === 'gone') return undefined;
+  const d = Math.round(Math.hypot(s.pos.x - p.pos.x, s.pos.z - p.pos.z));
+  return `${s.state}${s.state === 'dormant' ? ` (wakes in ${Math.ceil(s.wakeIn)}s)` : ''}, ${d} u away${g.obelisks.canCommune() ? ' — in range: F to commune' : ''}`;
+}
+
 function relicView(r) { return { name: r.name, tag: r.tag, desc: r.desc, flavour: r.flavour }; }
 function cardView(c) {
   return { type: c.type, name: c.name, element: c.element, rank: c.rank, desc: c.desc, hint: c.hint || undefined };
@@ -136,6 +171,18 @@ const PT = createPlaytest({
     // decisions wait for the playtester; the real modal still opens so PT.ui() can read it
     const lu = ui.showLevelUp.bind(ui), rp = ui.showRelicPick.bind(ui);
     ui.showLevelUp = (cards, onPick, ctl, extra) => { if (ctx.running) offerLevelUp(ctx, cards, onPick, ctl, extra); lu(cards, onPick, ctl, extra); };
+    // v6: the Crownshard's Pact screen
+    const pa = ui.showPact.bind(ui);
+    ui.showPact = (view, h) => {
+      if (ctx.running) {
+        const options = pactOptions(view);
+        ctx.offer({
+          kind: 'pact', info: pactInfo(view), options,
+          pick: (i) => { const o = options[i]; if (o.action === 'walk away') h.onLeave(); else if (o.haste) h.onCall({ echo: o.echo, heat: o.heat }); else h.onSeal({ echo: o.echo, heat: o.heat }); },
+        });
+      }
+      pa(view, h);
+    };
     ui.showRelicPick = (relics, onPick) => {
       if (ctx.running) ctx.offer({ kind: 'relic', options: relics.map(relicView), pick: (i) => onPick(relics[i]) });
       rp(relics, onPick);
@@ -187,7 +234,7 @@ const PT = createPlaytest({
     on('actStart', ({ act, def }) => ctx.event(`act ${act + 1} starts: ${def?.name ?? def?.id ?? ''}`));
     on('bossSpawned', ({ enemy }) => { ctx.run.bossT = g.time; ctx.event(`boss appears: ${enemy.name}`); });
     on('bossPhase', ({ enemy, phase }) => ctx.event(`${enemy.name} enters phase ${phase ?? 2}`));
-    // v5: raid encounters + obelisks
+    // v5: raid encounters; v6: the Crownshard
     on('encounterStart', ({ reason, stakes }) => {
       const st = [stakes?.echo && 'Echo', stakes?.heat && `Wrath heat ${stakes.heat} (${(stakes.affixes ?? []).join(', ')})`, stakes?.haste && 'Haste'].filter(Boolean);
       ctx.event(`THE ARENA SEALS (${reason}); stakes: ${st.join(' + ') || 'none'}`);
@@ -200,9 +247,10 @@ const PT = createPlaytest({
     on('bossEnrage', ({ enemy }) => ctx.event(`${enemy.name} ENRAGES`));
     on('echoMend', () => ctx.event('the boss falls... the Echo rises (Rift Mend)'));
     on('encounterEnd', ({ enemy }) => ctx.event(`ENCOUNTER WON: ${enemy?.name}`));
-    on('obelisksRisen', () => ctx.event('THREE RIFT OBELISKS RISE (Haste / Echo / Wrath): see PT.obelisks()'));
-    on('obeliskArmed', ({ type, heat, affix }) => ctx.event(`obelisk armed: ${type}${type === 'wrath' ? ` heat ${heat} (${affix})` : ''}`));
-    on('obeliskPayout', ({ shards, lines }) => ctx.event(`obelisk payout: +${shards} shards (${(lines ?? []).map((l) => l.text).join('; ')})`));
+    on('shardWake', () => ctx.event('THE CROWNSHARD WAKES at the map centre: PT.commune() walks there and opens the Pact screen'));
+    on('obeliskArmed', ({ type, heat, affix }) => ctx.event(`pact sealed: ${type}${type === 'wrath' ? ` heat ${heat} (${affix})` : ''}`));
+    on('riftAnswer', ({ foes, seconds }) => ctx.event(`the horde answers the pact: ${foes} foes burst out around the shard, packs converge for ${Math.round(seconds)}s`));
+    on('obeliskPayout', ({ shards, lines }) => ctx.event(`pact payout: +${shards} shards (${(lines ?? []).map((l) => l.text).join('; ')})`));
     on('bossKilled', ({ enemy }) => ctx.event(`boss killed: ${enemy.name} in ${Math.round(g.time - (ctx.run.bossT ?? g.time))}s`));
     on('discovered', ({ kind, id }) => ctx.event(`NEW codex entry (${kind}): ${id}`));
     on('fusion', ({ def }) => ctx.event(`FUSION: ${def.name}`));
@@ -254,6 +302,8 @@ const PT = createPlaytest({
   },
   afterStep(ctx) {
     const g = G(), p = g.player;
+    // v6: the hands reached the Crownshard: press F (opens the Pact screen = a 'pact' decision)
+    if (SHARD_GOAL && g.obelisks?.canCommune?.()) { SHARD_GOAL = false; g.obelisks.commune(); }
     ctx.min('hpMin', p.hp);
     ctx.max('maxEnemiesAlive', g.enemies.length);
     // primer / tip panel text (reads layout: only while a panel can be up, every 6th tick)
@@ -283,7 +333,7 @@ const PT = createPlaytest({
       hp: `${Math.round(p.hp)}/${Math.round(p.stats.maxHp)}`, level: p.level, xpPct: Math.round(100 * p.xp / p.xpToNext),
       kills: g.stats.kills, chain: g.chain, maxChain: g.stats.maxChain, enemiesAlive: g.enemies.filter((e) => !e.dead && !e.inert).length,
       boss: g.boss && !g.boss.dead ? bossView(g.boss) : null,
-      obelisks: g.obelisks?.list?.length && g.phase === 'horde' ? g.obelisks.list.map((o) => `${o.type}:${o.state}${o.armed ? ' ARMED' : ''}${o.type === 'wrath' ? ` heat ${o.heat}` : ''}`).join(', ') : undefined,
+      crownshard: shardView(g),
       stakes: stakesView(g.run.stakes),
       debuffs: [...p.buffs.keys()].filter((k) => ['spores', 'rooted', 'strain'].includes(k)),
       skills: p.skills.map((s) => `${s.def.name} r${s.rank}`), passives: [...p.passives].map(([k, v]) => `${k} r${v}`),
@@ -293,11 +343,10 @@ const PT = createPlaytest({
   stops: {
     boss: () => { const had = !!G().boss; return () => !had && !!G().boss; },
     act: () => { const a0 = G().act; return () => G().act !== a0 && G().state === 'playing'; },
-    // v5
-    obelisks: () => { const had = !!G().obelisks?.list?.length; return () => !had && !!G().obelisks?.list?.length; },
+    // v5 / v6
+    shardWake: () => { const s0 = G().obelisks?.shard?.state; return () => s0 === 'dormant' && G().obelisks?.shard?.state !== 'dormant'; },
     phase: () => { const b0 = G().boss, p0 = b0?.phase, i0 = b0?.intermissionIdx; return () => { const b = G().boss; return !!b && (b !== b0 || b.phase !== p0 || b.intermissionIdx !== i0); }; },
     breakCheck: () => { const had = !!G().boss?.cast?.check; return () => !had && !!G().boss?.cast?.check; },
-    channelled: () => { const had = !!OB_GOAL; return () => had && !OB_GOAL; },
   },
   end() {
     const g = G(), s = g.stats;
@@ -307,7 +356,7 @@ const PT = createPlaytest({
       shardsEarned: s.shardsEarned, totalShards: s.totalShards, newlyUnlocked: s.unlocks, tierUnlocked: s.tierUnlocked,
       obeliskShards: s.obeliskShards ?? 0, bossFights: (s.bossTimes ?? []).map((b) => `act ${b.act + 1}${b.echo ? ' echo' : ''}: ${b.t}s`),
     };
-    OB_GOAL = null;
+    SHARD_GOAL = false;
     g.quitToTitle();
     return out;
   },
@@ -338,29 +387,17 @@ const PT = createPlaytest({
   },
 
   actions: {
-    // v5: the three Rift Obelisks (risen at 0:50 of each act): what each offers right now
-    obelisks(ctx) {
-      const g = G(), O = g.obelisks;
-      if (!O?.list?.length) return { none: g.phase === 'horde' ? `obelisks rise at 0:50 (act clock ${fmtTime(g.actTime)})` : 'collapsed (the boss is here)' };
-      return O.list.map((o) => {
-        const pv = O.preview?.(o.type) ?? {};
-        return {
-          type: o.type, name: o.def?.name, state: o.state, armed: !!o.armed, heat: o.type === 'wrath' ? o.heat : undefined,
-          distance: Math.round(Math.hypot(o.pos.x - g.player.pos.x, o.pos.z - g.player.pos.z)),
-          cost: pv.cost, pay: pv.pay, levelsDelta: pv.levelsDelta, nextAffix: o.nextAffix ? `${o.nextAffix.name}: ${o.nextAffix.desc}` : undefined,
-        };
-      });
+    // v6: the Crownshard (map centre; wakes at 0:50): its state and how far away it is
+    shard() { return shardView(G()) ?? { none: 'no shard (between acts, or it ascended when the boss came)' }; },
+    // v6: walk to the Crownshard; in range the hands press F and the Pact screen opens as a 'pact' decision.
+    // Then PT.play({ seconds: 20 }) — it stops at decision:pact.
+    commune() {
+      const g = G(), s = g.obelisks?.shard;
+      if (!s || s.state === 'ascending' || s.state === 'gone' || s.state === 'calling') return { error: 'the Crownshard is not here now', shard: shardView(g) };
+      SHARD_GOAL = true;
+      return { walking: 'crownshard', state: s.state, distance: Math.round(Math.hypot(s.pos.x - g.player.pos.x, s.pos.z - g.player.pos.z)), note: s.state === 'dormant' ? `it wakes in ${Math.ceil(s.wakeIn)}s; the hands wait beside it` : 'PT.play({ seconds: 20 }) stops at the pact decision' };
     },
-    // v5: walk to an obelisk and channel it (stand in its ring 4 s; foes converge on you meanwhile).
-    // Then PT.play({ seconds: 20, until: 'channelled' }). Wrath: call again for each extra heat.
-    channel(ctx, type) {
-      const g = G(), o = g.obelisks?.list?.find((x) => x.type === type);
-      if (!o) return { error: `no ${type} obelisk now`, obelisks: PT.obelisks() };
-      if (o.state !== 'idle' && o.state !== 'channel') return { error: `${type} obelisk is ${o.state}${o.armed ? ' (already armed)' : ''}` };
-      OB_GOAL = { type };
-      return { walking: type, distance: Math.round(Math.hypot(o.pos.x - g.player.pos.x, o.pos.z - g.player.pos.z)), note: "PT.play({ seconds: 20, until: 'channelled' })" };
-    },
-    cancelChannel() { OB_GOAL = null; return { ok: true }; },
+    cancelCommune() { SHARD_GOAL = false; return { ok: true }; },
     // round 3: play with the game's auto-cast (the T toggle) instead of the hands' manual aim
     autoCast(ctx, on = true) { AUTO_CAST = !!on; const g = G(); g.autoCast = AUTO_CAST; g.events.emit('autoCastChanged', { on: AUTO_CAST }); return { autoCast: AUTO_CAST }; },
     buy(ctx, id) {
@@ -394,7 +431,7 @@ const PT = createPlaytest({
       g.boss = null;
       g.encounter?.reset();
       g.obelisks?.reset?.();
-      OB_GOAL = null;
+      SHARD_GOAL = false;
       for (let i = g.actors.length - 1; i >= 0; i--) if (g.actors[i].hostile) { g.actors[i].dispose?.(g); g.actors.splice(i, 1); }
       g.act = a; g.actTime = boss ? 179.5 : 1; g.phase = 'horde'; g.state = 'playing';
       g.world.setBiome(['verge', 'cinder', 'crown'][a], true);
@@ -411,7 +448,7 @@ const PT = createPlaytest({
 
   // batches: full bot runs with the balance bot's draft policy (fusions > partner ranks > ...)
   autoDecide(d) {
-    if (d.kind === 'relic') return 0;
+    if (d.kind === 'relic' || d.kind === 'pact') return 0;   // pact 0 = walk away (the default 3:00 lane)
     const p = G().player;
     const partner = (id) => FUSIONS.some((f) => (f.a === id && p.getSkill(f.b)) || (f.b === id && p.getSkill(f.a)));
     const score = (c) => c.type === 'fusion' ? 100 : c.type === 'rank' ? 40 + (partner(c.id) ? 20 : 0) - c.rank

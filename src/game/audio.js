@@ -144,7 +144,13 @@ export class Audio {
     this.echoOut = null;
     this.echoFeedback = null;
     this.musicLvl = MUSIC_LEVEL;
-    this.hum = null;
+    this.sfxBus = null;             // every SFX goes through this; ducked while the Pact screen is open
+    this._cinematic = false;         // set while a long shard / pact sound is built: its voices are not counted against the SFX voice cap
+    this._bypassDuck = false;       // set while pact / seal sounds are being built (they skip the duck)
+    this.pactActive = false;
+    this.pactAt = 0;
+    this.pactDrone = null;
+    this._armedNext = 0;            // ctx time the next queued seal sound may start
     this._scoreInitState();         // boss score engine state (audio/score.js)
 
     // Subscribe to game events
@@ -192,10 +198,15 @@ export class Audio {
     on('bossWard', this._onBossWard);
     on('echoMend', this._onEchoMend);
     on('poise', this._onPoise);
-    on('obelisksRisen', this._onObelisksRisen);
-    on('obeliskChannel', this._onObeliskChannel);
+    // v6 Crownshard
+    const big = (fn) => function (e) { return this._bigVoice(() => fn.call(this, e)); };
+    on('shardWake', big(this._onShardWake));
+    on('pactOpen', this._onPactOpen);      // builds its own scope (_pactVoice)
+    on('pactClose', this._onPactClose);
     on('obeliskArmed', this._onObeliskArmed);
-    on('obeliskCollapse', this._onObeliskCollapse);
+    on('riftAnswer', big(this._onRiftAnswer));
+    on('shardAscend', big(this._onShardAscend));
+    on('runStart', () => this._pactEnd(true));    // a new run never inherits the pact drone / duck
 
     if (opts.headless) return;
 
@@ -281,6 +292,11 @@ export class Audio {
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
 
+    // SFX bus: _tone / _noise land here so the Pact screen can duck all gameplay SFX at once
+    this.sfxBus = this.ctx.createGain();
+    this.sfxBus.gain.value = 1;
+    this.sfxBus.connect(this.masterGain);
+
     // Pre-generate white noise buffer (1 second, 44.1 kHz)
     const bufLen = this.ctx.sampleRate;
     const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
@@ -307,11 +323,11 @@ export class Audio {
     this.activeVoices = this.activeVoices.filter((v) => v.endTime > now);
   }
 
-  _canPlaySound(soundName, maxPerMs = 3, msWindow = 100) {
+  _canPlaySound(soundName, maxPerMs = 3, msWindow = 100, ignoreCap = false) {
     this._pruneVoices();
 
-    // Check global voice limit
-    if (this.activeVoices.length >= 24) {
+    // Check global voice limit (cinematic shard / pact sounds are exempt: see _cinematic)
+    if (!ignoreCap && this.activeVoices.length >= 24) {
       return false;
     }
 
@@ -342,6 +358,11 @@ export class Audio {
   }
 
   // ==================== Sound Helpers ====================
+
+  // Where a one-shot SFX connects: the duck-able SFX bus, or straight to master for pact / seal sounds (_pactVoice).
+  _sfxDest() {
+    return (this._bypassDuck ? this.masterGain : this.sfxBus) || this.masterGain;
+  }
 
   _getRandomPitch() {
     // ±6% pitch variation
@@ -379,7 +400,7 @@ export class Audio {
       output = f;
     }
 
-    output.connect(this.masterGain);
+    output.connect(this._sfxDest());
 
     const now = this._now() + delay;
     const startFreq = freq * this._getRandomPitch();
@@ -402,7 +423,7 @@ export class Audio {
       gainNode.disconnect();
     });
 
-    this._registerVoice(now + dur);
+    if (!this._cinematic) this._registerVoice(now + dur);
   }
 
   _noise({
@@ -445,7 +466,7 @@ export class Audio {
       }
     }
 
-    output.connect(this.masterGain);
+    output.connect(this._sfxDest());
 
     gainNode.gain.setValueAtTime(0.0001, now);
     gainNode.gain.linearRampToValueAtTime(gain, now + attack);
@@ -459,7 +480,7 @@ export class Audio {
       gainNode.disconnect();
     });
 
-    this._registerVoice(now + dur);
+    if (!this._cinematic) this._registerVoice(now + dur);
   }
 
   // ==================== Cast Sounds ====================
@@ -1167,9 +1188,11 @@ export class Audio {
     const intensityTarget = this.mode === 'act' ? Math.min(1, base + 0.3 * this.bossLevel) : 0;
     this.intensity += (intensityTarget - this.intensity) * (1 - Math.exp(-dt / 0.8));
 
-    // Duck under modals (level-up, relic pick) and while paused
+    // Duck under modals (level-up, relic pick) and while paused; hard under the Pact screen
+    this._pactTick(now);
     let duckTarget = 1;
-    if (game.state === 'levelup' || game.state === 'relic' || now < this.modalHoldUntil) duckTarget = 0.6;
+    if (this.pactActive) duckTarget = 0.15;
+    else if (game.state === 'levelup' || game.state === 'relic' || now < this.modalHoldUntil) duckTarget = 0.6;
     else if (game.state === 'paused') duckTarget = 0.7;
     this.duck += (duckTarget - this.duck) * (1 - Math.exp(-dt / 0.3));
 
@@ -1178,7 +1201,6 @@ export class Audio {
     this.musicBus.gain.value = this.musicLvl * this.duck;
     this._scoreWatch(now, dt);
     this._scoreHousekeeping(now);
-    this._humTick(now);
     this.intensityBus.gain.value = this.intensity * 0.55;
     this.bossBus.gain.value = this.bossLevel * 0.8;
 
@@ -1493,6 +1515,7 @@ export class Audio {
   _onRunEnd(e) {
     this.mode = 'end';
     this.bossDouble = false;
+    this._pactEnd(true);
     if (!this.ctx || !this.musicBus) return;
     try {
       const t = this._now() + 0.05;
@@ -1699,7 +1722,7 @@ export class Audio {
     osc.connect(shaper);
     shaper.connect(lp);
     lp.connect(g);
-    g.connect(this.masterGain);
+    g.connect(this._sfxDest());
     osc.start(t);
     osc.stop(t + 1.05);
     osc.addEventListener('ended', () => {

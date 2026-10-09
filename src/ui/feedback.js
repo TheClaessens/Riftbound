@@ -42,7 +42,7 @@ export function shortUA(ua = (typeof navigator !== 'undefined' ? navigator.userA
 export function runDetails(game) {
   const L = [`Version: ${GAME_VERSION}${GAME_BUILD ? ` (${GAME_BUILD})` : ''}`];
   const g = game;
-  const live = g?.player && ['playing', 'paused', 'levelup', 'relic', 'shift'].includes(g.state);
+  const live = g?.player && ['playing', 'paused', 'levelup', 'relic', 'shift', 'pact'].includes(g.state);
   if (live) {
     const cls = CLASSES[g.stats?.classId] ?? CLASSES[g.player.classId ?? g.player.cls?.id];
     const act = g.act ?? 0;
@@ -58,7 +58,7 @@ export function runDetails(game) {
     if (st.haste) armed.push('Haste');
     if (st.echo) armed.push('Echo');
     if ((st.heat | 0) > 0) armed.push(`Wrath heat ${st.heat | 0}${st.affixes?.length ? ` (${st.affixes.join(', ')})` : ''}`);
-    L.push(`Obelisks armed: ${armed.length ? armed.join(', ') : 'none'}`);
+    L.push(`Pacts sealed: ${armed.length ? armed.join(', ') : 'none'}`);
   } else L.push('Run: none (menu)');
   L.push(`Auto-cast: ${g?.autoCast ? 'on' : 'off'}`);
   L.push(`Screen: ${innerWidth}x${innerHeight} @${(window.devicePixelRatio || 1).toFixed(2).replace(/\.?0+$/, '')}x`);

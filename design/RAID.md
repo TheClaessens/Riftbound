@@ -1,5 +1,7 @@
 # RAID.md — v5 contract: Rift Obelisks & raid boss encounters
 
+> v6: the obelisk layer (summoning, events) is superseded by the Crownshard, see SHARD.md. The encounter, BossBase and stakes contracts here are unchanged.
+
 Design + numbers: `design/RAID_PASSES.md` (the spec; implement it). Research: `design/research/11-raid-boss-mechanics.md`, `12-boss-scores.md`, `13-risk-reward-summoning.md`. General rules: `ARCHITECTURE.md` (no build step, `.js` imports, never create geometry per frame, never add lights, hostile red only for danger, decals in the opaque pass at renderOrder 1–2 etc.), `design/VFX.md` (the `game.vfx` toolkit), `design/ART.md` (creature rig poses).
 
 ## File map & ownership (v5)

@@ -7,6 +7,7 @@
 import { FeedbackPanel } from './feedback.js';
 import { Menus } from './menus.js';
 import { HUD } from './hud.js';
+import { PactScreen } from './pact.js';
 import { icon, hasIcon, ICON, cardIconId } from './icons/index.js';
 import { SKILLS, PASSIVES, FUSIONS, FUSION_RANK, ALL_DEFS } from '../game/skills/registry.js';
 import { REACTIONS } from '../game/combat.js';
@@ -450,6 +451,7 @@ export class UI {
     this._buildPause();
     this.feedback = new FeedbackPanel(this);
     this.menus = new Menus(game, this.uiRoot);
+    this.pact = new PactScreen(game, this.uiRoot);   // the Crownshard's Pact screen (design/SHARD.md §5)
 
     const on = (ev, fn) => this._unsub.push(game.events.on(ev, fn));
     on('runStart', () => {
@@ -480,6 +482,10 @@ export class UI {
   update(dt) {
     this.hud.update(dt);
   }
+
+  // The Crownshard's Pact screen (src/ui/pact.js). handlers: { onSeal(draft), onCall(draft), onLeave(), onDraft(draft) }
+  showPact(view, handlers) { this.pact.show(view, handlers); }
+  hidePact() { this.pact.hide(); }
 
   // ------------------------------------------------------------------ screens
   showTitle() {
@@ -816,7 +822,7 @@ export class UI {
           </nav>
           <div class="md-pz-actions">
             <button type="button" class="cf-btn primary" data-ref="resume">Resume <span class="cf-key">esc</span></button>
-            <button type="button" class="cf-btn md-feedback" data-ref="feedback">${icon(ICON.ui('feedback'), { cls: 'md-act-ico', fallback: '✉' })}Feedback</button>
+            <button type="button" class="cf-btn md-feedback" data-external data-ref="feedback">${icon(ICON.ui('feedback'), { cls: 'md-act-ico', fallback: '✉' })}Feedback</button>
             <button type="button" class="cf-btn md-abandon" data-ref="abandon">Abandon run</button>
           </div>
         </header>

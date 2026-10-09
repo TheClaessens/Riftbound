@@ -76,6 +76,7 @@ ul.notes li > div { min-width: 0; }
 .tag.fix { color: var(--fix); }
 .tag.new { color: var(--new); }
 .tag.change { color: var(--change); }
+.tag.remove { color: var(--dim); }
 strong { color: var(--text); font-weight: 800; }
 em.name { font-style: normal; color: var(--gilt); font-weight: 700; }
 .quote { font-family: var(--label); font-weight: 700; letter-spacing: 0.03em; color: var(--bronze); white-space: nowrap; }
@@ -117,8 +118,83 @@ td { min-width: 0; }
 <div class="wrap">
   <article class="release">
   <header>
+    <div class="kicker">patch notes · 9 october 2026 · version 6.0</div>
+    <h1>The Crownshard</h1>
+    <div class="prism" aria-hidden="true"></div>
+    <p class="lede">The three Rift Obelisks are gone. Each land now has one Crownshard, a shard of the broken Riftcrown, at its heart. It wakes at 0:50. Press F beside it and time stops, so you can read your pacts side by side before you choose. Our own playtest showed that the obelisks were hard to find, and impossible to read and choose in the middle of a fight. The stakes and rewards are unchanged.</p>
+    <a class="play" href="https://theclaessens.github.io/Riftbound/">Play Riftbound</a>
+
+    <div class="highlights">
+      <div class="hl"><b>One Crownshard per land</b><span>It wakes at 0:50, at the heart of the map.</span></div>
+      <div class="hl"><b>Time stops to choose</b><span>Every pact on one screen, read calmly.</span></div>
+      <div class="hl"><b>Come back any time</b><span>Until the boss arrives, the shard waits for you.</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>The Crownshard</h2>
+    <p class="why">The obelisks were three stones scattered across the map, and nothing said why a boss would come for them.</p>
+    <ul class="notes">
+      <li><span class="tag remove">remove</span><div><strong>Rift Obelisks.</strong> The three obelisks are gone. Their pacts now live at the Crownshard.</div></li>
+      <li><span class="tag new">new</span><div><strong>One shard in every land.</strong> It stands at the heart of the map, and you start each act right beside it. Until 0:50 it sleeps, chained and dim.</div></li>
+      <li><span class="tag new">new</span><div><strong>It wakes at 0:50.</strong> The chains snap, the shard lifts into the air and its light column shows across the land. Press <strong>F</strong> within reach of it to commune.</div></li>
+      <li><span class="tag new">new</span><div><strong>The boss is drawn to its light.</strong> When the boss comes, the shard rises up its column and leaves a cold ruin behind.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The Pact screen</h2>
+    <p class="why">Every choice is on one screen, so you can compare them before you commit.</p>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>Time stops.</strong> When you press F, the world loses its colour and freezes until you close the screen.</div></li>
+      <li><span class="tag new">new</span><div><strong>Pact of Echo</strong> is a switch: the boss comes back once more after you beat it.</div></li>
+      <li><span class="tag new">new</span><div><strong>Pact of Wrath</strong> sets a heat from 0 to 3. Each step shows the boss affix it adds before you pick it, so you know what you are getting.</div></li>
+      <li><span class="tag new">new</span><div><strong>Call it now</strong> seals your choice and brings the boss in 3 seconds. Seal the pact on its own and the boss still comes at 3:00. <strong>Walk away</strong> (Esc) changes nothing.</div></li>
+      <li><span class="tag new">new</span><div>Each pact has its own sigil and colour, and its name is always on the card.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The horde answers</h2>
+    <p class="why">The risk now comes after you commit, not while you are trying to read the choices.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>Each new pact you seal makes the horde answer. After a short flare, foes burst out around the shard, and new spawns for a few seconds gather on it.</div></li>
+      <li><span class="tag change">change</span><div><strong>Call it now</strong> skips the answer: the boss comes in 3 seconds, and the rest of the act's horde goes with it.</div></li>
+      <li><span class="tag new">new</span><div><strong>Come back any time.</strong> You can return to the shard until the boss arrives. Sealed pacts stay sealed. The pause gives you no shelter: you pick up exactly where you were.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Same stakes, same rewards</h2>
+    <p class="why">The bet itself was the part you enjoyed, so only how you reach it has changed.</p>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>Pact payouts are unchanged. Shards, Echo Chests, Wrath Caches and boss relics are paid the same way, and only if you win the boss fight.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Sound and sight</h2>
+    <ul class="notes">
+      <li><span class="tag new">new</span><div><strong>New sounds</strong> for the shard waking, time stopping, each pact sealed, the horde's answer and the shard rising. The music ducks under the Pact screen while a low drone plays.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Under the hood</h2>
+    <ul class="notes">
+      <li><span class="tag change">change</span><div>The game now ships its own copy of Three.js and its fonts, so it no longer depends on outside CDNs and starts faster.</div></li>
+      <li><span class="tag change">change</span><div>Arrow keys no longer scroll the page.</div></li>
+    </ul>
+  </section>
+
+  </article>
+
+  <div class="earlier" role="separator">earlier release</div>
+
+  <article class="release release-old">
+  <header>
     <div class="kicker">patch notes · 9 october 2026 · version 5.2</div>
-    <h1>Raid sustain &amp; targeting</h1>
+    <h2 class="release-title">Raid sustain &amp; targeting</h2>
     <div class="prism" aria-hidden="true"></div>
     <p class="lede">Boss fights now give some health back, the adds that matter stand out, and auto-cast knows which one to shoot first. Break Checks read more clearly, gold now means only "go here", and every boss brings its minions into the fight. Playtesters' findings from round three shaped each change.</p>
     <a class="play" href="https://theclaessens.github.io/Riftbound/">Play Riftbound</a>

@@ -1,8 +1,8 @@
 // Raid (v5) icons: Rift Obelisks, Poise / Downed / Exposed / Break Check, boss affixes, boss-fight buffs
 // and fight objects. Crownforge style (design/UI.md §Icons): 48-grid, 3 flat tones + ink outline under the fill,
 // lit from the upper-left, colours through CSS custom properties with literal fallbacks.
-//   ui-obelisk, ui-obeliskHaste|Echo|Wrath   standing rift-stones; the rune + crown say the type (gold chevrons /
-//                                            violet ghost-diamond / flame), so the silhouette is unique per type
+//   ui-obelisk (= ui-crownshard)   the Crownshard: a faceted floating prism with a broken crown band
+//   ui-obeliskHaste|Echo|Wrath     pact sigils (ids kept from v5): hourglass / twin rings / ember crown
 //   ui-stagger, ui-downed, ui-exposed, ui-breakCheck   steel-white (#e8eef8 family) = poise; gold = a damage window
 //   ui-affix (generic), ui-affixFrenzied|Bulwark|Reverb|Storm|Vengeful   boss affix sigils (def.icon = 'affixX')
 //   ui-generator   a ward-stone on a pedestal (banner / conduit / pod edge marker)
@@ -46,50 +46,87 @@ const ROCK_HI = F('cf-faint', '#8a8199'), ROCK = F('phys-lo', '#6b6378'), ROCK_L
 const HP = F('hp', '#e8413a'), HP_HI = F('hp-hi', '#ff8a6a'), HP_LO = F('hp-lo', '#7a1418');
 
 // =============================================================================================
-//  Rift Obelisks. One tapered rift-stone; the glowing rune and the crown differ per type.
+//  The Crownshard + the three pact sigils (v6). The shard is a faceted floating prism tine in Rift
+//  violet with a broken crown band (bronze) around its waist. The sigils are NOT pillars:
+//    Haste = hourglass (pale cyan sand)      Echo = twin interlocked rings (violet + teal)
+//    Wrath = ember crown with three lit notches
 // =============================================================================================
-/** Pillar body in a 48 grid, apex at y = 4, plinth bottom at y = 44. */
-function pillar(T, rune, { band = true } = {}) {
-  return path(ROCK_LO, 'M8 44V39.5L12.5 36H35.5L40 39.5V44Z')
-    + flat(ROCK, 'M8 44V39.5L12.5 36H24V44Z')
-    + path(ROCK, 'M16.6 36L19.4 14.5L24 4L28.6 14.5L31.4 36Z')
-    + flat(ROCK_HI, 'M16.6 36L19.4 14.5L24 4V36Z')
-    + flat(ROCK_LO, 'M24 4L28.6 14.5L31.4 36H27.4L25.4 16Z')
-    + flat(BONE_LO, 'M19.4 14.5L24 4L24 14.5Z')
-    + (band ? flat(VOID, 'M19.2 15.2H28.8L29.1 17H18.9Z') : '')
-    + rune(T);
+/** Elliptical band (centre, radii, thickness w), angles in degrees: 0 = right, 90 = front (down), clockwise. */
+function ellBand(cx, cy, rx, ry, w, a0, a1, n = 12) {
+  const o = [], inn = [];
+  for (let i = 0; i <= n; i++) {
+    const a = rad(a0 + ((a1 - a0) * i) / n), c = Math.cos(a), s = Math.sin(a);
+    o.push([cx + (rx + w / 2) * c, cy + (ry + w * 0.36) * s]);
+    inn.unshift([cx + (rx - w / 2) * c, cy + (ry - w * 0.36) * s]);
+  }
+  return D([...o, ...inn]);
 }
-const runeHaste = (T) =>
-  path(T.md, 'M24 18.4L29.4 23.4V27L24 22L18.6 27V23.4Z', INK_T) + flat(T.hi, 'M24 18.4L18.6 23.4V27L24 22Z')
-  + path(T.md, 'M24 25.6L29.4 30.6V34.2L24 29.2L18.6 34.2V30.6Z', INK_T) + flat(T.hi, 'M24 25.6L18.6 30.6V34.2L24 29.2Z');
-const runeEcho = (T) =>
-  path(T.md, 'M24 18.6L29.2 26L24 33.4L18.8 26Z', INK_T) + flat(T.hi, 'M24 18.6L18.8 26L24 26Z')
-  + flat(VOID, 'M24 22.6L26.4 26L24 29.4L21.6 26Z') + flat(T.lo, 'M24 26L26.4 26L24 29.4Z');
-const runeWrath = (T) =>
-  path(T.md, 'M24 17.6C26.2 20.4 28.6 22.6 28.2 26.6C27.9 29.6 26.2 31.6 24 31.6C21.8 31.6 20.1 29.6 19.8 26.8C19.6 25 20.4 23.4 21.6 22.2C21.9 23.6 22.6 24.2 23.4 24.2C22.8 21.8 23.2 19.6 24 17.6Z', INK_T)
-  + flat(T.hi, 'M24 17.6C23.2 19.6 22.8 21.8 23.4 24.2C22.6 24.2 21.9 23.6 21.6 22.2C20.4 23.4 19.6 25 19.8 26.8L24 27.6Z')
-  + flat(T.lo, 'M24 31.6C26.2 31.6 27.9 29.6 28.2 26.6L24 27.6Z');
-const runeGilt = (T) => path(T.md, 'M24 19L28 26L24 33L20 26Z', INK_T) + flat(T.hi, 'M24 19L20 26H24Z');
+/** A crown tine standing on the band at angle a (base half-width 2.9, height h). */
+function tine(cx, cy, rx, ry, a, h = 10) {
+  const x = cx + rx * Math.cos(rad(a)), y = cy + ry * Math.sin(rad(a)) - 1.2;
+  return D([[x - 2.9, y + 2.2], [x - 0.6, y - h], [x + 2.9, y + 2.2]]);
+}
+/** Open polyline along a circle (for ink edges). */
+const arcLine = (cx, cy, r, a0, a1, n = 8) => 'M' + Array.from({ length: n + 1 }, (_, k) => {
+  const a = rad(a0 + ((a1 - a0) * k) / n);
+  return `${r2(cx + r * Math.cos(a))} ${r2(cy + r * Math.sin(a))}`;
+}).join('L');
 
-const GILTS = { lo: F('cf-bronze', '#8c6c43'), md: GILT, hi: F('cf-gilt-hi', '#fff4d2') };
+const SHARD_C = trio('arcane', '#6d3fc0', '#c08cff', '#e6d2ff');
+const SC = { x: 24, y: 29, rx: 18.5, ry: 5.4 };
+const CROWNSHARD =
+  // back half of the crown band, with two tines standing out beside the prism
+  path(M_MD, ellBand(SC.x, SC.y, SC.rx, SC.ry, 4.2, 196, 344))
+  + path(M_MD, tine(SC.x, SC.y, SC.rx, SC.ry, 214)) + path(M_MD, tine(SC.x, SC.y, SC.rx, SC.ry, 326, 12))
+  // the prism: ridge down the middle, left face lit, right face in shadow
+  + path(SHARD_C.md, 'M24 2L34 14.5L30.4 33.6L24 42.5L17.6 33.6L14 14.5Z')
+  + flat(SHARD_C.hi, 'M24 2L14 14.5L17.6 33.6L24 42.5V14.5Z')
+  + flat(SHARD_C.lo, 'M24 2L34 14.5L30.4 33.6L24 42.5V14.5Z')
+  + flat(F('rift-white', '#efe9ff'), 'M24 2L14 14.5H24Z')
+  + flat(SHARD_C.md, 'M24 14.5H14L17.6 33.6L24 25Z')
+  // front half of the band: broken (a gap at the front-right), so it reads as a shattered crown
+  + path(M_HI, ellBand(SC.x, SC.y, SC.rx, SC.ry, 4.6, 100, 188))
+  + path(M_HI, ellBand(SC.x, SC.y, SC.rx, SC.ry, 4.6, -12, 54))
+  + flat(GILT, ellBand(SC.x, SC.y - 0.9, SC.rx, SC.ry, 1.5, 110, 184, 8))
+  + flat(GILT, ellBand(SC.x, SC.y - 0.9, SC.rx, SC.ry, 1.5, -8, 50, 6))
+  // a chip of the crown drifting loose in the gap
+  + path(M_MD, 'M27.6 38.6L31.4 37.2L32.8 40.6L28.8 41.8Z', INK_T);
 
-const HASTE_C = trio('haste', '#6fb4cc', '#bfefff', '#f0fcff');
-const OBELISK_HASTE = pillar(HASTE_C, runeHaste)
-  // speed streaks trailing off the left shoulder
-  + path(HASTE_C.md, 'M2.5 20H10.5L11.6 22H2.5Z', INK_T) + path(HASTE_C.md, 'M4.5 26H12.6L13.6 28H4.5Z', INK_T)
-  + path(HASTE_C.md, 'M1.5 32H11.6L12.6 34H1.5Z', INK_T);
+const SIGIL_HASTE_C = trio('haste', '#6fb4cc', '#bfefff', '#f0fcff');
+const WHITE = F('rift-white', '#ffffff');
+const SIGIL_HASTE =
+  // the glass, then the sand, then the bronze caps
+  path(F('haste-glass', '#5aa3bf'), 'M12 8H36L26.4 24L36 40H12L21.6 24Z')
+  + flat(SIGIL_HASTE_C.lo, 'M12 8H20.4L24 14.4L21.6 24L12 40V8Z')
+  + flat(F('haste-deep', '#2f6f8a'), 'M36 8L26.4 24L36 40V8Z')
+  + flat(WHITE, 'M16.6 13.4H31.4L25.6 22.4H22.4Z')
+  + flat(SIGIL_HASTE_C.hi, 'M23.2 24H24.8V33.4H23.2Z')
+  + flat(WHITE, 'M15.6 39.4L24 31.4L32.4 39.4Z')
+  + path(M_HI, 'M8.5 3H39.5V8.5H8.5Z') + flat(GILT, 'M8.5 3H39.5V4.8H8.5Z') + flat(M_LO, 'M24 8.5H39.5V3H24Z')
+  + path(M_HI, 'M8.5 39.5H39.5V45H8.5Z') + flat(GILT, 'M8.5 39.5H39.5V41.3H8.5Z') + flat(M_LO, 'M24 45H39.5V39.5H24Z');
 
-const OBELISK_ECHO = `<g opacity=".62">`
-  + path(ARCANE.lo, 'M32.8 38L35 20.5L39.4 11.5L43.8 20.5L46 38Z')
-  + flat(ARCANE.md, 'M32.8 38L35 20.5L39.4 11.5V38Z') + `</g>`
-  + `<g transform="translate(-5 0)">${pillar(ARCANE, runeEcho)}</g>`;
+const SIGIL_ECHO_V = trio('arcane', '#6d3fc0', '#c08cff', '#e6d2ff');
+const SIGIL_ECHO_T = { lo: F('echo-lo', '#1e9c86'), md: F('echo', '#4ff0d0'), hi: F('echo-hi', '#c4fff4') };
+const echoRing = (cx, T) =>
+  `<path fill-rule="evenodd" style="${T.md};${INK}" d="${ring(cx, 24, 14, 8, 30)}"/>`
+  + flat(T.hi, D(arcBand(cx, 24, 11, 2.6, 196, 262)))
+  + flat(T.lo, D(arcBand(cx, 24, 11, 2.6, 16, 82)));
+const SIGIL_ECHO = echoRing(18, SIGIL_ECHO_V) + echoRing(30, SIGIL_ECHO_T)
+  // the violet ring passes over the teal one at the top crossing: the rings are linked
+  + flat(SIGIL_ECHO_V.md, D(arcBand(18, 24, 11, 6, -82, -32, 8)))
+  + `<path style="fill:none;stroke:var(--ink,#0c0a12);stroke-width:2" d="${arcLine(18, 24, 15, -80, -34)}${arcLine(18, 24, 7, -80, -34)}"/>`
+  + flat(SIGIL_ECHO_V.hi, D(arcBand(18, 24, 11, 2.2, -78, -50, 6)));
 
-const OBELISK_WRATH = `<g transform="translate(24 44) scale(.82) translate(-24 -44)">${pillar(FIRE, runeWrath)}</g>`
-  // a crown of flame on the apex
-  + `<g transform="translate(0 2.4)">` + path(FIRE.md, 'M24 1C25.6 4 28.4 5.6 27.2 9.4C26.6 11.2 25.4 12 24 12C22.6 12 21.4 11.2 20.8 9.6C20.2 7.8 21.2 6.6 22.2 5.6C22.4 6.8 23 7.4 23.6 7.4C23 5 23.4 3 24 1Z', INK_T)
-  + flat(FIRE.hi, 'M24 1C23.4 3 23 5 23.6 7.4C23 7.4 22.4 6.8 22.2 5.6C21.2 6.6 20.2 7.8 20.8 9.6L24 10Z') + '</g>';
-
-const OBELISK = pillar(GILTS, runeGilt);
+const NOTCH = (x) => path(FIRE.hi, `M${x} 32.6L${x + 3.6} 36L${x} 39.4L${x - 3.6} 36Z`, INK_T)
+  + flat(F('rift-white', '#fff4d2'), `M${x} 33.8L${x + 1.6} 36L${x} 38.2L${x - 1.6} 36Z`);
+const SIGIL_WRATH =
+  // crown silhouette: three flame tines over a band
+  path(FIRE.md, 'M7 41V12C10 14 13 18 16 25C17 16 22 12 24 3C26 12 31 16 32 25C35 18 38 14 41 12V41Z')
+  + flat(FIRE.hi, 'M7 12C10 14 13 18 16 25H7Z') + flat(FIRE.hi, 'M24 3C22 12 17 16 16 25H24Z')
+  + flat(FIRE.lo, 'M41 12C38 14 35 18 32 25H41Z') + flat(FIRE.lo, 'M24 3C26 12 31 16 32 25H24Z')
+  + flat(FIRE.lo, 'M7 31H41V41H7Z') + flat(FIRE.md, 'M7 31H41V33H7Z')
+  // three lit notches in the band: the three Heat steps
+  + NOTCH(14) + NOTCH(24) + NOTCH(34);
 
 // =============================================================================================
 //  Poise family. Steel-white = stagger; gold = Exposed.
@@ -264,10 +301,11 @@ export default {
   'relic-vashkarsBrand': RELIC_BRAND,
   'relic-aurelithsScale': RELIC_SCALE,
   'relic-riftbreakersSigil': RELIC_SIGIL,
-  'ui-obelisk': OBELISK,
-  'ui-obeliskHaste': OBELISK_HASTE,
-  'ui-obeliskEcho': OBELISK_ECHO,
-  'ui-obeliskWrath': OBELISK_WRATH,
+  'ui-obelisk': CROWNSHARD,
+  'ui-crownshard': CROWNSHARD,
+  'ui-obeliskHaste': SIGIL_HASTE,
+  'ui-obeliskEcho': SIGIL_ECHO,
+  'ui-obeliskWrath': SIGIL_WRATH,
   'ui-stagger': STAGGER,
   'ui-downed': DOWNED,
   'ui-exposed': EXPOSED,

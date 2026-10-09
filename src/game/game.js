@@ -23,7 +23,8 @@ export const CHAIN_WINDOW = 2.5;
 const RESONANCE_CHAIN_WINDOW = 4;   // Arcanist: the Chain holds longer
 const CHAIN_MILESTONES = [10, 25, 50];
 
-// Game states: 'title' | 'playing' | 'levelup' | 'relic' | 'paused' | 'shift' | 'dead' | 'victory'
+// Game states: 'title' | 'playing' | 'levelup' | 'relic' | 'paused' | 'pact' | 'shift' | 'dead' | 'victory'
+//   'pact' = the Crownshard's Pact screen is open (obelisks.js): the simulation is paused.
 // Act phase (game.phase): 'horde' | 'boss' | 'shift'
 export class Game {
   constructor(engine, input) {
@@ -311,6 +312,7 @@ export class Game {
     if (!this._shiftSwapped && this._shiftT >= SHIFT_DURATION * 0.4) {
       this._shiftSwapped = true;
       this.world.setBiome?.(ACTS[this.act + 1].id, false);
+      this.obelisks.placePlayer();   // you fall through the Rift to the next land's Crownshard
     }
     if (this._shiftT >= SHIFT_DURATION) {
       this.act++;
@@ -411,6 +413,7 @@ export class Game {
       this.fx.updateTexts(0);
     } else {
       this.world.update?.(realDt * 0.3, this.time);
+      if (this.state === 'pact') this.obelisks.updatePaused(realDt);   // the Crownshard keeps turning while time stands still
       this.creatures.update(0, this.time);
       // the hero keeps playing its death / victory pose behind the end screen
       const ending = this.player && (this.state === 'dead' || this.state === 'victory');
@@ -420,7 +423,8 @@ export class Game {
       this.fx.updateTexts(0);
     }
 
-    const followTarget = this.player ? this.encounter.cameraTarget(this.player.pos, _camT) : _origin;
+    let followTarget = this.player ? this.encounter.cameraTarget(this.player.pos, _camT) : _origin;
+    if (this.player && followTarget === this.player.pos) followTarget = this.obelisks.cameraTarget(this.player.pos, _camT);
     this.engine.follow(followTarget, realDt, input.wheel);
     this.engine.update?.(realDt, this);
     this.tutorial.update(realDt);

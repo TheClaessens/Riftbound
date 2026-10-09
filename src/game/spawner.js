@@ -102,6 +102,29 @@ export class Spawner {
     }
   }
 
+  // The Rift Answer (obelisks.js): `n` foes in clusters of 3-4 on a ring rMin..rMax around `pos`. Returns how many spawned.
+  spawnAround(pos, n, rMin = 11, rMax = 15) {
+    const g = this.game, act = g.act, t = g.actTime, def = ACTS[act];
+    if (!def) return 0;
+    let live = g.liveEnemyCount(), made = 0;
+    const base = Math.random() * Math.PI * 2, groups = Math.max(1, Math.ceil(n / 3.5));
+    for (let k = 0; k < groups && made < n; k++) {
+      const a = base + (k / groups) * Math.PI * 2 + randRange(-0.25, 0.25);
+      const d = randRange(rMin, rMax);
+      const c = g.world.randomSpawnPoint(new THREE.Vector3(pos.x + Math.cos(a) * d, 0, pos.z + Math.sin(a) * d), 0, 2);
+      const size = Math.min(n - made, Math.ceil((n - made) / (groups - k)));
+      for (let i = 0; i < size && live < ENEMY_CAP; i++) {
+        const type = pickFromRoster(def.roster, t);
+        if (!type) break;
+        const p = new THREE.Vector3(c.x + randRange(-1.2, 1.2), 0, c.z + randRange(-1.2, 1.2));
+        g.addEnemy(createEnemy(g, type, p, this._opts(act, t, type, false)));
+        g.fx.burst(p, { color: 0xe0c4ff, count: 4, speed: 2.5, life: 0.5, size: 0.35, up: 1.5 });
+        live++; made++;
+      }
+    }
+    return made;
+  }
+
   // Per-spawn options shared by horde, surge and swarm.
   _opts(act, t, typeId, elite) {
     const g = this.game;

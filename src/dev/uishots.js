@@ -258,3 +258,39 @@ function fakeStats(victory, hurt = 'boar') {
 
 export function gameOver(hurt = 'boar') { ensureRun(); const game = g(); game.ui.showGameOver(fakeStats(false, hurt)); freeze(); render(); return 'gameover'; }
 export function victory() { ensureRun(); const game = g(); game.ui.showVictory(fakeStats(true)); freeze(); render(); return 'victory'; }
+
+// The Crownshard's Pact screen: a god-mode run at `act`, the shard woken, the player beside it, the screen open.
+//   await U.pact({ act: 0, echo: false, heat: 0, draft: { echo: true, heat: 2 }, hp: 1 })
+//   echo / heat = already SEALED (sealed through the director, then the screen is re-opened); draft = the player's
+//   current selection on top of that. The Answer's foes are cleared. Close with U.pactClose().
+export async function pact({ act = 0, echo = false, heat = 0, draft = null, hp = 1, classId = 'pyromancer', build = 'full' } = {}) {
+  await hud({ classId, act, build, hp, seconds: 4, buffs: false, relics: 3 });
+  const game = g();
+  game.timeScale = 1;
+  game.actTime = 49;
+  step(3.5);
+  game.player.pos.set(2.8, 0, 2.8);
+  game.player.hp = Math.max(1, game.player.stats.maxHp * hp);
+  game.state = 'playing';
+  if (echo || heat) {
+    game.obelisks.commune();
+    game.obelisks.sealPact({ echo, heat, haste: false });
+    step(2);
+    game.enemies.slice().forEach((e) => { e.dead = true; e.hp = 0; });
+    game.player.pos.set(2.8, 0, 2.8);
+    game.state = 'playing';
+  }
+  game.timeScale = 0;
+  const ok = game.obelisks.commune();
+  if (draft) game.ui.pact.setDraft(draft);
+  game.obelisks.updatePaused(DT);
+  render();
+  return { ok, state: game.state, shard: game.obelisks.shard?.state, stakes: { echo: game.run.stakes.echo, heat: game.run.stakes.heat } };
+}
+
+export function pactClose() {
+  const game = g();
+  game.obelisks.closePact();
+  game.timeScale = 1;
+  return game.state;
+}

@@ -81,7 +81,7 @@ export class HUDFx {
     on('actStart', ({ act }) => { this._clearEncounter(); this._titleCard(act); });
     on('announce', (e) => {
       if (e.kind === 'bossDown') this._stamp(e.text, e.color);
-      else if (e.kind === 'obelisk') this._sting('stakes', e.text, e.sub, e.color, 1.5);   // THE RIFT OFFERS / HASTE / ECHO / WRATH
+      else if (e.kind === 'obelisk') this._sting('stakes', e.text, e.sub, e.color, 1.5);   // the Crownshard: wake, pact sealed, call
     });
     on('bossSpawned', ({ enemy }) => this._bossIntro(enemy));
     // ---- raid encounter moments (design/RAID.md); one centre lane with priorities (see _open) ----
@@ -159,7 +159,7 @@ export class HUDFx {
   }
 
   // ------------------------------------------------------------ ONE centre lane (round-2 playtest)
-  // Every centre banner (boss intro, victory, Echo rises, intermission, phase, enrage, stakes, obelisk stings)
+  // Every centre banner (boss intro, victory, Echo rises, intermission, phase, enrage, stakes, Crownshard stings)
   // is a node created for the moment and REMOVED from the DOM when it ends: nothing hidden-but-present is left
   // to leak into the next fight or run. One occupant at a time: a higher priority hard-dismisses the current one,
   // a lower one is dropped. Break Check verdicts are not here: they live inside the cast bar (hud.js).
@@ -380,7 +380,7 @@ export class HUDFx {
     this._sting('phase', `phase ${roman(phase)}`, name, '#ecd9a6', 1.6);
   }
 
-  // Stakes card (encounterStart, 2 s, non-blocking): what the player armed with the obelisks.
+  // Stakes card (encounterStart, 2 s, non-blocking): what the player sealed at the Crownshard.
   _stakes({ stakes: st, act }) {
     st = st ?? {};
     const heat = st.heat | 0;
@@ -395,7 +395,7 @@ export class HUDFx {
       cards.push(card('wrath', `Wrath ×${heat}`, aff.map((a) =>
         `<span class="hud-sk-aff">${icon(hasIcon(ICON.ui(a.icon)) ? ICON.ui(a.icon) : ICON.ui('affix'))}${esc(a.name)}</span>`).join('')));
     }
-    const node = this._open('stakes', `<div class="hud-stakes cf-plate"><div class="hud-sk-h"><span>stakes</span><i></i><span>act ${roman((act | 0) + 1)}</span></div><div class="hud-sk-row">${cards.join('')}</div></div>`, 2.1);
+    const node = this._open('stakes', `<div class="hud-stakes cf-plate"><div class="hud-sk-h"><span>pacts sealed</span><i></i><span>act ${roman((act | 0) + 1)}</span></div><div class="hud-sk-row">${cards.join('')}</div></div>`, 2.1);
     if (!node) return;
     const calm = reducedMotion();
     node.firstElementChild.animate([

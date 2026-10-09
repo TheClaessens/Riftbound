@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { FUSIONS } from '../game/skills/registry.js';
 import { SLOT_KEYS, MAX_AUTOS } from '../game/player.js';
 import { ACTS, ACT_LENGTH } from '../game/acts.js';
+import { COMMUNE_R } from '../game/obelisks.js';
 import { RELIC_TAG_COLOR } from '../game/relics.js';
 import { BEATS } from '../game/spawner.js';
 import { WARD_CYCLE } from '../game/bosses.js';
@@ -36,22 +37,22 @@ const KEY_HTML = [
   '<span class="cf-key hud-key">e</span>',
   '<span class="cf-key hud-key">r</span>',
 ];
-const BEAT_ICON = { surge: ['surge', '♛'], swarm: ['swarm', '◎'], boss: ['boss', '☠'], obelisks: ['obelisk', '◆'] };
-// The HUD's own beat (spawner.js BEATS stays untouched): the Rift Obelisks rise at 0:50 (design/RAID.md).
-const OBELISK_BEAT = { id: 'obelisks', at: 50, name: 'Obelisks rise' };
+const BEAT_ICON = { surge: ['surge', '♛'], swarm: ['swarm', '◎'], boss: ['boss', '☠'], shard: ['obelisk', '◆'] };
+// The HUD's own beat (spawner.js BEATS stays untouched): the Crownshard wakes at 0:50 (design/SHARD.md).
+const SHARD_BEAT = { id: 'shard', at: 50, name: 'Shard wakes' };
 const CHAIN_WHITE = [255, 255, 255], CHAIN_AMBER = [224, 160, 48];
 const RIBBON_LEAD = 10;      // seconds of "Elite Surge in 0:08" before a beat
 const RIBBON_HOLD = 3;       // seconds the beat name stays after it lands
-const MARKERS = 12;          // pooled edge markers (boss + 3 obelisks + 3 fight objects + shrine + bearer + chests)
+const MARKERS = 10;          // pooled edge markers (boss + shard + 3 fight objects + shrine + bearer + chests)
 const PTRS = 8;              // pooled off-screen objective pointers (boss.objectives)
 const RECOVER_TIME = 8;     // BossBase poise lock after a Downed (core.js RECOVER_TIME)
-const OB_NEAR = 10;          // world units: the approach card appears inside this radius (hysteresis +2)
-const HEAT_MAX = 3;
-// Obelisk identity: colour + icon + label (never colour alone).
+const PROMPT_NEAR = 8;      // world units: the Crownshard prompt appears inside this radius (hysteresis +1.5)
+const PROMPT_Y = 7;          // ... anchored this high above the shard
+// Pact identity: colour + icon + label (never colour alone).
 const OB = {
-  haste: { color: '#bfefff', icon: 'obeliskHaste', name: 'Haste', title: 'Obelisk of Haste' },
-  echo: { color: '#b08cff', icon: 'obeliskEcho', name: 'Echo', title: 'Obelisk of Echo' },
-  wrath: { color: '#ff7a33', icon: 'obeliskWrath', name: 'Wrath', title: 'Obelisk of Wrath' },
+  haste: { color: '#bfefff', icon: 'obeliskHaste', name: 'Haste', title: 'Pact of Haste' },
+  echo: { color: '#b08cff', icon: 'obeliskEcho', name: 'Echo', title: 'Pact of Echo' },
+  wrath: { color: '#ff7a33', icon: 'obeliskWrath', name: 'Wrath', title: 'Pact of Wrath' },
 };
 const POISE_STEEL = '#e8eef8';
 // One-line meaning for every status chip (title tooltip + aria): the words the game never defined (playtest r2)
@@ -64,7 +65,7 @@ const CHIP_TIP = {
   stagger: 'Fill this with reactions to stagger the boss',
 };
 const BUFF_TIP = {
-  strain: 'Strain — +10% damage taken (Obelisk of Echo)', spores: 'Spores — more damage taken, slower; Sap pools cleanse',
+  strain: 'Strain — +10% damage taken (Pact of Echo)', spores: 'Spores — more damage taken, slower; Sap pools cleanse',
   sap: 'Sap — +25% move speed', rooted: 'Rooted — cannot move',
 };
 const ELNAME = { fire: 'Fire', frost: 'Frost', storm: 'Storm', arcane: 'Arcane', physical: 'Physical' };
@@ -157,15 +158,14 @@ const TEMPLATE = `
     </div>
   </div>
 
-  <div class="hud-ob cf-frame" data-ref="ob">
-    <div class="hud-ob-head">
-      <div class="cf-socket hud-ob-sock" data-ref="obSock"><span data-ref="obIco"></span>${ringSvg('hud-ob-ring')}</div>
-      <div class="hud-ob-title"><span class="hud-ob-kick" data-ref="obKick">rift obelisk</span><span class="hud-ob-name" data-ref="obName"></span></div>
-      <span class="hud-ob-chip" data-ref="obChip"></span>
+  <div class="hud-prompt" data-ref="prompt">
+    <div class="hud-pr cf-plate">
+      <span class="hud-pr-ico">${icon(ICON.ui('crownshard'), { fallback: '◆' })}</span>
+      <span class="cf-key hud-pr-key">f</span>
+      <span class="hud-pr-txt" data-ref="prTxt"></span>
+      <span class="hud-pr-t num" data-ref="prT"></span>
     </div>
-    <div class="hud-ob-body" data-ref="obBody"></div>
-    <div class="hud-ob-foot"><span data-ref="obFoot"></span></div>
-    <div class="hud-ob-meter"><i data-ref="obFill"></i></div>
+    <i class="hud-pr-tail"></i>
   </div>
 
   <div class="hud-relics cf-plate" data-ref="relics"></div>
@@ -264,11 +264,7 @@ export class HUD {
     this._downReason = '';     // last bossDowned reason ('stagger' | 'break' | 'winded')
     this._poiseAcc = 0;        // poise gained since the last floater
     this._poiseCd = 0;
-    this._ob = null;           // obelisk shown on the approach card
-    this._obT = 0;             // preview() refresh timer
-    this._obKey = '';
-    this._obSize = { w: 0, h: 0 };
-    this._obHint = 'hold the ring to channel';
+    this._prMode = '';          // Crownshard prompt mode: '' | ready | far | dormant
 
     const root = document.createElement('div');
     root.className = 'hud';
@@ -324,7 +320,7 @@ export class HUD {
     });
     // v5.2 earned sustain: each phase gate tops you up (+12% max HP): pulse the player HP and note it on the boss frame
     on('bossGateHeal', (e) => this._onGateHeal(e));
-    on('obelisksRisen', () => { this._ribbon = { kind: 'obelisks', text: 'The Rift offers', t: 4 }; });
+    on('shardWake', () => { this._ribbon = { kind: 'shard', text: 'The Crownshard wakes', t: 4 }; });
     on('obeliskArmed', ({ type }) => { this._armPop = type; this._k.armed = null; });
     on('encounterStart', () => { this._k.armed = null; });
     on('relicGained', ({ def }) => { this._newRelic = def?.id; });
@@ -367,8 +363,6 @@ export class HUD {
     this.hpMeter.reset(1);
     this.clMeter.reset(1);
     this.bossMeter.reset(1);
-    this._ob = null; this._obKey = '';
-    setCls(this.el.ob, 'on', false);
     for (const s of this._slots) { s.wasCd = false; s.start = 0; }
   }
 
@@ -380,6 +374,7 @@ export class HUD {
     const gdt = live ? dt * (g.timeScale ?? 1) : 0;
     // a modal mirrors the loadout (level-up strip, pause build): step the action bar aside
     setCls(this.uiRoot, 'hud-modal', g.state === 'levelup' || g.state === 'relic' || g.state === 'paused');
+    setCls(this.uiRoot, 'hud-pact', g.state === 'pact');   // the Pact screen: edge markers + prompt step aside
 
     this._updateAct(g, gdt);
     this._updateBoss(g, gdt);
@@ -388,7 +383,7 @@ export class HUD {
 
     if (!p) return;
     this._updateCluster(g, p, dt, live);
-    this._updateObelisks(g, p, dt);
+    this._updateShard(g, p);
     this._updateMarkers(g, p, dt);
     this._updatePointers(g);
     this._updateRelics(p);
@@ -401,7 +396,7 @@ export class HUD {
 
   // ================================================================== top: act timeline
   _buildTimeline() {
-    const beats = [{ ...OBELISK_BEAT }, ...BEATS.map((b) => ({ ...b })), { id: 'boss', at: ACT_LENGTH, name: 'Boss' }].sort((a, b) => a.at - b.at);
+    const beats = [{ ...SHARD_BEAT }, ...BEATS.map((b) => ({ ...b })), { id: 'boss', at: ACT_LENGTH, name: 'Boss' }].sort((a, b) => a.at - b.at);
     this._beats = beats;
     this.el.tlBeats.innerHTML = beats.map((b) => {
       const [ui, fb] = BEAT_ICON[b.id] ?? ['surge', '◆'];
@@ -435,7 +430,7 @@ export class HUD {
 
     // Haste armed: the boss gem slides from 3:00 to "now" (the skip is visible)
     const stakes = g.run?.stakes ?? {};
-    const hasteOn = g.phase === 'horde' && !!(g.obelisks?.list ?? []).find((o) => o.type === 'haste')?.armed;
+    const hasteOn = g.phase === 'horde' && (!!g.obelisks?.summoning || !!stakes.haste);
     if (!hasteOn) this._hasteFrom = null; else if (this._hasteFrom == null) this._hasteFrom = t;
     const hasteAt = hasteOn ? clamp01((t + 3) / ACT_LENGTH) : 1;
 
@@ -487,26 +482,27 @@ export class HUD {
     } else { setText(E.rbTxt, ""); setText(E.rbT, ""); }
   }
 
-  // ================================================================== top: armed chips (timeline)
-  // One chip per armed obelisk, hanging under the act plate (right end). Wrath shows its Heat.
+  // ================================================================== top: sealed-pact chips (timeline)
+  // One chip per sealed pact (game.run.stakes; Haste while the 3 s call runs), hanging under the act plate
+  // (right end): sigil + word, so colour is never the only signal. Wrath shows its Heat as "Wrath II".
   _updateArmed(stakes, bossOn) {
-    const E = this.el, list = this.game.obelisks?.list ?? [];
-    const armed = (t) => list.find((o) => o.type === t)?.armed;
-    const haste = !!armed('haste'), echo = !!stakes.echo || !!armed('echo');
-    const heat = stakes.heat | 0;
+    const E = this.el;
+    const haste = !!this.game.obelisks?.summoning || !!stakes.haste;
+    const echo = !!stakes.echo;
+    const heat = Math.max(0, Math.min(3, stakes.heat | 0));
     const key = `${haste ? 1 : 0}${echo ? 1 : 0}${heat}`;
     if (this._k.armed === key) return;
     this._k.armed = key;
     const chips = [];
-    if (haste) chips.push(['haste', '', 'Haste armed: the boss comes now']);
-    if (echo) chips.push(['echo', '', 'Echo armed: the boss comes twice']);
-    if (heat > 0) chips.push(['wrath', `<b>${heat}</b>`, `Wrath: Heat ${heat}`]);
-    E.armed.innerHTML = chips.map(([t, extra, title]) =>
-      `<span class="hud-chip" data-t="${t}" title="${esc(title)}" style="--acc:${OB[t].color}">${icon(ICON.ui(OB[t].icon))}${extra}</span>`).join('');
+    if (haste) chips.push(['haste', 'Haste', 'Pact of Haste: the boss comes now']);
+    if (echo) chips.push(['echo', 'Echo', 'Pact of Echo: the boss comes twice']);
+    if (heat > 0) chips.push(['wrath', `Wrath ${['', 'I', 'II', 'III'][heat]}`, `Pact of Wrath: Heat ${heat}`]);
+    E.armed.innerHTML = chips.map(([t, label, title]) =>
+      `<span class="hud-chip" data-t="${t}" title="${esc(title)}" style="--acc:${OB[t].color}"><span class="hud-chip-ico">${icon(ICON.ui(OB[t].icon))}</span><span class="hud-chip-t">${esc(label)}</span></span>`).join('');
     setCls(E.armed, 'on', chips.length > 0);
     const pop = this._armPop;
     this._armPop = null;
-    if (pop) E.armed.querySelector(`[data-t="${pop}"]`)?.animate?.([{ transform: 'scale(1.7)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 360, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+    if (pop) E.armed.querySelector(`[data-t="${pop}"]`)?.animate?.([{ transform: 'scale(1.35)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 360, easing: 'cubic-bezier(.34,1.56,.64,1)' });
   }
 
   // ================================================================== top: boss bar
@@ -816,105 +812,44 @@ export class HUD {
     setCls(E.cl, 'low', frac < 0.3 && hp > 0);
   }
 
-  // ================================================================== obelisks: approach card
-  // The nearest idle/channelling obelisk inside OB_NEAR: a compact world-anchored card with the live preview()
-  // (title, cost, pay, Haste's "≈ −N levels", Wrath's rolled affix + Heat pips) and, while channelling, the
-  // progress ring + meter. Everything is data from game.obelisks (defensive `?.`: the director may be a stub).
-  _updateObelisks(g, p, dt) {
+  // ================================================================== the Crownshard prompt
+  // The main interaction prompt of the game (v6): a small plate anchored ~7 u above the shard while the player is
+  // within PROMPT_NEAR of it. "F  Commune" when canCommune(); "Wakes in 0:12" while it sleeps; a dim "Step closer"
+  // between the commune ring and PROMPT_NEAR. Nothing while it is waking / calling / ascending (not usable).
+  _updateShard(g, p) {
     const E = this.el;
-    const OBS = g.obelisks;
-    let best = null, bd = 1e9;
-    if (OBS?.list && g.phase === 'horde' && g.state === 'playing' && !p.dead) {
-      for (const o of OBS.list) {
-        if (!o?.pos || !(o.state === 'idle' || o.state === 'channel')) continue;
-        const d = Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z);
-        if (d < bd) { bd = d; best = o; }
+    const OBS = g.obelisks, S = OBS?.shard;
+    let mode = '';
+    let d = 1e9;
+    if (S && g.state === 'playing' && g.phase === 'horde' && !p.dead && !g.encounter?.active) {
+      d = Math.hypot(S.pos.x - p.pos.x, S.pos.z - p.pos.z);
+      const lim = this._prMode ? PROMPT_NEAR + 1.5 : PROMPT_NEAR;   // hysteresis: no flicker at the edge
+      if (d <= lim) {
+        if (S.state === 'dormant') mode = 'dormant';
+        else if (S.state === 'open' && S.usable) {
+          if (OBS.canCommune()) mode = 'ready';
+          else if (d <= COMMUNE_R + 0.2) mode = this._prMode === 'ready' ? 'ready' : '';   // a dash inside the ring: keep it
+          else mode = 'far';
+        }
       }
     }
-    const near = best && bd <= (this._ob === best ? OB_NEAR + 2 : OB_NEAR);
-    if (!near) {
-      this._ob = null;
-      setCls(E.ob, "on", false);
-      if (this._obKey) { this._obKey = ""; E.obBody.innerHTML = ""; setText(E.obName, ""); setText(E.obKick, ""); setText(E.obChip, ""); setText(E.obFoot, ""); setHTML(E.obIco, ""); }
-      return;
+    this._prMode = mode;
+    setCls(E.prompt, 'on', mode !== '');
+    if (!mode) return;
+    if (this._k.prMode !== mode) {
+      this._k.prMode = mode;
+      setAttr(E.prompt, 'data-mode', mode);
+      setText(E.prTxt, mode === 'ready' ? 'Commune' : mode === 'far' ? 'Step closer' : 'Wakes in');
     }
-    const o = best;
-    const def = OB[o.type] ?? OB.haste;
-    const same = this._ob === o;
-    this._ob = o;
-    this._obT -= dt;
-    let pv = null;
-    if (!same || this._obT <= 0) {
-      this._obT = 0.25;
-      try { pv = OBS.preview?.(o.type) ?? null; } catch { pv = null; }
-      const heat = o.heat | 0;
-      const key = JSON.stringify([o.type, pv, o.nextAffix?.id, heat]);
-      if (key !== this._obKey) {
-        this._obKey = key;
-        this._buildObCard(o, def, pv);
-      }
-    }
-    // channel: progress ring + meter; the body collapses so the card stays small while you stand in the ring
-    const ch = !!o.channelling || o.state === 'channel';
-    const prog = clamp01(o.progress);
-    const chOn = ch && prog > 0;
-    setCls(E.ob, 'channel', chOn);
-    if (this._obCh !== chOn) {            // the body collapses / returns: re-measure once per toggle
-      this._obCh = chOn;
-      if (E.ob.offsetWidth) { this._obSize.w = E.ob.offsetWidth; this._obSize.h = E.ob.offsetHeight; }
-    }
-    setAttr(E.ob.querySelector('.hud-ob-ring .fg'), 'stroke-dasharray', `${Math.round(prog * 100)} 100`);
-    setScaleX(E.obFill, prog);
-    setText(E.obFoot, chOn ? `channelling ${Math.round(prog * 100)}%${o.type === 'wrath' ? `  ·  heat ${Math.min(HEAT_MAX, (o.heat | 0) + 1)} of ${HEAT_MAX}` : ''}` : this._obHint);
-
-    // anchor above the monolith, clamped under the top bar and above the action bar
+    setText(E.prT, mode === 'dormant' ? fmtTime(Math.ceil(S.wakeIn ?? 0)) : '');
     const u = this._uPx, w = window.innerWidth, h = window.innerHeight;
-    _v.set(o.pos.x, 4.6, o.pos.z);
+    _v.set(S.pos.x, PROMPT_Y, S.pos.z);
     _m.copy(_v).project(g.camera);
-    const sx = (_m.x * 0.5 + 0.5) * w, sy = (-_m.y * 0.5 + 0.5) * h, vis = _m.z < 1;
-    const cw = this._obSize.w || 330 * u, ch2 = this._obSize.h || 200 * u;
-    const x = Math.max(10 * u, Math.min(w - cw - 10 * u, sx - cw / 2));
-    let yy = sy - ch2 - 6 * u;
-    if (yy < 120 * u) {                    // no room above the monolith: hang the card under its plinth instead
-      _v.set(o.pos.x, 0, o.pos.z);
-      _m.copy(_v).project(g.camera);
-      yy = (-_m.y * 0.5 + 0.5) * h + 44 * u;
-    }
-    const y = Math.max(120 * u, Math.min(h - ch2 - 150 * u, yy));
-    setCls(E.ob, 'on', vis);
-    setCss(E.ob, 'transform', `translate3d(${snap(x)}px, ${snap(y)}px, 0)`);
-    setVar(E.ob, '--acc', o.def?.color ?? def.color);
-  }
-
-  _buildObCard(o, def, pv) {
-    const E = this.el;
-    const line = (l) => (typeof l === 'string' ? l : (l?.text ?? l?.label ?? ''));
-    const aff = o.nextAffix ?? pv?.nextAffix ?? null;
-    // Wrath's affix gets its own row: drop the cost line that repeats it
-    const cost = (pv?.cost ?? []).map(line).filter((s) => s && !(aff && s.includes(aff.desc)));
-    const pay = (pv?.pay ?? []).map(line).filter(Boolean);
-    const spriteId = o.def?.icon ?? def.icon;
-    setHTML(E.obIco, icon(ICON.ui(spriteId)));
-    setText(E.obName, pv?.title ?? o.def?.name ?? def.title);
-    setText(E.obKick, pv?.tag ?? 'rift obelisk');
-    // Haste: the net level swing, computed live by the director
-    const ld = pv?.levelsDelta;
-    setText(E.obChip, typeof ld === 'number' ? (ld < 0 ? `≈ −${Math.abs(ld)} level${Math.abs(ld) === 1 ? '' : 's'}` : ld > 0 ? `≈ +${ld} level${ld === 1 ? '' : 's'}` : '≈ even') : '');
-    setCls(E.obChip, 'on', typeof ld === 'number');
-    setCls(E.obChip, 'gain', typeof ld === 'number' && ld > 0);
-    const heat = o.type === 'wrath' ? (o.heat | 0) : -1;
-    const sec = (cls, label, lines) => (lines.length
-      ? `<div class="hud-ob-sec ${cls}"><span class="hud-ob-lbl"><i></i>${label}</span><ul>${lines.map((s) => `<li>${esc(s)}</li>`).join('')}</ul></div>` : '');
-    E.obBody.innerHTML =
-      (heat >= 0 ? `<div class="hud-ob-heat"><span class="hud-ob-lbl">heat</span><span class="cf-pips">${Array.from({ length: HEAT_MAX }, (_, i) => `<i class="${i < heat ? 'on' : ''}"></i>`).join('')}</span></div>` : '')
-      + (aff ? `<div class="hud-ob-affix"><span class="hud-ob-aico">${affixIcon(aff)}</span><span class="hud-ob-atxt"><b>${esc(aff.name)}</b><span>${esc(aff.desc)}</span></span></div>` : '')
-      + sec('cost', 'cost', cost) + sec('pay', 'pay', pay);
-    this._obHint = 'hold the ring to channel';
-    setText(E.obFoot, this._obHint);
-    setCls(E.ob, 'on', true);
-    // measure once per rebuild (never per frame)
-    this._obSize.w = E.ob.offsetWidth || 0;
-    this._obSize.h = E.ob.offsetHeight || 0;
+    const sx = (_m.x * 0.5 + 0.5) * w;
+    const sy = (-_m.y * 0.5 + 0.5) * h;
+    const x = Math.max(110 * u, Math.min(w - 110 * u, sx));
+    const y = Math.max(150 * u, Math.min(h - 190 * u, sy));
+    setCss(E.prompt, 'transform', `translate3d(${snap(x)}px, ${snap(y)}px, 0)`);
   }
 
   // ================================================================== edge markers
@@ -937,20 +872,14 @@ export class HUD {
     const bossLive = g.boss && !g.boss.dead ? g.boss : null;
     // the act boss: edge arrow only while off screen (the boss bar covers the rest)
     if (bossLive) targets.push({ kind: 'boss', pos: bossLive.pos, y: 2, color: '#e04a3a' });
-    // Rift Obelisks (rise at 0:50): the nearest one is on the approach card instead
-    const obList = g.obelisks?.list;
-    if (obList && g.phase === 'horde') {
-      const remain = ACT_LENGTH - (g.actTime ?? 0);
-      for (const o of obList) {
-        if (!o?.pos || !(o.state === 'idle' || o.state === 'channel') || o === this._ob) continue;
-        const d = OB[o.type] ?? OB.haste;
-        targets.push({
-          kind: `ob-${o.type}`, pos: o.pos, y: 4.4, color: o.def?.color ?? d.color, onScreen: true, label: d.name,
-          sprite: o.def?.icon ?? d.icon, prog: clamp01(o.progress), ring: true,
-          // Haste's marker pulses faster as the 3:00 summon closes in
-          pulse: o.type === 'haste' ? Math.max(0.35, Math.min(1.6, remain / 90)) : 0,
-        });
-      }
+    // the Crownshard: an edge marker while it is off screen (it is gone once the boss fight starts)
+    const sh = g.obelisks?.shard;
+    if (sh?.pos && g.phase === 'horde' && sh.state !== 'gone' && sh.state !== 'ascending' && Math.hypot(sh.pos.x - p.pos.x, sh.pos.z - p.pos.z) > 13) {   // close by, the prompt & the shard itself are the signal
+      const live = sh.state === 'open' || sh.state === 'waking';
+      targets.push({
+        kind: 'shard', pos: sh.pos, y: 5, color: live ? '#e0c4ff' : '#a496c8', label: 'Shard',
+        sprite: 'obelisk', pulse: live && sh.usable ? 1.1 : 0,
+      });
     }
     // fight objects that ask for it (banners, conduits): steel-white = poise sources; the ring is their HP
     if (bossLive?.objects) {

@@ -158,7 +158,7 @@ function deathRecap(hurt, { el = 'arcane', maxHp = 0, fight = null } = {}) {
   return { verb, name, how, dmg: kill?.dmg ?? null, sources, recent, hpMax, endT, tip, scope: useFight ? 'fight' : 'run', bets: useFight ? fight : null };
 }
 
-// "Your bets": what was riding on the boss fight you lost (obelisks armed, HP you entered with, shards forfeited)
+// "Your bets": what was riding on the boss fight you lost (pacts sealed, HP you entered with, shards forfeited)
 function betsHTML(f) {
   const st = f.stakes ?? {};
   const chip = (type, label, sub) =>
@@ -170,7 +170,7 @@ function betsHTML(f) {
     const names = (st.affixes ?? []).map((id) => AFFIXES[id]?.name).filter(Boolean).join(', ');
     chips.push(chip('wrath', `Wrath ×${st.heat}`, names));
   }
-  if (!chips.length) chips.push('<span class="mn-bet none">no obelisks armed</span>');
+  if (!chips.length) chips.push('<span class="mn-bet none">no pacts sealed</span>');
   const hp = Math.round((f.entryHp ?? 1) * 100);
   const lost = f.lost | 0;
   const boss = BOSS[f.bossId] ?? 'the boss';
@@ -179,7 +179,7 @@ function betsHTML(f) {
         <h3 class="mn-bets-h">Your bets<span>${esc(boss)}</span></h3>
         <div class="mn-bets-row">${chips.join('')}</div>
         <span class="mn-bet-hp" title="Your health when ${esc(boss)} was summoned"><span>entered at</span><span class="mn-bet-bar"><i style="transform:scaleX(${(hp / 100).toFixed(3)})"></i></span><b class="num">${hp}%</b></span>
-        ${lost > 0 ? `<span class="mn-bet-lost" title="Obelisk shards are paid only if you win the fight">${icon(ICON.ui('shard'), { fallback: '◆' })}<b class="num">${fmt(lost)}</b><span>shards lost</span></span>` : ''}
+        ${lost > 0 ? `<span class="mn-bet-lost" title="Pact shards are paid only if you win the fight">${icon(ICON.ui('shard'), { fallback: '◆' })}<b class="num">${fmt(lost)}</b><span>shards lost</span></span>` : ''}
       </div>`;
 }
 
@@ -361,8 +361,8 @@ export class Menus {
         <button type="button" class="mn-tome" data-act="pop" data-id="tome" data-ref="tome" aria-haspopup="dialog" aria-expanded="false"></button>
         <button type="button" class="mn-tool" data-act="pop" data-id="settings" aria-haspopup="dialog" aria-expanded="false" title="Settings">${ui('gear', '✲')}</button>
         <button type="button" class="mn-tool" data-act="pop" data-id="help" aria-haspopup="dialog" aria-expanded="false" title="Controls">${ui('help', '?')}</button>
-        <button type="button" class="mn-tool" data-act="feedback" title="Feedback" aria-label="Feedback">${ui('feedback', '✉')}</button>
-        <a class="mn-tool" href="${PATCH_NOTES_URL}" target="_blank" rel="noopener" title="Patch notes" aria-label="Patch notes (opens in a new tab)">${ui('notes', '≡')}</a>
+        <button type="button" class="mn-tool" data-act="feedback" data-external title="Feedback" aria-label="Feedback">${ui('feedback', '✉')}</button>
+        <a class="mn-tool" data-external href="${PATCH_NOTES_URL}" target="_blank" rel="noopener" title="Patch notes" aria-label="Patch notes (opens in a new tab)">${ui('notes', '≡')}</a>
 
         <div class="cf-plate mn-pop mn-pop-tome" data-pop="tome" data-ref="tomePop" hidden></div>
 
@@ -398,6 +398,7 @@ export class Menus {
             <dt>${ui('mouse-r', '◑', 'mn-mouse')}<span class="cf-key">q</span><span class="cf-key">e</span><span class="cf-key">r</span></dt><dd>Cast learned skills</dd>
             <dt><span class="cf-key">space</span></dt><dd>Dash through danger</dd>
             <dt><span class="cf-key">t</span></dt><dd>Toggle auto-cast</dd>
+            <dt><span class="cf-key">f</span></dt><dd>Commune with the Crownshard</dd>
             <dt><span class="cf-key">esc</span></dt><dd>Pause, build and codex</dd>
           </dl>
           <p class="mn-pop-note">Strike one Prime onto another to cause a <b>reaction</b>. Chain reactions to grow your power.</p>

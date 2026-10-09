@@ -69,8 +69,8 @@ export class Tutorial {
     on('levelUp', () => this._onLevelUp());
     on('shrineSpawned', () => this.tip('shrine', 'A <b>Shrine</b> has appeared &mdash; follow the arrow.', 'Stand inside it for 2.5s to claim a powerful 25s blessing.'));
     on('bossSpawned', () => this.tip('boss', 'The arena seals. <b style="color:#ff5a4a">Red</b> = get out, striped gold = go here. Every attack is shown on the ground first.'));
-    // v5 raid tips: Rift Obelisks, Stagger / Downed, Break Checks, Intermission / Winded (one-time each; see design/RAID.md)
-    on('obelisksRisen', () => this.tip('obelisks', 'Obelisks let you <b>call the boss your way</b>.', '<b style="color:#ffd34d">Haste</b> summons it now, <b style="color:#b9a4ff">Echo</b> brings it twice, <b style="color:#ff8a4a">Wrath</b> adds affixes. Stand in a ring for 4s to arm one. Doing nothing is fine.'));
+    // raid tips: the Crownshard (v6), Stagger / Downed, Break Checks, Intermission / Winded (one-time each; see design/RAID.md, SHARD.md)
+    on('shardWake', () => this.tip('crownshard', 'The <b>Crownshard</b> has woken. Press <b>F</b> beside it to strike a pact &mdash; time stops while you choose.', 'Pacts make the boss harder for bigger rewards, or call it early. The horde answers each pact you seal. Doing nothing is fine.'));
     on('poise', ({ enemy } = {}) => enemy?.boss && this.tip('stagger', 'Reactions, freezes, stuns, burning/chilled/shocked status and perfect dodges fill the boss\'s <b style="color:#e8eef8">STAGGER</b> bar. Fill it to knock the boss <b>DOWN</b>: it takes +40% damage.'));
     on('bossIntermission', ({ enemy, index } = {}) => {
       this.tip('intermission', 'Intermission: the boss can\'t be harmed. Survive the pattern &mdash; it ends with the boss <b style="color:#e8eef8">WINDED</b>.');

@@ -28,6 +28,7 @@ const ARENA_CRYSTALS = 4;          // Rift Crystals inside a boss arena
 const ARENA_CRYSTAL_RESPAWN = 18;
 const GEODE_BURST_R = 4.5;
 const GEODE_BURST_DMG = 20;
+const SHARD_KEEP_OUT = 11;     // crystals and shrines keep their claim rings clear of the Crownshard circle (r 6.6, v6)
 const SHRINE_FIRST = 35;
 const SHRINE_GAP = 50;
 const SHRINE_LIFE = 40;
@@ -464,7 +465,8 @@ export class World {
     this._dropGeodes();
   }
 
-  randomSpawnPoint(center, minDist, maxDist) {
+  // keepOut: also stay this far from the world origin (the Crownshard circle, v6).
+  randomSpawnPoint(center, minDist, maxDist, keepOut = 0) {
     // Try up to 25 times to find a valid point
     for (let attempt = 0; attempt < 25; attempt++) {
       const angle = Math.random() * Math.PI * 2;
@@ -474,6 +476,7 @@ export class World {
 
       // Check bounds (with 2-unit margin)
       if (Math.hypot(x, z) > ARENA_RADIUS - 2) continue;
+      if (keepOut && Math.hypot(x, z) < keepOut) continue;
 
       // Check obstacles
       let tooClose = false;
@@ -527,7 +530,7 @@ export class World {
       this.collide(pos, 0.8);
     }
     for (let tries = 0; tries < 8 && !pos; tries++) {
-      pos = this.randomSpawnPoint(game.player.pos, 10, 32);
+      pos = this.randomSpawnPoint(game.player.pos, 10, 32, SHARD_KEEP_OUT);
       if (this._geodeSlots.every((s) => !s.geode || s.geode.pos.distanceTo(pos) >= 9)) break;
     }
     const geode = this._makeGeode(el, pos, slot, act.hp);
@@ -733,7 +736,7 @@ export class World {
     const game = this.game;
     const type = pick(SHRINE_TYPES);
     const def = SHRINES[type];
-    const pos = this.randomSpawnPoint(p.pos, 14, 22);
+    const pos = this.randomSpawnPoint(p.pos, 14, 22, SHARD_KEEP_OUT);
     const c = this._shrineMatsFor(type);
 
     const group = new THREE.Group();
