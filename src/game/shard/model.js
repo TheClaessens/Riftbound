@@ -8,7 +8,7 @@ import { prep, lump, paint } from '../env/props.js';
 // =====================================================================================
 //  The Crownshard set piece (v6). Contract: design/SHARD.md §3, design: design/SHARD_PASSES.md Pass 1 / 6.
 //
-//  A floating prism tine of the shattered Riftcrown (crystal, still clamped in a dull bronze filigree
+//  A floating prism tine of the shattered Prism Crown (crystal, still clamped in a dull bronze filigree
 //  collar) over a lit crater, inside the broken Vael binding circle: a cracked curb ring at the commune
 //  radius (the rune line at r 4.5 IS the commune range), three binding-stones with their pact sigils
 //  (Haste left, Echo front, Wrath right as seen from the iso camera) and chains from the stones to the

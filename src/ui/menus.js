@@ -1,6 +1,6 @@
 // =====================================================================================
 //  Out-of-run menus, Crownforge style (design/UI.md §8).
-//    · Title / Sanctum: the reliquary of the shattered Riftcrown, laid over the live world.
+//    · Title / Sanctum: the reliquary of the shattered Prism Crown, laid over the live world.
 //      Wordmark, 4 class medallions + one details panel, the Rift Tier gate with Begin Quest,
 //      six attunement stones, shard counter, codex tome, settings (gear) and controls (?).
 //    · End screens: Fallen / Victory with a shard count-up, an engraved ledger, reactions as
@@ -16,6 +16,7 @@ import { SKILLS, FUSIONS } from '../game/skills/registry.js';
 import { RELICS, RELIC_IDS, RELIC_TAG_COLOR } from '../game/relics.js';
 import { AFFIXES } from '../game/bosses/affixes.js';
 import { icon, hasIcon, ICON } from './icons/index.js';
+import { GAME_NAME, WORDMARK_MAIN, WORDMARK_SUB, HERO_TERM } from '../game/brand.js';
 
 const GLYPH = { arcanist: '✦', pyromancer: '🜂', cryomancer: '❅', stormcaller: 'ϟ' };
 const DASH_GLYPH = { blink: '✧', flame: '➶', frost: '❄', storm: 'ϟ' };
@@ -263,7 +264,7 @@ export class Menus {
     this.titleEl = make('div', 'mn-screen mn-title');
     this.endEl = make('div', 'mn-screen mn-end');
     this.titleEl.setAttribute('role', 'dialog');
-    this.titleEl.setAttribute('aria-label', 'Riftbound: the Sanctum');
+    this.titleEl.setAttribute('aria-label', `${GAME_NAME}: the Sanctum`);
     this.endEl.setAttribute('role', 'dialog');
     this.root.append(this.titleEl, this.endEl);
 
@@ -326,14 +327,14 @@ export class Menus {
       <div class="mn-shade" aria-hidden="true"></div>
 
       <header class="mn-brand">
-        <h1 class="mn-mark"><span class="mn-mark-ink" aria-hidden="true">Riftbound</span><span class="mn-mark-face">Riftbound</span></h1>
+        <h1 class="mn-mark" aria-label="${esc(GAME_NAME)}"><span class="mn-mark-ink" aria-hidden="true">${esc(WORDMARK_MAIN)}</span><span class="mn-mark-face" aria-hidden="true">${esc(WORDMARK_MAIN)}</span><span class="mn-mark-sub" aria-hidden="true">${esc(WORDMARK_SUB)}</span></h1>
         <div class="mn-mark-rule" aria-hidden="true"><i></i><span class="cf-prism"></span><i></i></div>
         <p class="mn-tagline">cross the rifts · weave the primes · slay ${esc(finalFoe.toLowerCase())}</p>
       </header>
 
-      <section class="mn-col mn-who" aria-label="Choose your Riftbound">
+      <section class="mn-col mn-who" aria-label="Choose your ${esc(HERO_TERM)}">
         <div class="mn-sec-head">
-          <span class="mn-sec-title">Choose your Riftbound</span>
+          <span class="mn-sec-title">Choose your ${esc(HERO_TERM)}</span>
           <span class="mn-sec-keys"><span class="cf-key">1</span>&ndash;<span class="cf-key">4</span></span>
         </div>
         <div class="mn-medals" data-ref="classes" role="radiogroup" aria-label="Class"></div>
@@ -747,7 +748,7 @@ export class Menus {
       callouts.push(`
         <div class="cf-plate mn-callout" data-el="${esc(c.element)}">
           <span class="cf-socket lit mn-callout-sock">${icon(ICON.cls(c.id), { el: c.element, fallback: GLYPH[c.id] ?? '✦' })}</span>
-          <span class="mn-callout-txt"><span class="mn-callout-k">new riftbound</span><span class="mn-callout-n">${esc(c.name)}</span><span class="mn-callout-s">${esc(c.title)}</span></span>
+          <span class="mn-callout-txt"><span class="mn-callout-k">new ${esc(HERO_TERM.toLowerCase())}</span><span class="mn-callout-n">${esc(c.name)}</span><span class="mn-callout-s">${esc(c.title)}</span></span>
         </div>`);
     }
     if (s.tierUnlocked) {

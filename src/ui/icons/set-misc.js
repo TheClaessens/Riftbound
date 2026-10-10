@@ -3,7 +3,7 @@
 // ink outline under the fill, lit from the upper-left, colours only through CSS custom properties.
 //   passive-*  engraved sigil cut into a round bronze token (+ at most one small accent)
 //   attune-*   Sanctum runestones: bronze-bound iron tablet with a glowing rune (--acc, gilt)
-//   class-*    a point of the Riftcrown holding the class Prime gem (fixed Prime vars)
+//   class-*    a point of the Prism Crown holding the class Prime gem (fixed Prime vars)
 //   buff-*     bold one-shape glyphs in the buff's own colour (shrine buffs echo the shrine rune)
 //   ui-*       simple, bold glyphs (1–2 tones + ink)
 const INK = 'stroke:var(--ink,#0c0a12);stroke-width:2;stroke-linejoin:round;paint-order:stroke';
@@ -193,7 +193,7 @@ const RUNES = {
 };
 
 // =========================================================================================
-//  Classes: one point of the Riftcrown, its Prime gem set in a bronze bezel. The silhouette
+//  Classes: one point of the Prism Crown, its Prime gem set in a bronze bezel. The silhouette
 //  of the point carries the class (flame tongues / icicle tines / a bolt / crescent horns).
 // =========================================================================================
 function crownPoint(full, P, { gy = 24.5, gs = 18.6, bezel = 9.4, lean = 0, extra = '' } = {}) {

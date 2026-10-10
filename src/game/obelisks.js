@@ -11,7 +11,7 @@ import { ShardVisual } from './shard/model.js';
 //  Design: design/SHARD_PASSES.md. Contract: design/SHARD.md. Payout numbers: design/RAID_PASSES.md
 //  Pass 1 + research/13 (unchanged since v5.2). File / property name (`game.obelisks`) kept from v5.
 //
-//  One shard of the Riftcrown stands at the world origin every act. Dormant until 0:50, then it wakes.
+//  One shard of the Prism Crown stands at the world origin every act. Dormant until 0:50, then it wakes.
 //  Press F in range to commune: the game pauses on the Pact screen (src/ui/pact.js) and the player
 //  seals pacts — Echo, Wrath heat 1–3, and/or Haste ("call it now"). Sealing anything new (without
 //  Haste) makes the Rift answer: a burst of foes around the shard plus a Rift Pull. Costs attach to the

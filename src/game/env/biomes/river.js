@@ -12,7 +12,7 @@ import {
 } from '../props_river.js';
 
 // =====================================================================================
-//  Act III — The Stormwater Reach. The Riftcrown fell into a great river and the dragons came to
+//  Act III — The Stormwater Reach. The Prism Crown fell into a great river and the dragons came to
 //  drink its light. Late afternoon under a breaking storm: slate cloud shadows racing over a lush
 //  cool-green meadow, gold light in the gaps. A braided river pours from grey-blue cliffs
 //  (three waterfalls into plunge pools on the far side), splits around a long island into two

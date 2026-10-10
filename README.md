@@ -1,4 +1,6 @@
-# Riftbound
+# Scions of the Prism Crown
+
+*Formerly "Riftbound" (renamed in 6.1: that name belongs to Riot Games' League of Legends TCG). The repo, URLs and save keys keep the old name.*
 
 An isometric horde-survival action RPG in three acts, built with **Three.js** (WebGL) and no build step. Everything — the sunny stylized world, the goblins, orcs, trolls and dragons, every animation — is generated procedurally in code: no model or texture files.
 
@@ -7,7 +9,7 @@ Pick one of four classes and fight through the goblin-haunted **Thornwood**, the
 **Play it:** https://theclaessens.github.io/Riftbound/ · **Patch notes:** https://theclaessens.github.io/Riftbound/changelog/ (source: [changelog/index.html](changelog/index.html); newest release on top, also linked from the title screen).
 
 ## The Crownshard & raid bosses (v6)
-* **The Crownshard**, a shard of the shattered Riftcrown, wakes at the heart of every land at 0:50. Press **F** beside it and time stops while you read your pacts side by side: **Call it now** brings the boss at once (Windfall XP, shards and an extra relic choice), **Echo** brings it back once more for a Boss Relic chest, and **Wrath** adds boss affixes and a tougher boss for better loot (up to three heats). Sealing a new pact makes the horde answer. You can return until the boss arrives, and doing nothing is fine: it still comes at 3:00.
+* **The Crownshard**, a shard of the shattered Prism Crown, wakes at the heart of every land at 0:50. Press **F** beside it and time stops while you read your pacts side by side: **Call it now** brings the boss at once (Windfall XP, shards and an extra relic choice), **Echo** brings it back once more for a Boss Relic chest, and **Wrath** adds boss affixes and a tougher boss for better loot (up to three heats). Sealing a new pact makes the horde answer. You can return until the boss arrives, and doing nothing is fine: it still comes at 3:00.
 * **Raid-style boss fights**: the arena seals around you, the horde turns into XP, and the boss fights alone with its own score. Three phases with intermissions, a **Stagger** bar (filled by reactions, freezes, stuns, perfect dodges and crystal blasts), **Downed** windows, named **Break Checks**, and gold "go here" safe zones.
 * **Six Boss Relics** (tag `boss`), offered only by Echo Chests and Wrath heat 3.
 * Design: [design/SHARD_PASSES.md](design/SHARD_PASSES.md) and [design/SHARD.md](design/SHARD.md) (the v6 Crownshard passes and contract); [design/RAID_PASSES.md](design/RAID_PASSES.md) (the raid passes; Pass 8 is the round-2 tuning) and [design/RAID.md](design/RAID.md) (the raid implementer contract).
@@ -23,7 +25,7 @@ Then open http://localhost:8080. To play every class at any Rift Tier, tick **Un
 
 ## CrazyGames build
 
-`powershell -ExecutionPolicy Bypass -File tools/package-crazygames.ps1` writes `dist/crazygames/` and `dist/riftbound-crazygames-<version>.zip` (upload the zip in the CrazyGames Developer Portal). The package adds the CrazyGames SDK v3 and sets `window.RIFTBOUND_PLATFORM`; `src/platform.js` then initialises the SDK, reports loading and gameplay start/stop, and hides links that leave the game (patch notes, GitHub feedback). Test it locally with the `riftbound-crazygames` launch config (port 8095), or add `?platform=crazygames` to the normal dev URL. The repo root (GitHub Pages) loads no SDK.
+`powershell -ExecutionPolicy Bypass -File tools/package-crazygames.ps1 [-Version 6.2]` writes `dist/crazygames/` and `dist/scions-crazygames-<version>.zip` (upload the zip in the CrazyGames Developer Portal). For a fast cold load it bundles all ~150 modules (and the minified three.js) into one `bundle.js` that runs them as blob ES modules (with a fallback to the plain files), inlines the CSS, and starts the CrazyGames SDK v3 during the download. `src/platform.js` reports loading and gameplay start/stop, drops the player straight into a run, hides links that leave the game, and logs `[platform] boot: …` phase timings to the console. Test it locally with the `riftbound-crazygames` launch config (port 8095), or add `?platform=crazygames` to the normal dev URL. The repo root (GitHub Pages) loads no SDK.
 
 ## Controls
 
@@ -72,7 +74,7 @@ jumpToBoss(1, { echo: true, affixes: ['frenzied'], phase: 2, god: true });
 * Research behind it: `design/research/01–04`. The v1.0 (dark) build is archived in `backup/riftbound-v1.0.zip`.
 
 ## UI (v3 "Crownforge")
-* The UI is the reliquary of the shattered Riftcrown: chamfered rift-iron plates, crown-bronze bezels, the four Primes as gems, a prism crack for crown moments. Fonts: Grenze Gotisch / Grenze / Alegreya Sans (SC).
+* The UI is the reliquary of the shattered Prism Crown: chamfered rift-iron plates, crown-bronze bezels, the four Primes as gems, a prism crack for crown moments. Fonts: Grenze Gotisch / Grenze / Alegreya Sans (SC).
 * ~95 hand-authored SVG icons in one sprite (`src/ui/icons/`), no emoji. Gallery: http://localhost:8080/dev/icons.html?filter=relic- · primitives: http://localhost:8080/dev/ui-kit.html
 * UI harness (console): `const U = await import('/src/dev/uishots.js'); await U.hud({ act: 2, boss: true, chain: 30 }); U.levelUp(); U.relicPick(4); U.pause('codex'); U.title(); U.victory();`
 * Research behind it: `design/research/05–07`. The v2.1 UI is archived in `backup/riftbound-v2.1-preui.zip`.

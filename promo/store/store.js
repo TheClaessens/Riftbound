@@ -16,6 +16,7 @@ import { createRenderer } from '../kit/renderer.js';
 import { createStage } from '../stage.js';
 import { SHOTS, DURATION, COVER_END, OUTRO_AT } from './shots.js';
 import { inspectMp4 } from './verify.js';
+import { WORDMARK_MAIN, WORDMARK_SUB } from '../../src/game/brand.js';
 
 const W = window.PROMO.width, H = window.PROMO.height;
 const ASPECT = W / H;
@@ -32,7 +33,7 @@ const PRIMES = ['#ff7a33', '#7fe0ff', '#ffe45c', '#c08cff'];   // fire, frost, s
 const CROWN = new Path2D('M2 16L9 9L12.5 12L20 0L27.5 12L31 9L38 16Z');   // --orn-crown, 40x16
 
 function wordmark(g, cx, baseY, S, { tagline = true } = {}) {
-  const text = 'Riftbound';
+  const text = WORDMARK_MAIN;
   g.save();
   g.font = `700 ${S}px "Grenze Gotisch"`;
   g.textAlign = 'center'; g.textBaseline = 'alphabetic';
@@ -65,8 +66,20 @@ function wordmark(g, cx, baseY, S, { tagline = true } = {}) {
   g.fillStyle = cg; g.fill(CROWN);
   g.restore();
 
+  // second line of the name, small under the big word (css/menus.css .mn-mark-sub)
+  let lineBot = bot, lineW = m.width;
+  if (WORDMARK_SUB) {
+    const ss = S * 0.3, sy = bot + S * 0.08 + ss * 0.8;
+    g.font = `700 ${ss}px Grenze`;
+    g.letterSpacing = `${ss * 0.04}px`;
+    g.lineWidth = ss * 0.2; g.strokeStyle = VOID; g.fillStyle = GILT;
+    g.strokeText(WORDMARK_SUB, cx, sy); g.fillText(WORDMARK_SUB, cx, sy);
+    lineBot = sy + ss * 0.2; lineW = Math.max(lineW, g.measureText(WORDMARK_SUB).width);
+    g.letterSpacing = '0px';
+  }
+
   // prism hairline between two gilt diamonds
-  const half = m.width / 2, ry = bot + S * 0.16, dia = S * 0.05;
+  const half = lineW / 2, ry = lineBot + S * 0.12, dia = S * 0.05;
   const pg = g.createLinearGradient(cx - half, 0, cx + half, 0);
   PRIMES.forEach((c, i) => pg.addColorStop(i / (PRIMES.length - 1), c));
   g.fillStyle = VOID; g.fillRect(cx - half + dia * 1.6, ry - S * 0.017, half * 2 - dia * 3.2, S * 0.034);
@@ -93,9 +106,10 @@ function wordmark(g, cx, baseY, S, { tagline = true } = {}) {
 
 // Logo size and placement per aspect: big enough to read on a small store tile.
 function coverLayout() {
-  if (ASPECT >= 1.2) return { S: H * 0.2, base: H * 0.80, tagline: true, shade: 0.5 };
-  if (ASPECT >= 0.8) return { S: W * 0.19, base: H * 0.83, tagline: false, shade: 0.55 };
-  return { S: W * 0.22, base: H * 0.86, tagline: false, shade: 0.6 };
+  // base = baseline of the big word; the second line, the prism rule and the tagline sit under it
+  if (ASPECT >= 1.2) return { S: H * 0.22, base: H * 0.74, tagline: true, shade: 0.45 };
+  if (ASPECT >= 0.8) return { S: W * 0.22, base: H * 0.79, tagline: false, shade: 0.5 };
+  return { S: W * 0.26, base: H * 0.83, tagline: false, shade: 0.55 };
 }
 
 function drawTitles(g, f) {
@@ -110,7 +124,7 @@ function drawTitles(g, f) {
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
   // fit the wordmark to 82% of the width
   g.font = `700 ${L.S}px "Grenze Gotisch"`;
-  const S = Math.min(L.S, L.S * (W * 0.82) / g.measureText('Riftbound').width);
+  const S = Math.min(L.S, L.S * (W * 0.82) / g.measureText(WORDMARK_MAIN).width);
   wordmark(g, W / 2, L.base, S, { tagline: L.tagline });
 }
 

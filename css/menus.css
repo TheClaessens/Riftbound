@@ -74,7 +74,18 @@
   background: linear-gradient(180deg, #fff6dc 0 36%, var(--cf-gilt) 36% 62%, var(--cf-bronze-hi) 62% 84%, #a8854f 84%);
   -webkit-background-clip: text; background-clip: text;
 }
-/* crown point over the wordmark (the Riftcrown, whole) */
+/* the second line of the name (src/game/brand.js WORDMARK_SUB), set small under the big word */
+.mn-mark > .mn-mark-sub {
+  grid-area: 2 / 1;
+  justify-self: center;
+  margin-top: calc(2 * var(--u));
+  font: 700 calc(34 * var(--u)) / 1 'Grenze', Georgia, serif;
+  letter-spacing: .04em;
+  color: var(--cf-gilt);
+  -webkit-text-stroke: calc(6 * var(--u)) var(--cf-void); paint-order: stroke fill;
+  text-shadow: 0 calc(3 * var(--u)) 0 rgb(12 10 18 / .5);
+}
+/* crown point over the wordmark (the Prism Crown, whole) */
 .mn-mark::after {
   content: "";
   position: absolute; top: 0; left: 50%;

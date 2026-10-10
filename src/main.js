@@ -4,6 +4,9 @@ import { Game } from './game/game.js';
 import { installUiScale } from './ui/scale.js';
 import { ensureIcons } from './ui/icons/index.js';
 import { platform } from './platform.js';
+import { GAME_NAME } from './game/brand.js';
+
+document.title = GAME_NAME;
 
 // The host SDK (CrazyGames build only) must be initialised before the game boots; on the
 // web build this resolves at once, and on a slow or blocked SDK it gives up after a few seconds.
@@ -19,6 +22,8 @@ const game = new Game(engine, input);
 window.__game = game; // handy for debugging in the console
 platform.attach(game);
 platform.loadingStop();
+if (platform.autoStart) game.ui.menus._begin();   // straight into a run (the title's Begin Quest)
+platform.hideLoading();
 
 let last = performance.now();
 let errors = 0;

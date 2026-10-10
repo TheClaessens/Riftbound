@@ -30,35 +30,73 @@ class Platform {
     this._inGameplay = false;   // what the SDK was last told
     this._lastReport = -Infinity;
     this._playerRun = false;    // the current run was started from the menus (not a sim or script)
+    this._boot = { code: performance.now() };   // ms since navigation start: code running, sdk, built, frame
     this.ready = name === 'crazygames' ? this._initCrazyGames() : Promise.resolve();
+  }
+
+  /** Record a boot phase; on 'frame' a portal build logs the whole timeline once, e.g.
+   *  "[platform] boot: code 1830 ms · sdk 1910 ms · built 2420 ms · first frame 2480 ms". */
+  bootMark(phase) {
+    if (this._boot[phase] != null) return;
+    this._boot[phase] = performance.now();
+    if (phase !== 'frame' || this.name === 'web') return;
+    const b = this._boot, f = (k, label) => (b[k] != null ? `${label} ${Math.round(b[k])} ms` : null);
+    console.info(`[platform] boot: ${[f('code', 'code'), f('sdk', 'sdk'), f('built', 'built'), f('frame', 'first frame')].filter(Boolean).join(' · ')}`);
   }
 
   /** Platforms such as CrazyGames forbid links to other sites (patch notes, GitHub feedback). */
   get allowExternalLinks() { return this.name === 'web'; }
 
-  async _initCrazyGames() {
-    try {
-      const SDK = await withTimeout((async () => {
-        if (!window.CrazyGames?.SDK) await loadScript(SDK_URL);
-        await window.CrazyGames.SDK.init();
-        return window.CrazyGames.SDK;
-      })(), INIT_TIMEOUT_MS);
-      this.environment = SDK.environment;
-      if (this.environment === 'disabled') return;
-      this.sdk = SDK;
-    } catch (err) {
-      console.warn('[platform] CrazyGames SDK unavailable, continuing without it:', err);
-    }
+  /** Portal builds skip the title screen on boot and drop the player straight into a run with the
+   *  title's own pick (last class and tier, or the first unlocked class). The Sanctum is still one
+   *  click away from the end screen. */
+  get autoStart() { return this.name === 'crazygames'; }
+
+  /** Fade out the boot loading screen (#boot-loading, injected by tools/package-crazygames.ps1)
+   *  once the first game frame is on screen. */
+  hideLoading() {
+    const el = document.getElementById('boot-loading');
+    if (!el) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      this.bootMark('frame');
+      el.classList.add('is-done');
+      setTimeout(() => el.remove(), 600);
+    }));
   }
 
-  _call(fn) {
+  // `ready` settles when init finishes or after INIT_TIMEOUT_MS, whichever is first, so a slow SDK
+  // never holds up the game. A late init still attaches: update() starts reporting from then on.
+  _initCrazyGames() {
+    const init = (async () => {
+      try {
+        if (!window.CrazyGames?.SDK) await loadScript(SDK_URL);
+        const SDK = window.CrazyGames.SDK;
+        // the packaged index.html starts init before the game bundle downloads (window.__cgInit)
+        await (window.__cgInit ?? SDK.init());
+        this.environment = SDK.environment;
+        this.bootMark('sdk');
+        console.info(`[platform] CrazyGames SDK ready (environment: ${this.environment})`);
+        if (this.environment !== 'disabled') this.sdk = SDK;
+      } catch (err) {
+        console.warn('[platform] CrazyGames SDK unavailable, continuing without it:', err);
+      }
+    })();
+    const timeout = new Promise((resolve) => setTimeout(() => {
+      if (!this.sdk) console.warn(`[platform] SDK init still pending after ${INIT_TIMEOUT_MS} ms; starting the game, events follow once it is up`);
+      resolve();
+    }, INIT_TIMEOUT_MS));
+    return Promise.race([init, timeout]);
+  }
+
+  // Every call is logged ([platform] gameplayStart, ...) so QA can confirm events in the console.
+  _call(name) {
     if (!this.sdk) return;
-    try { fn(); } catch (err) { console.warn('[platform] SDK call failed:', err); }
+    try { this.sdk.game[name](); console.info(`[platform] ${name}`); } catch (err) { console.warn(`[platform] SDK ${name} failed:`, err); }
   }
 
   // main.js awaits `ready` first, so these bracket the game's construction (shader warm-up).
-  loadingStart() { this._call(() => this.sdk.game.loadingStart()); }
-  loadingStop() { this._call(() => this.sdk.game.loadingStop()); }
+  loadingStart() { this._call('loadingStart'); }
+  loadingStop() { this.bootMark('built'); this._call('loadingStop'); }
 
   /** Hook the game's lifecycle. Call once, after the Game is constructed. */
   attach(game) {
@@ -76,7 +114,7 @@ class Platform {
     if (active === this._inGameplay || now - this._lastReport < REPORT_GAP_MS) return;
     this._inGameplay = active;
     this._lastReport = now;
-    this._call(() => (active ? this.sdk.game.gameplayStart() : this.sdk.game.gameplayStop()));
+    this._call(active ? 'gameplayStart' : 'gameplayStop');
   }
 }
 
@@ -88,10 +126,6 @@ function loadScript(src) {
     s.onerror = () => reject(new Error(`failed to load ${src}`));
     document.head.appendChild(s);
   });
-}
-
-function withTimeout(promise, ms) {
-  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('SDK init timed out')), ms))]);
 }
 
 export const platform = new Platform(PLATFORM);
