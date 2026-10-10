@@ -4,13 +4,13 @@
 //  the staging API `P` the shots use; the kit does the rest (timeline, compositor,
 //  encoder, soundtrack).
 //
-//  Console (http://localhost:8096/promo/):
+//  Console (Studio server, /promo/):
 //    await promo.still(8.7)          // frame at 8.7 s -> promo/out/still.jpg
 //    await promo.sheet()             // contact sheet  -> promo/out/sheet.jpg
 //    promo.start({ name: 'riftbound-promo.mp4' }); promo.job   // full render (poll job)
 // =====================================================================================
-import { createRenderer } from './kit/renderer.js';
-import { renderSoundtrack } from './kit/soundtrack.js';
+import { createRenderer } from '/__studio/kits/promo/renderer.js';
+import { renderSoundtrack } from '/__studio/kits/promo/soundtrack.js';
 import { createStage } from './stage.js';
 import { SHOTS } from './shots.js';
 import { drawTitles, CUTS, CUE } from './titles.js';

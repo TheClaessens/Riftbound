@@ -62,7 +62,7 @@ src/game/env/common.js            ENV uniforms, patchEnv (wind, haze, clouds, di
 src/game/env/{ground,field,water,props,motes,lighting}.js   env systems                         (env)
 src/game/env/biomes/{forest,barrens,river}.js + props_*.js  the three biome definitions        (env)
 src/dev/sim.js, src/dev/viewer.js, dev/creatures.html        balance sim (runSim with `obelisks`, jumpToBoss), snap(), creature + hero viewer (dev)
-src/dev/shot.js                   headless frames (pinned 1280×720) → dev/shots/*.png via the shots server (8097); stage/castAt/step (dev)
+src/dev/shot.js                   headless frames (pinned 1280×720) → dev/shots/*.png via the Studio (`shots` output); stage/castAt/step (dev)
 src/game/audio.js                 procedural SFX + music (base; Audio mixes in the modules below)  (audio)
 src/game/audio/{scores,score,voices,sfx,offline}.js   boss scores (SCORES, BOSS_KEY), score engine, boss voices, raid SFX, DEV offline render  (audio)
 src/ui/icons/set-raid.js          raid icon set (obelisks, poise / downed / break check, affixes, fight objects)  (ui-icons)
@@ -74,6 +74,7 @@ src/ui/hud.js, hud-fx.js, hud-util.js + css/hud.css   in-run HUD, event overlays
 src/ui/ui.js + css/modals.css     UI orchestrator; level-up, relic chest, pause (build/codex)  (ui-modals)
 src/ui/menus.js + css/menus.css   title / Sanctum, game over / victory                        (ui-menus)
 src/dev/uishots.js, dev/icons.html, dev/ui-kit.html   UI harness, icon gallery, primitives page  (dev)
+studio.json, dev/studio/, feedback/   Studio manifest, asset catalogue + play hooks, Feedback items (dev; never imported by the game)
 ```
 
 ## The `game` object

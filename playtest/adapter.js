@@ -1,6 +1,6 @@
 // =====================================================================================
-//  Riftbound playtest adapter (game-playtest skill kit). Serve with the playtest server
-//  (launch config "riftbound-playtest", port 8098; screenshots land in playtest/out/), then:
+//  Riftbound playtest adapter (game-playtest skill kit). Serve with the Studio
+//  (launch config "studio"; screenshots land in playtest/out/), then:
 //    const PT = (await import('/playtest/adapter.js?v=' + Date.now())).default;
 //    PT.init({ persona: 'mila', skill: 'casual', fresh: true, unlockAll: false });
 //    PT.meta();  PT.buy('might');              // Sanctum: shards, attunements, classes, codex
@@ -12,8 +12,8 @@
 //    PT.batch({ classIds: ['pyromancer', 'cryomancer'], n: 5, skill: 'expert' }); await PT.batchWait();
 // =====================================================================================
 import * as THREE from 'three';
-import { createPlaytest, fmtTime } from './kit/playtest-core.js';
-import { createTopdownHands } from './kit/hands-topdown.js';
+import { createPlaytest, fmtTime } from '/__studio/kits/playtest/playtest-core.js';
+import { createTopdownHands } from '/__studio/kits/playtest/hands-topdown.js';
 import { FUSIONS } from '../src/game/skills/registry.js';
 import { ATTUNEMENTS, attuneCost, buyAttunement, loadMeta, isUnlocked, maxTierOf } from '../src/game/meta.js';
 import { CLASSES } from '../src/game/classes.js';

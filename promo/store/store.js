@@ -3,7 +3,7 @@
 //  by the promo kit from the real game. One page, any size: ?w=1920&h=1080 (landscape),
 //  ?w=1080&h=1920 (portrait video), ?w=1600&h=2400 / ?w=1600&h=1600 (2x covers).
 //
-//  Console (http://localhost:8096/promo/store/?w=..&h=..):
+//  Console (Studio server, /promo/store/?w=..&h=..):
 //    await store.cover('cover-portrait.jpg', { w: 800, h: 1200 }) // frame 0, downscaled
 //    await promo.sheet({ every: 0.5 })                           // contact sheet
 //    promo.start({ name: 'preview-landscape.mp4', bitrate: 12e6 }); promo.job
@@ -12,10 +12,10 @@
 //  Reload the page before every final render or cover: the game keeps some world state across
 //  runs (geodes, debris), so only the first pass after a fresh load is reproducible.
 // =====================================================================================
-import { createRenderer } from '../kit/renderer.js';
+import { createRenderer } from '/__studio/kits/promo/renderer.js';
 import { createStage } from '../stage.js';
 import { SHOTS, DURATION, COVER_END, OUTRO_AT } from './shots.js';
-import { inspectMp4 } from './verify.js';
+import { inspectMp4 } from '/__studio/kits/promo/verify.js';
 import { WORDMARK_MAIN, WORDMARK_SUB } from '../../src/game/brand.js';
 
 const W = window.PROMO.width, H = window.PROMO.height;

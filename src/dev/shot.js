@@ -1,8 +1,8 @@
 // =====================================================================================
 //  Headless screenshots (dev only). The browser pane is usually hidden, so its own
 //  screenshots are stale. This renders a frame and uploads the canvas as a PNG to the
-//  shots server (launch config "riftbound-shots", port 8097, writes to dev/shots/).
-//  Open the game FROM that server (http://localhost:8097/?unlockall) so the PUT is same-origin.
+//  Studio's `shots` output (launch config "studio", writes to dev/shots/).
+//  Open the game FROM the Studio's server (http://localhost:<port>/?unlockall) so the PUT is same-origin.
 //
 //    const S = await import('/src/dev/shot.js?v=' + Date.now());
 //    await S.shot('blizzard-r5');                         // whole canvas → dev/shots/blizzard-r5.png
@@ -47,7 +47,7 @@ export async function shot(name, { around = null, size = 10, scale = 1 } = {}) {
 export async function upload(canvas, name) {
   const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
   const file = name.replace(/[^\w.-]/g, '_');
-  const res = await fetch(`/__promo/out/${file}.png`, { method: 'PUT', body: blob });
+  const res = await fetch(`/__studio/out/shots/${file}.png`, { method: 'PUT', body: blob });
   return { name: `dev/shots/${file}.png`, status: res.status, w: canvas.width, h: canvas.height };
 }
 
