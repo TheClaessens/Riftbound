@@ -2,23 +2,19 @@
 
 Output: `out/riftbound-promo.mp4` (1920×1080, 60 fps, H.264 + AAC) and `out/riftbound-promo.wav` (the soundtrack).
 
-Built with the `game-promo-video` skill (`.claude/skills/game-promo-video/`). The renderer drives the real game frame by frame on a virtual clock with a seeded RNG, so every frame is reproducible.
+Built with the `game-promo-video` skill (Studio plugin). The renderer drives the real game frame by frame on a virtual clock with a seeded RNG, so every frame is reproducible.
 
 | File | What |
 |---|---|
 | `promo.js` | Riftbound adapter: boots the game without its loop, staging API `P`, floating-text overlay, renderer config |
 | `shots.js` | the 12 gameplay shots (staging, player control, time ramps) |
-| `titles.js` | titles built from `kit/motion.js`, cut accents (`CUTS`), soundtrack cue sheet (`CUE`) |
-| `kit/` | copy of the skill's generic kit (shims, renderer, motion, soundtrack, servers) |
+| `titles.js` | titles built from the promo Kit's `motion.js`, cut accents (`CUTS`), soundtrack cue sheet (`CUE`) |
 
 ## Render
 
-```
-powershell -ExecutionPolicy Bypass -File promo/kit/serve.ps1 -Port 8096
-```
-(or `node promo/kit/serve.mjs` / `python promo/kit/serve.py`; the preview config is `riftbound-promo`)
+Start the Studio (launch config `studio`). It serves the promo Kit at `/__studio/kits/promo/` and writes renders to `promo/out/`.
 
-Open http://localhost:8096/promo/ in Chrome or Edge, then in the console:
+Open http://localhost:5170/promo/ in Chrome or Edge, then in the console:
 
 ```js
 await promo.still(8.7)                          // one frame -> out/still.jpg
@@ -29,7 +25,7 @@ promo.start({ name: 'riftbound-promo.mp4' })    // full render; poll promo.job
 Keep the tab visible while rendering: a hidden tab freezes and the render stalls.
 If you change the dodge shot's timing, re-measure `P.shot.perfectT` after `promo.still(9)` and update `PERFECT_T` in `titles.js`.
 
-`kit/` is a copy. When you improve it here, copy the change back to `.claude/skills/game-promo-video/kit/` (or the other way round) so the skill keeps up.
+The Kit lives in the Studio repo and is never copied here: improve it there.
 
 ## Store assets (CrazyGames)
 

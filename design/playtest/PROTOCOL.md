@@ -1,6 +1,6 @@
 # Simulated playtest protocol
 
-_This project instance follows the repo-local **game-playtest** skill (`.claude/skills/game-playtest/SKILL.md`)._
+_This project instance follows the **game-playtest** skill from the Studio plugin._
 
 A repeatable round of AI playtesting. One orchestrator, N persona subagents, one synthesis report.
 
@@ -16,26 +16,26 @@ A repeatable round of AI playtesting. One orchestrator, N persona subagents, one
 ## Files
 | Path | What |
 |---|---|
-| `playtest/adapter.js` + `playtest/kit/` | The driver (`PT`), built on the repo-local **game-playtest** skill kit (`.claude/skills/game-playtest/`): bot hands (`casual`/`average`/`expert`), decision hooks, event digest, per-persona save sandbox, screenshots, background batches. Keep `playtest/kit/` in sync with the skill's `kit/`. |
+| `playtest/adapter.js` | The driver (`PT`), built on the playtest Kit the Studio serves at `/__studio/kits/playtest/`: bot hands (`casual`/`average`/`expert`), decision hooks, event digest, per-persona save sandbox, screenshots, background batches. |
 | `design/playtest/PERSONAS.md` | The persona roster: archetype, focus domain, bot skill, save profile, model, questions to answer. |
 | `design/playtest/BRIEF.md` | The shared playtester brief and the report template (incl. a machine-readable findings block). |
 | `design/playtest/round-N/` | One report per persona + `REPORT.md` (the synthesis). Screenshots go to `playtest/out/` (round 1's are in `dev/shots/pt-*`). |
 
 ## Running a round
 1. **Freeze**: note the build (`backup/` zip or version) in the round's REPORT header so findings can be traced.
-2. **Server**: `preview_start { name: 'riftbound-playtest' }` (port 8098; screenshots PUT to `playtest/out/`).
+2. **Server**: `preview_start { name: 'studio' }` (port 5170; screenshots PUT to `playtest/out/` via the Studio's `playtest` output).
 3. **Smoke test** the driver in one tab: `PT.init → PT.start → PT.play → PT.decision → PT.choose → PT.shot`.
 4. **Launch** every persona agent in one message (`run_in_background`), each with: persona id + number,
-   model (per PERSONAS.md), URL (`http://localhost:8098/` or `/?unlockall`), and the instruction to read
+   model (per PERSONAS.md), URL (`http://localhost:5170/` or `/?unlockall`), and the instruction to read
    BRIEF.md + its PERSONAS.md section. Keep ≤ 7 concurrent tabs (the pane has a tab limit).
 5. **Wait** for the completion notifications; don't poll the agents.
-6. **Verify** the top claims in-engine (real bug / design flaw / harness artefact / bot limitation; see the skill's `references/protocol.md`), then
+6. **Verify** the top claims in-engine (real bug / design flaw / harness artefact / bot limitation; see the game-playtest skill's `references/protocol.md`), then
    **synthesise** (orchestrator): read every report, merge duplicates across personas, rank by
    severity × number of personas × pillar impact, keep persona disagreements explicit (they are design
    tensions, not noise), separate *harness artefacts* from game findings, and write `round-N/REPORT.md`:
    executive summary → scorecard → top issues → per-area findings → design tensions → recommended backlog
    (now / next / later) → harness caveats.
-7. **Clean up**: sandboxed saves are `localStorage` keys `pt.<persona>.riftbound.meta.v1` in the 8098 origin only (never the real save).
+7. **Clean up**: sandboxed saves are `localStorage` keys `pt.<persona>.riftbound.meta.v1` in the 5170 origin only (never the real save).
 
 ## Model policy
 Personas run on **Sonnet** when they judge screenshots or feel, **Haiku** when the work is numeric or

@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "studio": {
+      "source": {
+        "source": "github",
+        "repo": "TheClaessens/studio"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "studio@studio": true
+  }
+}
