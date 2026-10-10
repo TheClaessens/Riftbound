@@ -25,11 +25,12 @@ if (!innerWidth || !innerHeight) {
 //    rim    : elite | none                                                            default none
 //    ward   : fire | frost | storm | arcane (accent recolour)
 //    layout : cols | rows (rows = poses side by side; default when > 3 poses)
+//    play   : 1 = loop: advance time and each pose (walk phase, action k) every frame        default 0
 //    ref    : reference hero left of the lineup: pyromancer (default) | arcanist | cryomancer | stormcaller | none
 //    el     : fire | frost | storm | arcane → accent colour (heroes: the focus takes the last-cast element)
 //    aim / meter / armor / dashN / shotN / fidgetN : hero channels (see heroPose below; shotN=1 = odd shot)
 //  Heroes: set=../heroes/pyromancer · poses: idle walk:φ run:φ strafe:φ diag:φ back:φ hold shot:k throw:k heavy:k nova:k channel:k dash:k arrive:k death:k victory:k fidget:k
-//  window.shot('name') saves dev/shots/name.png when served from the shots server (port 8097).
+//  window.shot('name') saves dev/shots/name.png when served by the Studio.
 //  window.view({ ...params }) re-renders without reloading.
 // =====================================================================================
 
@@ -45,6 +46,7 @@ scene.add(ground);
 const labels = document.getElementById('labels');
 const info = document.getElementById('info');
 let handles = [];
+let loop = 0;
 
 // Daylight preview lighting until the environment pass replaces engine defaults.
 function daylight() {
@@ -102,6 +104,7 @@ async function view(params = {}) {
     .filter(([k]) => !P.ids || P.ids.split(',').includes(k));
   const poses = parsePoses(P.poses);
 
+  cancelAnimationFrame(loop);
   creatures.clear();
   for (const b of creatures.batches.values()) b.mesh.count = 0;
   creatures.batches.clear();
@@ -153,7 +156,7 @@ async function view(params = {}) {
     if (c.def.isHero) heroPose(h, ps, P);
     if (P.el) { const c = new THREE.Color({ fire: 0xff6a1f, frost: 0x66d9ff, storm: 0xffe14a, arcane: 0xb67cff }[P.el] ?? 0xffffff); h.accent = [c.r, c.g, c.b, 1]; }
     if (ps.dying) { h.dying = ps.dying * 0.55; h._fall = 0.6; }
-    handles.push({ h, label: c.first ? c.name : '', pose: ps.label });
+    handles.push({ h, label: c.first ? c.name : '', pose: ps.label, ps: { ...ps }, hero: c.def.isHero });
   }
   // reference hero (size check), left of the lineup: &ref=pyromancer (default) | arcanist | cryomancer | stormcaller | none
   const refDef = HEROES[P.ref ?? 'pyromancer'];
@@ -181,12 +184,34 @@ async function view(params = {}) {
     d.textContent = label ? `${label} · ${pose}` : pose;
     labels.appendChild(d);
   }
+  if (P.play === '1') play(P, t);
   info.textContent = `set=${P.set} · ${defs.length} creatures · zoom ${P.zoom} · bg ${P.bg} · ${defs.map(([n, d]) => `${n}:${d.geometry.attributes.position.count / 3}tri`).join(' ')}`;
   return info.textContent;
 }
 
+// play=1: the Studio's play button. One stride (2π of walk phase) and one action (k 0..1) per second.
+const TAU = Math.PI * 2;
+const PHASED = new Set(['strafe', 'diag', 'back']);   // hero tokens whose value is a walk phase
+function play(P, t) {
+  let last = performance.now();
+  const tick = (now) => {
+    loop = requestAnimationFrame(tick);
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now; t += dt;
+    for (const { h, ps, hero } of handles) {
+      if (ps.move) ps.walk = h.walk = (ps.walk + dt * TAU) % TAU;
+      else if (ps.dying) { ps.dying = (ps.dying + dt) % 1; h.dying = ps.dying * 0.55; }
+      else if (ps.action) ps.k = h.k = PHASED.has(ps.action) ? (ps.k + dt * TAU) % TAU : (ps.k + dt) % 1;
+      if (hero) heroPose(h, ps, P);
+    }
+    creatures.update(0, t);
+    engine.render();
+  };
+  loop = requestAnimationFrame(tick);
+}
+
 window.view = view;
-// window.shot('name') → renders and saves dev/shots/name.png (page must be served by the shots server, port 8097)
+// window.shot('name') → renders and saves dev/shots/name.png (page must be served by the Studio)
 window.shot = async (name) => { engine.render(); return upload(engine.renderer.domElement, name); };
 window.engine = engine;
 view().then(() => view()).catch((e) => { info.textContent = 'ERROR: ' + e.message; console.error(e); });

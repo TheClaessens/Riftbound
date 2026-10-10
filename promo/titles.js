@@ -6,7 +6,7 @@
 import { CLASSES } from '../src/game/classes.js';
 import { REACTIONS } from '../src/game/combat.js';
 import { ACTS } from '../src/game/acts.js';
-import { createMotion, prog, outBack, outExpo, outCubic, lerp } from './kit/motion.js';
+import { createMotion, prog, outBack, outExpo, outCubic, lerp } from '/__studio/kits/promo/motion.js';
 
 const M = createMotion({ W: 1920, H: 1080, ink: '#120a1a', fonts: { display: 'Cinzel', wordmark: '"Cinzel Decorative"', ui: 'Inter' } });
 const { W } = M;

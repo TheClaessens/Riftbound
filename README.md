@@ -98,5 +98,5 @@ jumpToBoss(1, { echo: true, affixes: ['frenzied'], phase: 2, god: true });
 
   Per-element looks live in `vfx/elements/*` and hero effects in `vfx/hero/*`. Contract: [design/VFX.md](design/VFX.md).
 * Hero viewer: http://localhost:8080/dev/creatures.html?set=../heroes/pyromancer&poses=idle,run:1.6,strafe:1.6,shot:0,heavy:0.36,dash:0.5,death:0.6,victory:1
-* Headless frames (pane hidden): start the `riftbound-shots` server (port 8097), open http://localhost:8097/?unlockall, then run `const S = await import('/src/dev/shot.js'); await S.stage({ classId: 'cryomancer', act: 0 }); await S.castAt('blizzard', 5, 4, -2); S.step(1); await S.shot('blizzard')`. Frames are saved to `dev/shots/`.
+* Headless frames (pane hidden): start the Studio (launch config `studio`), open http://localhost:5170/?unlockall, then run `const S = await import('/src/dev/shot.js'); await S.stage({ classId: 'cryomancer', act: 0 }); await S.castAt('blizzard', 5, 4, -2); S.step(1); await S.shot('blizzard')`. Frames are saved to `dev/shots/`.
 * Design passes: [design/HERO_PASSES.md](design/HERO_PASSES.md). Research: `design/research/08–10`. Before/after frames: `design/shots-v4/`. The v3.0 build is archived in `backup/riftbound-v3.0-preheroes.zip`.

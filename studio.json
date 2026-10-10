@@ -1,0 +1,16 @@
+{
+  "$schema": "http://localhost:5170/__studio/schema/studio.json",
+  "studio": "1.x",
+  "name": "Riftbound",
+  "assets": {
+    "catalogue": "dev/studio/catalogue.js",
+    "view": "dev/creatures.html?set={group}&ids={id}&poses={anchor}:{t}&play={play}",
+    "capture": "dev/studio/hooks.js"
+  },
+  "play": { "entry": "index.html", "hooks": "dev/studio/hooks.js", "adapter": "playtest/adapter.js" },
+  "playtests": "design/playtest",
+  "media": ["promo/out", "dev/shots", "design/shots-v4"],
+  "docs": ["DESIGN.md", "ARCHITECTURE.md", "design/**/*.md"],
+  "feedback": "feedback",
+  "out": { "playtest": "playtest/out", "promo": "promo/out", "shots": "dev/shots" }
+}

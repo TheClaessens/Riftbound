@@ -4,7 +4,7 @@
 //    const r = await O.renderSection('gorrak', 'p1', 12);          // one section, 12 s
 //    const f = await O.renderFight('vashkar', { secs: 60 });       // a scripted fight: spawn, inter, p2, downed, ...
 //    r.metrics  -> { peak, rmsDb, bands (%), windows [{ t, rms, peak }], voiceHigh, drops }
-//    await O.uploadWav('raid-audio-gorrak-p1', r.buffer)           // -> dev/shots via the shots server (PUT /__promo/out/<name>.wav)
+//    await O.uploadWav('raid-audio-gorrak-p1', r.buffer)           // -> dev/shots via the Studio (PUT /__studio/out/shots/<name>.wav)
 //    await O.selfTest()                                             // all three scores, asserts
 //  The real Audio class is driven with `offline: true`: its voice counter uses [start, stop) intervals
 //  and `clock` replaces ctx.currentTime, so every scheduling path is the production one.
@@ -140,7 +140,7 @@ export function toWav(buf) {
 }
 
 export async function uploadWav(name, buf) {
-  const res = await fetch(`/__promo/out/${name}.wav`, { method: 'PUT', body: toWav(buf) });
+  const res = await fetch(`/__studio/out/shots/${name}.wav`, { method: 'PUT', body: toWav(buf) });
   return res.status;
 }
 
