@@ -2,7 +2,7 @@
 //  Riftbound staging layer shared by every cut (promo/promo.js, promo/store/store.js).
 //  Boots the game without its main loop and returns the staging API `P` the shots use,
 //  plus the tick function and a canvas replica of the game's DOM floating text.
-//  The page must have loaded kit/shims.js first (fixed size, virtual clock, seeded RNG).
+//  The page must have loaded the promo Kit's shims.js first (fixed size, virtual clock, seeded RNG).
 // =====================================================================================
 import * as THREE from 'three';
 import { Engine } from '../src/core/engine.js';

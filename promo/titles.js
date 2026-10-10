@@ -1,6 +1,6 @@
 // =====================================================================================
 //  Riftbound promo: motion-design layer, cut accents and soundtrack cue sheet.
-//  Generic building blocks come from kit/motion.js; the two game-specific read-outs
+//  Generic building blocks come from the promo Kit's motion.js; the two game-specific read-outs
 //  (live reaction formula, fusion recipe) are drawn here.
 // =====================================================================================
 import { CLASSES } from '../src/game/classes.js';
@@ -23,7 +23,7 @@ export const CUTS = [
   { t: 13.0, punch: 0.08, flash: 0.7 },
 ];
 
-// Soundtrack cue sheet (kit/soundtrack.js), on the same 120 BPM grid as the cuts.
+// Soundtrack cue sheet (promo Kit soundtrack.js), on the same 120 BPM grid as the cuts.
 export const CUE = {
   bpm: 120,
   intro: { end: 1.5 },

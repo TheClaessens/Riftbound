@@ -1,5 +1,5 @@
 // =====================================================================================
-//  Riftbound promo adapter (built with the game-promo-video skill kit in ./kit).
+//  Riftbound promo adapter (built with the game-promo-video skill's promo Kit, served by the Studio).
 //  The shared staging layer (stage.js) boots the game without its main loop and exposes
 //  the staging API `P` the shots use; the kit does the rest (timeline, compositor,
 //  encoder, soundtrack).

@@ -10,8 +10,7 @@
 # Stray numeric files from shell redirects
 /[0-9]*
 
-# Local-only Claude settings and skill packages
+# Local-only Claude settings
 .claude/settings.local.json
-.claude/skills/*.zip
 
 node_modules/
